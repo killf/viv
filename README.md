@@ -9,7 +9,7 @@
 - **零外部依赖** — JSON 解析、终端控制、TLS、HTTP 客户端、SSE 解析全部从零实现，无任何第三方 crate
 - **自我进化** — Agent 能够在使用过程中持续学习，越用越好用
 - **跨平台** — 目标支持 Linux、macOS、Windows
-- **极简内核** — 用 Rust nightly 编写，面向裸机部署设计
+- **极简内核** — 用 Rust 编写，面向裸机部署设计
 
 ## 构建
 
@@ -27,14 +27,14 @@ VIV_API_KEY=你的密钥 cargo run
 
 ### 环境变量
 
-| 变量 | 必填 | 说明 |
-|------|------|------|
-| `VIV_API_KEY` | 是 | LLM API 密钥 |
-| `VIV_BASE_URL` | 否 | API base URL（默认 api.anthropic.com） |
-| `VIV_MODEL` | 否 | 所有模型档位的回退值 |
-| `VIV_MODEL_FAST` | 否 | 快速模型（默认 claude-haiku-4-5） |
-| `VIV_MODEL_MEDIUM` | 否 | 中等模型（默认 claude-sonnet-4-6） |
-| `VIV_MODEL_SLOW` | 否 | 慢速模型（默认 claude-opus-4-6） |
+| 变量                 | 必填 | 说明                                 |
+|--------------------|----|------------------------------------|
+| `VIV_API_KEY`      | 是  | LLM API 密钥                         |
+| `VIV_BASE_URL`     | 否  | API base URL（默认 api.anthropic.com） |
+| `VIV_MODEL`        | 否  | 所有模型档位的回退值                         |
+| `VIV_MODEL_FAST`   | 否  | 快速模型（默认 claude-haiku-4-5）          |
+| `VIV_MODEL_MEDIUM` | 否  | 中等模型（默认 claude-sonnet-4-6）         |
+| `VIV_MODEL_SLOW`   | 否  | 慢速模型（默认 claude-opus-4-6）           |
 
 ## 测试
 
@@ -69,3 +69,10 @@ src/
 ## 许可证
 
 [Apache License 2.0](LICENSE)
+
+## 参考项目
+
+* https://github.com/openai/codex
+* https://github.com/ultraworkers/claw-code
+* https://github.com/crossterm-rs/crossterm
+* https://github.com/ratatui/ratatui

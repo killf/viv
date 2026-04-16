@@ -1,4 +1,4 @@
-use viv::json::JsonValue;
+use viv::json::{JsonValue, Number};
 
 // --- Null ---
 #[test]
@@ -25,32 +25,32 @@ fn test_parse_false() {
 // --- Numbers ---
 #[test]
 fn test_parse_integer() {
-    assert_eq!(JsonValue::parse("42").unwrap(), JsonValue::Number(42.0));
+    assert_eq!(JsonValue::parse("42").unwrap(), JsonValue::Number(Number::Int(42)));
 }
 
 #[test]
 fn test_parse_negative_integer() {
-    assert_eq!(JsonValue::parse("-7").unwrap(), JsonValue::Number(-7.0));
+    assert_eq!(JsonValue::parse("-7").unwrap(), JsonValue::Number(Number::Int(-7)));
 }
 
 #[test]
 fn test_parse_float() {
-    assert_eq!(JsonValue::parse("-3.14").unwrap(), JsonValue::Number(-3.14));
+    assert_eq!(JsonValue::parse("-3.14").unwrap(), JsonValue::Number(Number::Float(-3.14)));
 }
 
 #[test]
 fn test_parse_exponent() {
-    assert_eq!(JsonValue::parse("1e3").unwrap(), JsonValue::Number(1000.0));
+    assert_eq!(JsonValue::parse("1e3").unwrap(), JsonValue::Number(Number::Float(1000.0)));
 }
 
 #[test]
 fn test_parse_negative_exponent() {
-    assert_eq!(JsonValue::parse("2.5e-2").unwrap(), JsonValue::Number(0.025));
+    assert_eq!(JsonValue::parse("2.5e-2").unwrap(), JsonValue::Number(Number::Float(0.025)));
 }
 
 #[test]
 fn test_parse_zero() {
-    assert_eq!(JsonValue::parse("0").unwrap(), JsonValue::Number(0.0));
+    assert_eq!(JsonValue::parse("0").unwrap(), JsonValue::Number(Number::Int(0)));
 }
 
 // --- Strings ---
@@ -112,9 +112,9 @@ fn test_parse_array_of_numbers() {
     assert_eq!(
         JsonValue::parse("[1,2,3]").unwrap(),
         JsonValue::Array(vec![
-            JsonValue::Number(1.0),
-            JsonValue::Number(2.0),
-            JsonValue::Number(3.0),
+            JsonValue::Number(Number::Int(1)),
+            JsonValue::Number(Number::Int(2)),
+            JsonValue::Number(Number::Int(3)),
         ])
     );
 }
@@ -123,7 +123,7 @@ fn test_parse_array_of_numbers() {
 fn test_parse_array_with_whitespace() {
     assert_eq!(
         JsonValue::parse("[ 1 , 2 ]").unwrap(),
-        JsonValue::Array(vec![JsonValue::Number(1.0), JsonValue::Number(2.0)])
+        JsonValue::Array(vec![JsonValue::Number(Number::Int(1)), JsonValue::Number(Number::Int(2))])
     );
 }
 
@@ -135,7 +135,7 @@ fn test_parse_array_mixed_types() {
             JsonValue::Null,
             JsonValue::Bool(true),
             JsonValue::Str("hi".to_string()),
-            JsonValue::Number(3.0),
+            JsonValue::Number(Number::Int(3)),
         ])
     );
 }
@@ -159,8 +159,8 @@ fn test_parse_object_multiple_keys() {
     assert_eq!(
         JsonValue::parse(r#"{"a":1,"b":2}"#).unwrap(),
         JsonValue::Object(vec![
-            ("a".to_string(), JsonValue::Number(1.0)),
-            ("b".to_string(), JsonValue::Number(2.0)),
+            ("a".to_string(), JsonValue::Number(Number::Int(1))),
+            ("b".to_string(), JsonValue::Number(Number::Int(2))),
         ])
     );
 }
@@ -179,8 +179,8 @@ fn test_parse_nested_array() {
     assert_eq!(
         JsonValue::parse("[[1,2],[3,4]]").unwrap(),
         JsonValue::Array(vec![
-            JsonValue::Array(vec![JsonValue::Number(1.0), JsonValue::Number(2.0)]),
-            JsonValue::Array(vec![JsonValue::Number(3.0), JsonValue::Number(4.0)]),
+            JsonValue::Array(vec![JsonValue::Number(Number::Int(1)), JsonValue::Number(Number::Int(2))]),
+            JsonValue::Array(vec![JsonValue::Number(Number::Int(3)), JsonValue::Number(Number::Int(4))]),
         ])
     );
 }
@@ -191,7 +191,7 @@ fn test_parse_nested_object() {
         JsonValue::parse(r#"{"outer":{"inner":42}}"#).unwrap(),
         JsonValue::Object(vec![(
             "outer".to_string(),
-            JsonValue::Object(vec![("inner".to_string(), JsonValue::Number(42.0))])
+            JsonValue::Object(vec![("inner".to_string(), JsonValue::Number(Number::Int(42)))])
         )])
     );
 }
@@ -203,9 +203,9 @@ fn test_parse_object_with_array_value() {
         JsonValue::Object(vec![(
             "items".to_string(),
             JsonValue::Array(vec![
-                JsonValue::Number(1.0),
-                JsonValue::Number(2.0),
-                JsonValue::Number(3.0),
+                JsonValue::Number(Number::Int(1)),
+                JsonValue::Number(Number::Int(2)),
+                JsonValue::Number(Number::Int(3)),
             ])
         )])
     );
@@ -229,12 +229,12 @@ fn test_display_bool_false() {
 
 #[test]
 fn test_display_integer() {
-    assert_eq!(JsonValue::Number(42.0).to_string(), "42");
+    assert_eq!(JsonValue::Number(Number::Int(42)).to_string(), "42");
 }
 
 #[test]
 fn test_display_float() {
-    assert_eq!(JsonValue::Number(3.14).to_string(), "3.14");
+    assert_eq!(JsonValue::Number(Number::Float(3.14)).to_string(), "3.14");
 }
 
 #[test]
@@ -255,7 +255,7 @@ fn test_display_string_with_newline() {
 #[test]
 fn test_display_array() {
     assert_eq!(
-        JsonValue::Array(vec![JsonValue::Number(1.0), JsonValue::Number(2.0)]).to_string(),
+        JsonValue::Array(vec![JsonValue::Number(Number::Int(1)), JsonValue::Number(Number::Int(2))]).to_string(),
         "[1,2]"
     );
 }
@@ -284,7 +284,7 @@ fn test_roundtrip_bool() {
 
 #[test]
 fn test_roundtrip_number() {
-    for v in [JsonValue::Number(42.0), JsonValue::Number(-3.14), JsonValue::Number(0.0)] {
+    for v in [JsonValue::Number(Number::Int(42)), JsonValue::Number(Number::Float(-3.14)), JsonValue::Number(Number::Int(0))] {
         assert_eq!(JsonValue::parse(&v.to_string()).unwrap(), v);
     }
 }
@@ -300,7 +300,7 @@ fn test_roundtrip_string() {
 #[test]
 fn test_roundtrip_array() {
     let v = JsonValue::Array(vec![
-        JsonValue::Number(1.0),
+        JsonValue::Number(Number::Int(1)),
         JsonValue::Str("two".to_string()),
         JsonValue::Bool(false),
         JsonValue::Null,
@@ -312,7 +312,7 @@ fn test_roundtrip_array() {
 fn test_roundtrip_complex_object() {
     let v = JsonValue::Object(vec![
         ("name".to_string(), JsonValue::Str("Claude".to_string())),
-        ("version".to_string(), JsonValue::Number(3.0)),
+        ("version".to_string(), JsonValue::Number(Number::Int(3))),
         ("active".to_string(), JsonValue::Bool(true)),
         ("tags".to_string(), JsonValue::Array(vec![
             JsonValue::Str("ai".to_string()),
@@ -345,12 +345,12 @@ fn test_get_on_non_object() {
 fn test_as_str() {
     assert_eq!(JsonValue::Str("hello".to_string()).as_str(), Some("hello"));
     assert_eq!(JsonValue::Null.as_str(), None);
-    assert_eq!(JsonValue::Number(1.0).as_str(), None);
+    assert_eq!(JsonValue::Number(Number::Int(1)).as_str(), None);
 }
 
 #[test]
 fn test_as_f64() {
-    assert_eq!(JsonValue::Number(3.14).as_f64(), Some(3.14));
+    assert_eq!(JsonValue::Number(Number::Float(3.14)).as_f64(), Some(3.14));
     assert_eq!(JsonValue::Null.as_f64(), None);
     assert_eq!(JsonValue::Str("1".to_string()).as_f64(), None);
 }
@@ -364,7 +364,7 @@ fn test_as_bool() {
 
 #[test]
 fn test_as_array() {
-    let arr = vec![JsonValue::Number(1.0)];
+    let arr = vec![JsonValue::Number(Number::Int(1))];
     assert!(JsonValue::Array(arr).as_array().is_some());
     assert_eq!(JsonValue::Null.as_array(), None);
 }

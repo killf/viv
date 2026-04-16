@@ -1,11 +1,48 @@
 use std::fmt;
 use crate::Error;
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum Number {
+    Int(i64),
+    Float(f64),
+}
+
+impl Number {
+    pub fn as_i64(&self) -> Option<i64> {
+        match self {
+            Number::Int(n) => Some(*n),
+            Number::Float(n) => {
+                if n.fract() == 0.0 && *n >= i64::MIN as f64 && *n <= i64::MAX as f64 {
+                    Some(*n as i64)
+                } else {
+                    None
+                }
+            }
+        }
+    }
+
+    pub fn as_f64(&self) -> f64 {
+        match self {
+            Number::Int(n) => *n as f64,
+            Number::Float(n) => *n,
+        }
+    }
+}
+
+impl fmt::Display for Number {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Number::Int(n) => write!(f, "{}", n),
+            Number::Float(n) => write!(f, "{}", n),
+        }
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub enum JsonValue {
     Null,
     Bool(bool),
-    Number(f64),
+    Number(Number),
     Str(String),
     Array(Vec<JsonValue>),
     Object(Vec<(String, JsonValue)>),
@@ -43,7 +80,15 @@ impl JsonValue {
 
     pub fn as_f64(&self) -> Option<f64> {
         if let JsonValue::Number(n) = self {
-            Some(*n)
+            Some(n.as_f64())
+        } else {
+            None
+        }
+    }
+
+    pub fn as_i64(&self) -> Option<i64> {
+        if let JsonValue::Number(n) = self {
+            n.as_i64()
         } else {
             None
         }
@@ -79,13 +124,7 @@ impl fmt::Display for JsonValue {
         match self {
             JsonValue::Null => write!(f, "null"),
             JsonValue::Bool(b) => write!(f, "{}", b),
-            JsonValue::Number(n) => {
-                if n.fract() == 0.0 && n.abs() < 1e15 {
-                    write!(f, "{}", *n as i64)
-                } else {
-                    write!(f, "{}", n)
-                }
-            }
+            JsonValue::Number(n) => write!(f, "{}", n),
             JsonValue::Str(s) => {
                 write!(f, "\"")?;
                 for ch in s.chars() {
@@ -247,6 +286,7 @@ impl Parser {
 
     fn parse_number(&mut self) -> Result<JsonValue, Error> {
         let start = self.pos;
+        let mut is_float = false;
         // optional minus
         if self.peek() == Some('-') {
             self.pos += 1;
@@ -263,6 +303,7 @@ impl Parser {
         }
         // optional fractional part
         if self.peek() == Some('.') {
+            is_float = true;
             self.pos += 1;
             if !self.peek().map_or(false, |c| c.is_ascii_digit()) {
                 return Err(Error::Json(format!("Expected digit after '.' at position {}", self.pos)));
@@ -273,6 +314,7 @@ impl Parser {
         }
         // optional exponent
         if matches!(self.peek(), Some('e') | Some('E')) {
+            is_float = true;
             self.pos += 1;
             if matches!(self.peek(), Some('+') | Some('-')) {
                 self.pos += 1;
@@ -285,8 +327,13 @@ impl Parser {
             }
         }
         let num_str: String = self.chars[start..self.pos].iter().collect();
-        let n: f64 = num_str.parse().map_err(|e| Error::Json(format!("Invalid number '{}': {}", num_str, e)))?;
-        Ok(JsonValue::Number(n))
+        if is_float {
+            let n: f64 = num_str.parse().map_err(|e| Error::Json(format!("Invalid number '{}': {}", num_str, e)))?;
+            Ok(JsonValue::Number(Number::Float(n)))
+        } else {
+            let n: i64 = num_str.parse().map_err(|e| Error::Json(format!("Invalid number '{}': {}", num_str, e)))?;
+            Ok(JsonValue::Number(Number::Int(n)))
+        }
     }
 
     fn parse_array(&mut self) -> Result<JsonValue, Error> {

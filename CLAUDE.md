@@ -66,9 +66,3 @@ src/
 - **三档模型**：fast/medium/slow，Agent 按任务复杂度选择
 - **条件编译 e2e 测试**：`--features full_test` 开启（调 API 花钱）
 
-## 参考项目
-
-* https://github.com/openai/codex
-* https://github.com/ultraworkers/claw-code
-* https://github.com/crossterm-rs/crossterm
-* https://github.com/ratatui/ratatui
