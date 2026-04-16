@@ -1,4 +1,135 @@
-use crate::terminal::input::KeyEvent;
+use std::io::{stdin, stdout, Read, Write};
+
+use crate::llm::{LlmClient, LlmConfig, Message, ModelTier};
+use crate::terminal::input::{InputParser, KeyEvent};
+use crate::terminal::raw_mode::RawMode;
+
+/// Start the REPL: print banner, enter raw mode, and loop reading + processing input.
+pub fn run() -> crate::Result<()> {
+    let config = LlmConfig::from_env()?;
+    let client = LlmClient::new(config);
+
+    let mut out = stdout();
+
+    // Banner
+    write!(out, "viv \u{2014} AI coding agent (type /exit or Ctrl+D to quit)\r\n")?;
+    out.flush()?;
+
+    // Enter raw mode — RAII guard restores terminal on drop
+    let _raw = RawMode::enable(0)?;
+
+    let mut messages: Vec<Message> = Vec::new();
+    let mut editor = LineEditor::new();
+    let mut parser = InputParser::new();
+
+    // Show initial prompt
+    // Green bold: \x1b[1;32m  Reset: \x1b[0m
+    write!(out, "\x1b[1;32m> \x1b[0m")?;
+    out.flush()?;
+
+    let mut stdin_buf = [0u8; 256];
+
+    loop {
+        // Blocking read of raw bytes from stdin
+        let n = stdin().read(&mut stdin_buf)?;
+        if n == 0 {
+            // EOF
+            write!(out, "\r\nBye!\r\n")?;
+            out.flush()?;
+            return Ok(());
+        }
+
+        parser.feed(&stdin_buf[..n]);
+
+        // Process all available key events from the parser
+        while let Some(key) = parser.next_event() {
+            let action = editor.handle_key(key);
+
+            match action {
+                EditAction::Submit(line) => {
+                    // Move to next line after user input
+                    write!(out, "\r\n")?;
+                    out.flush()?;
+
+                    // Skip empty lines — just redraw prompt
+                    if line.trim().is_empty() {
+                        write!(out, "\x1b[1;32m> \x1b[0m")?;
+                        out.flush()?;
+                        continue;
+                    }
+
+                    // Handle /exit command
+                    if line.trim() == "/exit" {
+                        write!(out, "Bye!\r\n")?;
+                        out.flush()?;
+                        return Ok(());
+                    }
+
+                    // Add user message to conversation history
+                    messages.push(Message {
+                        role: "user".into(),
+                        content: line,
+                    });
+
+                    // Print "claude: " prefix in magenta bold
+                    write!(out, "\x1b[1;35mclaude: \x1b[0m")?;
+                    out.flush()?;
+
+                    // Stream response from LLM
+                    let mut response = String::new();
+                    let stream_result = client.stream(&messages, ModelTier::Medium, |text| {
+                        // In raw mode we must use \r\n for newlines
+                        let replaced = text.replace('\n', "\r\n");
+                        let _ = out.write_all(replaced.as_bytes());
+                        let _ = out.flush();
+                        response.push_str(text);
+                    });
+
+                    match stream_result {
+                        Ok(full) => {
+                            // Use the accumulated text from the callback; full == response
+                            let _ = full; // already accumulated in `response`
+                            messages.push(Message {
+                                role: "assistant".into(),
+                                content: response,
+                            });
+                        }
+                        Err(e) => {
+                            write!(out, "\r\n\x1b[1;31merror: {}\x1b[0m\r\n", e)?;
+                        }
+                    }
+
+                    // Trailing newlines then fresh prompt
+                    write!(out, "\r\n\r\n\x1b[1;32m> \x1b[0m")?;
+                    out.flush()?;
+                }
+
+                EditAction::Exit => {
+                    write!(out, "\r\nBye!\r\n")?;
+                    out.flush()?;
+                    return Ok(());
+                }
+
+                EditAction::Interrupt => {
+                    // Clear current line and show a fresh prompt
+                    editor.buf.clear();
+                    editor.cursor = 0;
+                    write!(out, "\r\x1b[2K\x1b[1;32m> \x1b[0m")?;
+                    out.flush()?;
+                }
+
+                EditAction::Continue => {
+                    // Redraw the current line with the cursor at the correct position
+                    let cursor_col = 2 + editor.buf[..editor.cursor].chars().count();
+                    write!(out, "\r\x1b[2K\x1b[1;32m> \x1b[0m{}", &editor.buf)?;
+                    // Move cursor to correct column (1-based)
+                    write!(out, "\x1b[{}G", cursor_col + 1)?;
+                    out.flush()?;
+                }
+            }
+        }
+    }
+}
 
 #[derive(Debug, PartialEq)]
 pub enum EditAction {
