@@ -149,13 +149,8 @@ fn config_viv_model_fallback() {
 #[cfg(feature = "full")]
 #[test]
 fn e2e_stream_real_api() {
-    let config = match LlmConfig::from_env() {
-        Ok(c) => c,
-        Err(_) => {
-            eprintln!("Skipping e2e test: VIV_API_KEY not set");
-            return;
-        }
-    };
+    let config = LlmConfig::from_env()
+        .expect("VIV_API_KEY must be set when running with --features full");
     let client = LlmClient::new(config);
     let messages = vec![Message {
         role: "user".into(),
