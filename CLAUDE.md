@@ -13,7 +13,7 @@ cargo build                    # Debug build
 cargo build --release          # Release build
 cargo run                      # Build and run (需要 VIV_API_KEY)
 cargo test                     # Run all tests
-cargo test --features full     # 包含 e2e 测试（会调用真实 API，花钱）
+cargo test --features full_test     # 包含 e2e 测试（会调用真实 API，花钱）
 cargo test --test llm_test     # 运行单个测试文件
 cargo fmt                      # Format code
 cargo clippy                   # Lint
@@ -64,7 +64,7 @@ src/
 - **测试目录镜像源码**：`tests/terminal/` 对应 `src/terminal/`
 - **VIV_ 环境变量**：不绑定 Anthropic 命名
 - **三档模型**：fast/medium/slow，Agent 按任务复杂度选择
-- **条件编译 e2e 测试**：`--features full` 开启（调 API 花钱）
+- **条件编译 e2e 测试**：`--features full_test` 开启（调 API 花钱）
 
 ## 参考项目
 

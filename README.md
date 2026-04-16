@@ -40,7 +40,7 @@ VIV_API_KEY=你的密钥 cargo run
 
 ```bash
 cargo test                       # 运行所有单元测试
-cargo test --features full       # 包含 e2e 测试（调用真实 API）
+cargo test --features full_test       # 包含 e2e 测试（调用真实 API）
 ```
 
 ## 架构概览

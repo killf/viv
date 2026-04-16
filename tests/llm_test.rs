@@ -145,8 +145,8 @@ fn config_viv_model_fallback() {
 
 /// End-to-end test: actually calls the Claude API.
 /// Only compiled when full feature is enabled (costs money!).
-/// Run with: cargo test --features full
-#[cfg(feature = "full")]
+/// Run with: cargo test --features full_test
+#[cfg(feature = "full_test")]
 #[test]
 fn e2e_stream_real_api() {
     let config = LlmConfig::from_env()
