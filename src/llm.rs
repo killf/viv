@@ -34,6 +34,52 @@ pub struct LlmConfig {
     pub model_slow: String,
 }
 
+/// Parsed URL components from base_url.
+struct UrlParts {
+    host: String,
+    port: u16,
+    path_prefix: String,
+}
+
+fn parse_base_url(base_url: &str) -> UrlParts {
+    let mut url = base_url;
+
+    // Strip scheme
+    let is_https;
+    if let Some(rest) = url.strip_prefix("https://") {
+        url = rest;
+        is_https = true;
+    } else if let Some(rest) = url.strip_prefix("http://") {
+        url = rest;
+        is_https = false;
+    } else {
+        is_https = true;
+    }
+
+    // Split host from path
+    let (host_port, path_prefix) = match url.find('/') {
+        Some(i) => (&url[..i], url[i..].to_string()),
+        None => (url, String::new()),
+    };
+
+    // Strip trailing slash from path_prefix
+    let path_prefix = path_prefix.trim_end_matches('/').to_string();
+
+    // Split host:port
+    let (host, port) = match host_port.rfind(':') {
+        Some(i) => {
+            let port_str = &host_port[i + 1..];
+            match port_str.parse::<u16>() {
+                Ok(p) => (host_port[..i].to_string(), p),
+                Err(_) => (host_port.to_string(), if is_https { 443 } else { 80 }),
+            }
+        }
+        None => (host_port.to_string(), if is_https { 443 } else { 80 }),
+    };
+
+    UrlParts { host, port, path_prefix }
+}
+
 impl LlmConfig {
     /// Build an `LlmConfig` from environment variables.
     ///
@@ -109,6 +155,7 @@ impl LlmClient {
     pub fn build_request(&self, messages: &[Message], tier: ModelTier) -> HttpRequest {
         let model = self.config.model(tier.clone()).to_string();
         let max_tokens = self.config.max_tokens(tier);
+        let url = parse_base_url(&self.config.base_url);
 
         // Build the messages JSON array
         let messages_json: Vec<String> = messages
@@ -131,9 +178,9 @@ impl LlmClient {
 
         HttpRequest {
             method: "POST".into(),
-            path: "/v1/messages".into(),
+            path: format!("{}/v1/messages", url.path_prefix),
             headers: vec![
-                ("Host".into(), self.config.base_url.clone()),
+                ("Host".into(), url.host),
                 ("Content-Type".into(), "application/json".into()),
                 ("x-api-key".into(), self.config.api_key.clone()),
                 ("anthropic-version".into(), "2023-06-01".into()),
@@ -152,9 +199,10 @@ impl LlmClient {
     ) -> crate::Result<String> {
         let req = self.build_request(messages, tier);
         let bytes = req.to_bytes();
+        let url = parse_base_url(&self.config.base_url);
 
         // Connect via TLS
-        let mut tls = TlsStream::connect(&self.config.base_url, 443)?;
+        let mut tls = TlsStream::connect(&url.host, url.port)?;
 
         // Send request
         tls.write_all(&bytes)?;
