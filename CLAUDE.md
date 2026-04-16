@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**viv** — 一个自我进化的 AI 编程 Agent。核心理念是"越用越好用"，Agent 能够在使用过程中不断学习和进化。Rust 实现，nightly edition 2024，早期阶段(v0.1.0)。
+**viv** — 一个自我进化的 AI 编程 Agent。核心理念是"越用越好用"，Agent 能够在使用过程中不断学习和进化。
 
 ## Build Commands
 
@@ -21,3 +21,10 @@ cargo clippy             # Lint
 ## Architecture
 
 Single-binary Rust project. Entry point: `src/main.rs`. No external dependencies yet.
+
+## 参考项目
+
+* https://github.com/openai/codex
+* https://github.com/ultraworkers/claw-code
+* https://github.com/crossterm-rs/crossterm
+* https://github.com/ratatui/ratatui
