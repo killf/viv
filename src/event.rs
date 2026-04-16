@@ -6,7 +6,10 @@ unsafe extern "C" {
     fn epoll_ctl(epfd: i32, op: i32, fd: i32, event: *mut EpollEvent) -> i32;
     fn epoll_wait(epfd: i32, events: *mut EpollEvent, maxevents: i32, timeout: i32) -> i32;
     fn close(fd: i32) -> i32;
+    fn __errno_location() -> *mut i32;
 }
+
+const EINTR: i32 = 4;
 
 pub const EPOLL_CTL_ADD: i32 = 1;
 pub const EPOLL_CTL_DEL: i32 = 2;
@@ -66,7 +69,12 @@ impl Epoll {
             )
         };
         if n < 0 {
-            return Err(crate::Error::Terminal("epoll_wait failed".to_string()));
+            let errno = unsafe { *__errno_location() };
+            if errno == EINTR {
+                // Interrupted by signal (e.g. SIGWINCH) — treat as timeout
+                return Ok(Vec::new());
+            }
+            return Err(crate::Error::Terminal(format!("epoll_wait failed: errno {}", errno)));
         }
         let tokens = events[..n as usize].iter().map(|e| e.data).collect();
         Ok(tokens)

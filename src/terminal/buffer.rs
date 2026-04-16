@@ -1,5 +1,41 @@
 use crate::terminal::output::AnsiWriter;
 
+/// Returns the display width of a character in terminal columns.
+/// CJK and fullwidth characters take 2 columns; most others take 1.
+pub fn char_width(ch: char) -> u16 {
+    let c = ch as u32;
+    // Control characters
+    if c < 0x20 || c == 0x7F {
+        return 0;
+    }
+    // CJK Unified Ideographs, CJK Extension A/B, CJK Compatibility Ideographs
+    if (0x2E80..=0x9FFF).contains(&c)
+        || (0xF900..=0xFAFF).contains(&c)
+        || (0xFE30..=0xFE6F).contains(&c)      // CJK Compatibility Forms
+        || (0xFF01..=0xFF60).contains(&c)       // Fullwidth Forms
+        || (0xFFE0..=0xFFE6).contains(&c)       // Fullwidth Signs
+        || (0x20000..=0x2FA1F).contains(&c)     // CJK Extension B-F + Supplements
+        || (0x30000..=0x3134F).contains(&c)     // CJK Extension G
+    {
+        return 2;
+    }
+    // Hangul Syllables
+    if (0xAC00..=0xD7AF).contains(&c) {
+        return 2;
+    }
+    // Katakana/Hiragana/Bopomofo etc.
+    if (0x3000..=0x303F).contains(&c)           // CJK Symbols and Punctuation
+        || (0x3040..=0x309F).contains(&c)       // Hiragana
+        || (0x30A0..=0x30FF).contains(&c)       // Katakana
+        || (0x3100..=0x312F).contains(&c)       // Bopomofo
+        || (0x3130..=0x318F).contains(&c)       // Hangul Compatibility Jamo
+        || (0x31F0..=0x31FF).contains(&c)       // Katakana Phonetic Extensions
+    {
+        return 2;
+    }
+    1
+}
+
 /// A rectangular region of the terminal, described by position and size.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Rect {
@@ -107,16 +143,24 @@ impl Buffer {
     }
 
     /// Write a string starting at (x, y), clipping at the right edge of the buffer.
+    /// Wide characters (CJK) occupy 2 cells; a placeholder '\0' is placed in the second cell.
     pub fn set_str(&mut self, x: u16, y: u16, s: &str, fg: Option<u8>, bold: bool) {
         let max_x = self.area.x + self.area.width;
         let mut cur_x = x;
         for ch in s.chars() {
-            if cur_x >= max_x {
+            let w = char_width(ch);
+            if w == 0 { continue; }
+            if cur_x + w > max_x {
                 break;
             }
             let i = self.idx(cur_x, y);
             self.cells[i] = Cell { ch, fg, bg: None, bold };
-            cur_x += 1;
+            // For wide chars, fill the next cell with a placeholder
+            if w == 2 && cur_x + 1 < max_x {
+                let i2 = self.idx(cur_x + 1, y);
+                self.cells[i2] = Cell { ch: '\0', fg, bg: None, bold };
+            }
+            cur_x += w;
         }
     }
 
@@ -136,6 +180,11 @@ impl Buffer {
 
         for i in 0..len {
             if self.cells[i] == previous.cells[i] {
+                continue;
+            }
+            let cell = &self.cells[i];
+            // Skip wide-char placeholder cells — the primary cell handles rendering
+            if cell.ch == '\0' {
                 continue;
             }
             let col = (i % width) as u16 + self.area.x;

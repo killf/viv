@@ -1,4 +1,4 @@
-use crate::terminal::buffer::{Buffer, Rect};
+use crate::terminal::buffer::{char_width, Buffer, Rect};
 use crate::tui::widget::Widget;
 
 /// A single-line text input widget with a prompt, cursor, and horizontal scrolling.
@@ -21,39 +21,24 @@ impl<'a> InputWidget<'a> {
     }
 
     /// Returns the absolute (col, row) position where the cursor should be placed.
-    ///
-    /// Accounts for prompt length and horizontal scrolling.
     pub fn cursor_position(&self, area: Rect) -> (u16, u16) {
-        let prompt_len = self.prompt.chars().count();
+        let prompt_width: u16 = self.prompt.chars().map(char_width).sum();
+        let cursor_width: u16 = self.content[..self.cursor.min(self.content.len())]
+            .chars().map(char_width).sum();
         let available = area.width as usize;
-
-        // cursor byte offset → char index
-        let cursor_char = self.content[..self.cursor.min(self.content.len())].chars().count();
-
-        let total_chars = prompt_len + cursor_char;
-
+        let total = prompt_width + cursor_width;
         let scroll = self.scroll_offset(area);
-
-        // Absolute column = area.x + (total_chars - scroll), clamped to area
-        let col = area.x + (total_chars.saturating_sub(scroll)).min(available) as u16;
-        let row = area.y;
-        (col, row)
+        let col = area.x + (total as usize).saturating_sub(scroll).min(available) as u16;
+        (col, area.y)
     }
 
-    /// Compute how many chars to skip from the left so the cursor stays visible.
     fn scroll_offset(&self, area: Rect) -> usize {
-        let prompt_len = self.prompt.chars().count();
+        let prompt_width: usize = self.prompt.chars().map(|c| char_width(c) as usize).sum();
+        let cursor_width: usize = self.content[..self.cursor.min(self.content.len())]
+            .chars().map(|c| char_width(c) as usize).sum();
         let available = area.width as usize;
-        let cursor_char = self.content[..self.cursor.min(self.content.len())].chars().count();
-        let total_pos = prompt_len + cursor_char; // position from left edge (0-based)
-
-        if total_pos < available {
-            // Cursor fits without scrolling
-            0
-        } else {
-            // Scroll so cursor is at the last column of the visible area
-            total_pos + 1 - available
-        }
+        let total = prompt_width + cursor_width;
+        if total < available { 0 } else { total + 1 - available }
     }
 }
 
@@ -64,36 +49,44 @@ impl Widget for InputWidget<'_> {
         }
 
         let scroll = self.scroll_offset(area);
-        let available = area.width as usize;
+        let available = area.width;
 
-        // Build the full line: prompt chars + content chars
+        // Build unified stream: (char, is_prompt)
         let prompt_chars: Vec<char> = self.prompt.chars().collect();
         let content_chars: Vec<char> = self.content.chars().collect();
 
         let mut col = area.x;
-        let mut rendered = 0usize;
+        let mut logical_col: usize = 0; // display column counter
 
-        // Walk through prompt + content as a unified char stream, applying scroll
-        let total_source: Vec<(char, bool)> = prompt_chars
-            .iter()
-            .map(|&c| (c, true))
+        for (ch, is_prompt) in prompt_chars.iter().map(|&c| (c, true))
             .chain(content_chars.iter().map(|&c| (c, false)))
-            .collect();
+        {
+            let w = char_width(ch) as usize;
+            if w == 0 { continue; }
 
-        for (logical_idx, (ch, is_prompt)) in total_source.iter().enumerate() {
-            if logical_idx < scroll {
+            if logical_col + w <= scroll {
+                logical_col += w;
                 continue;
             }
-            if rendered >= available {
+            if col >= area.x + available {
                 break;
             }
-            let fg = if *is_prompt { self.prompt_fg } else { None };
+
+            let fg = if is_prompt { self.prompt_fg } else { None };
             let cell = buf.get_mut(col, area.y);
-            cell.ch = *ch;
+            cell.ch = ch;
             cell.fg = fg;
             cell.bold = false;
-            col += 1;
-            rendered += 1;
+
+            if w == 2 && col + 1 < area.x + available {
+                let cell2 = buf.get_mut(col + 1, area.y);
+                cell2.ch = '\0';
+                cell2.fg = fg;
+                cell2.bold = false;
+            }
+
+            col += w as u16;
+            logical_col += w;
         }
     }
 }

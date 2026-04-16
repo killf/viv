@@ -7,6 +7,7 @@ use crate::tui::input::InputWidget;
 use crate::tui::layout::{Constraint, Direction, Layout};
 use crate::tui::paragraph::{Line, Paragraph, Span};
 use crate::tui::renderer::Renderer;
+use crate::terminal::buffer::char_width;
 use crate::tui::widget::Widget;
 
 /// Start the REPL: initialize TUI, enter raw mode, and run the event loop.
@@ -260,18 +261,16 @@ fn count_wrapped_rows(line: &Line, width: usize) -> usize {
         return 0;
     }
 
-    // Count total chars in the line
-    let total_chars: usize = line.spans.iter().map(|s| s.text.chars().count()).sum();
+    let total_width: usize = line.spans.iter()
+        .flat_map(|s| s.text.chars())
+        .map(|c| char_width(c) as usize)
+        .sum();
 
-    if total_chars == 0 {
+    if total_width == 0 {
         return 1; // empty line still takes one row
     }
 
-    // Approximate: this is a rough count. For exact results we'd need the same
-    // wrap_line logic, but for scroll purposes a ceiling division is close enough
-    // for most cases. We use a simple heuristic: ceil(total_chars / width).
-    // This won't be exact for word-wrap but is good enough for auto-scroll.
-    total_chars.div_ceil(width)
+    total_width.div_ceil(width)
 }
 
 #[derive(Debug, PartialEq)]
