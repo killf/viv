@@ -58,31 +58,6 @@ fn extract_text_from_thinking_delta() {
 }
 
 #[test]
-fn config_from_env() {
-    let prev_key = std::env::var("VIV_API_KEY").ok();
-    let prev_url = std::env::var("VIV_BASE_URL").ok();
-    unsafe {
-        std::env::set_var("VIV_API_KEY", "test-viv-key");
-        std::env::set_var("VIV_BASE_URL", "custom.api.com");
-    }
-    let config = LlmConfig::from_env().unwrap();
-    assert_eq!(config.api_key, "test-viv-key");
-    assert_eq!(config.base_url, "custom.api.com");
-    unsafe {
-        match prev_key { Some(v) => std::env::set_var("VIV_API_KEY", v), None => std::env::remove_var("VIV_API_KEY") }
-        match prev_url { Some(v) => std::env::set_var("VIV_BASE_URL", v), None => std::env::remove_var("VIV_BASE_URL") }
-    }
-}
-
-#[test]
-fn config_missing_api_key() {
-    let prev = std::env::var("VIV_API_KEY").ok();
-    unsafe { std::env::remove_var("VIV_API_KEY"); }
-    assert!(LlmConfig::from_env().is_err());
-    if let Some(v) = prev { unsafe { std::env::set_var("VIV_API_KEY", v); } }
-}
-
-#[test]
 fn model_tier_selection() {
     let config = LlmConfig {
         api_key: "k".into(), base_url: "x".into(),
@@ -104,16 +79,40 @@ fn max_tokens_per_tier() {
     assert_eq!(config.max_tokens(ModelTier::Slow), 128000);
 }
 
+/// All env-var-dependent tests in one function to avoid parallel race conditions.
+/// Rust runs tests in parallel by default; env vars are process-global state.
 #[test]
-fn config_viv_model_fallback() {
-    // Save
+fn config_env_vars() {
+    // Save all env vars we'll touch
     let prev_key = std::env::var("VIV_API_KEY").ok();
+    let prev_url = std::env::var("VIV_BASE_URL").ok();
     let prev_model = std::env::var("VIV_MODEL").ok();
     let prev_fast = std::env::var("VIV_MODEL_FAST").ok();
     let prev_medium = std::env::var("VIV_MODEL_MEDIUM").ok();
     let prev_slow = std::env::var("VIV_MODEL_SLOW").ok();
 
-    // Set VIV_MODEL as fallback, no tier-specific vars
+    // --- Test 1: config_from_env ---
+    unsafe {
+        std::env::set_var("VIV_API_KEY", "test-viv-key");
+        std::env::set_var("VIV_BASE_URL", "custom.api.com");
+        std::env::remove_var("VIV_MODEL");
+        std::env::remove_var("VIV_MODEL_FAST");
+        std::env::remove_var("VIV_MODEL_MEDIUM");
+        std::env::remove_var("VIV_MODEL_SLOW");
+    }
+    let config = LlmConfig::from_env().unwrap();
+    assert_eq!(config.api_key, "test-viv-key");
+    assert_eq!(config.base_url, "custom.api.com");
+    // Defaults when no VIV_MODEL* set
+    assert_eq!(config.model_fast, "claude-haiku-4-5");
+    assert_eq!(config.model_medium, "claude-sonnet-4-6");
+    assert_eq!(config.model_slow, "claude-opus-4-6");
+
+    // --- Test 2: config_missing_api_key ---
+    unsafe { std::env::remove_var("VIV_API_KEY"); }
+    assert!(LlmConfig::from_env().is_err());
+
+    // --- Test 3: VIV_MODEL fallback ---
     unsafe {
         std::env::set_var("VIV_API_KEY", "k");
         std::env::set_var("VIV_MODEL", "my-custom-model");
@@ -121,21 +120,22 @@ fn config_viv_model_fallback() {
         std::env::remove_var("VIV_MODEL_MEDIUM");
         std::env::remove_var("VIV_MODEL_SLOW");
     }
-
     let config = LlmConfig::from_env().unwrap();
     assert_eq!(config.model_fast, "my-custom-model");
     assert_eq!(config.model_medium, "my-custom-model");
     assert_eq!(config.model_slow, "my-custom-model");
 
-    // Tier-specific overrides VIV_MODEL
+    // --- Test 4: Tier-specific overrides VIV_MODEL ---
     unsafe { std::env::set_var("VIV_MODEL_FAST", "override-fast"); }
     let config2 = LlmConfig::from_env().unwrap();
     assert_eq!(config2.model_fast, "override-fast");
     assert_eq!(config2.model_medium, "my-custom-model");
+    assert_eq!(config2.model_slow, "my-custom-model");
 
-    // Restore
+    // Restore all env vars
     unsafe {
         match prev_key { Some(v) => std::env::set_var("VIV_API_KEY", v), None => std::env::remove_var("VIV_API_KEY") }
+        match prev_url { Some(v) => std::env::set_var("VIV_BASE_URL", v), None => std::env::remove_var("VIV_BASE_URL") }
         match prev_model { Some(v) => std::env::set_var("VIV_MODEL", v), None => std::env::remove_var("VIV_MODEL") }
         match prev_fast { Some(v) => std::env::set_var("VIV_MODEL_FAST", v), None => std::env::remove_var("VIV_MODEL_FAST") }
         match prev_medium { Some(v) => std::env::set_var("VIV_MODEL_MEDIUM", v), None => std::env::remove_var("VIV_MODEL_MEDIUM") }
@@ -144,13 +144,13 @@ fn config_viv_model_fallback() {
 }
 
 /// End-to-end test: actually calls the Claude API.
-/// Only compiled when full feature is enabled (costs money!).
+/// Only compiled when full_test feature is enabled (costs money!).
 /// Run with: cargo test --features full_test
 #[cfg(feature = "full_test")]
 #[test]
 fn e2e_stream_real_api() {
     let config = LlmConfig::from_env()
-        .expect("VIV_API_KEY must be set when running with --features full");
+        .expect("VIV_API_KEY must be set when running with --features full_test");
     let client = LlmClient::new(config);
     let messages = vec![Message {
         role: "user".into(),
