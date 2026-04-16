@@ -68,9 +68,9 @@ impl Renderer {
         backend.flush()?;
         // 8. Swap buffers
         std::mem::swap(&mut self.current, &mut self.previous);
-        // 9. Reset the new current buffer to match the previous (displayed) state
-        //    so widgets only need to paint what changes, and diff is minimal.
-        self.current.clone_from(&self.previous);
+        // 9. Clear the new current buffer for the next frame.
+        //    Widgets must fully repaint each frame.
+        self.current.clear();
         Ok(())
     }
 }

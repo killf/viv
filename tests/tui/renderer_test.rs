@@ -31,17 +31,18 @@ fn flush_after_change_writes_diff() {
 }
 
 #[test]
-fn second_flush_no_change_no_diff() {
+fn second_flush_same_content_no_diff() {
     let mut r = Renderer::new(TermSize { cols: 10, rows: 5 });
     r.buffer_mut().set_char(0, 0, 'A');
     let mut backend = TestBackend::new(10, 5);
     r.flush(&mut backend).unwrap();
     let first_len = backend.output.len();
 
-    // Second flush with no changes
+    // Second flush: repaint the same content (widgets must repaint each frame)
     backend.output.clear();
+    r.buffer_mut().set_char(0, 0, 'A');
     r.flush(&mut backend).unwrap();
-    // Should be just sync sequences, no cell diff
+    // Should be just sync sequences, no cell diff (same content as previous)
     assert!(backend.output.len() < first_len);
 }
 
