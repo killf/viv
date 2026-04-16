@@ -15,7 +15,7 @@ unsafe extern "C" {
     fn SSL_new(ctx: *mut c_void) -> *mut c_void;
     fn SSL_free(ssl: *mut c_void);
     fn SSL_set_fd(ssl: *mut c_void, fd: i32) -> i32;
-    fn SSL_set_tlsext_host_name(ssl: *mut c_void, name: *const i8) -> i32;
+    fn SSL_ctrl(ssl: *mut c_void, cmd: i32, larg: i64, parg: *mut c_void) -> i64;
     fn SSL_connect(ssl: *mut c_void) -> i32;
     fn SSL_read(ssl: *mut c_void, buf: *mut c_void, num: i32) -> i32;
     fn SSL_write(ssl: *mut c_void, buf: *const c_void, num: i32) -> i32;
@@ -79,10 +79,12 @@ impl TlsStream {
         };
 
         // 5. Set SNI hostname
+        // SSL_set_tlsext_host_name is a macro: SSL_ctrl(ssl, 55, 0, name_ptr)
+        // SSL_CTRL_SET_TLSEXT_HOSTNAME = 55, TLSEXT_NAMETYPE_host_name = 0
         let host_cstr = CString::new(host)
             .map_err(|_| crate::error::Error::Tls("invalid hostname".into()))?;
         unsafe {
-            SSL_set_tlsext_host_name(ssl, host_cstr.as_ptr());
+            SSL_ctrl(ssl, 55, 0, host_cstr.as_ptr() as *mut c_void);
         }
 
         // 6. SSL_connect
