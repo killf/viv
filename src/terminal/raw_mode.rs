@@ -1,4 +1,5 @@
 use std::os::unix::io::RawFd;
+use crate::Error;
 
 // Linux x86_64 termios layout (60 bytes total)
 #[repr(C)]
@@ -50,7 +51,7 @@ pub struct RawMode {
 }
 
 impl RawMode {
-    pub fn enable(fd: RawFd) -> Result<Self, String> {
+    pub fn enable(fd: RawFd) -> crate::Result<Self> {
         let mut original = Termios {
             c_iflag: 0,
             c_oflag: 0,
@@ -64,7 +65,7 @@ impl RawMode {
 
         let ret = unsafe { tcgetattr(fd, &mut original) };
         if ret != 0 {
-            return Err(format!("tcgetattr failed with code {}", ret));
+            return Err(Error::Terminal(format!("tcgetattr failed with code {}", ret)));
         }
 
         let mut raw = Termios {
@@ -84,7 +85,7 @@ impl RawMode {
 
         let ret = unsafe { tcsetattr(fd, TCSAFLUSH, &raw) };
         if ret != 0 {
-            return Err(format!("tcsetattr failed with code {}", ret));
+            return Err(Error::Terminal(format!("tcsetattr failed with code {}", ret)));
         }
 
         Ok(RawMode { fd, original })

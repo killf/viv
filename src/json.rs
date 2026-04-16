@@ -1,4 +1,5 @@
 use std::fmt;
+use crate::Error;
 
 #[derive(Debug, PartialEq)]
 pub enum JsonValue {
@@ -11,12 +12,12 @@ pub enum JsonValue {
 }
 
 impl JsonValue {
-    pub fn parse(input: &str) -> Result<JsonValue, String> {
+    pub fn parse(input: &str) -> crate::Result<JsonValue> {
         let mut parser = Parser::new(input);
         let value = parser.parse_value()?;
         parser.skip_whitespace();
         if parser.pos < parser.chars.len() {
-            return Err(format!("Unexpected trailing characters at position {}", parser.pos));
+            return Err(Error::Json(format!("Unexpected trailing characters at position {}", parser.pos)));
         }
         Ok(value)
     }
@@ -159,15 +160,15 @@ impl Parser {
         }
     }
 
-    fn expect(&mut self, expected: char) -> Result<(), String> {
+    fn expect(&mut self, expected: char) -> Result<(), Error> {
         match self.consume() {
             Some(ch) if ch == expected => Ok(()),
-            Some(ch) => Err(format!("Expected '{}' but got '{}' at position {}", expected, ch, self.pos - 1)),
-            None => Err(format!("Expected '{}' but got end of input", expected)),
+            Some(ch) => Err(Error::Json(format!("Expected '{}' but got '{}' at position {}", expected, ch, self.pos - 1))),
+            None => Err(Error::Json(format!("Expected '{}' but got end of input", expected))),
         }
     }
 
-    fn parse_value(&mut self) -> Result<JsonValue, String> {
+    fn parse_value(&mut self) -> Result<JsonValue, Error> {
         self.skip_whitespace();
         match self.peek() {
             Some('n') => self.parse_null(),
@@ -176,19 +177,19 @@ impl Parser {
             Some('[') => self.parse_array(),
             Some('{') => self.parse_object(),
             Some(c) if c == '-' || c.is_ascii_digit() => self.parse_number(),
-            Some(c) => Err(format!("Unexpected character '{}' at position {}", c, self.pos)),
-            None => Err("Unexpected end of input".to_string()),
+            Some(c) => Err(Error::Json(format!("Unexpected character '{}' at position {}", c, self.pos))),
+            None => Err(Error::Json("Unexpected end of input".to_string())),
         }
     }
 
-    fn parse_null(&mut self) -> Result<JsonValue, String> {
+    fn parse_null(&mut self) -> Result<JsonValue, Error> {
         for expected in ['n', 'u', 'l', 'l'] {
             self.expect(expected)?;
         }
         Ok(JsonValue::Null)
     }
 
-    fn parse_bool(&mut self) -> Result<JsonValue, String> {
+    fn parse_bool(&mut self) -> Result<JsonValue, Error> {
         if self.peek() == Some('t') {
             for expected in ['t', 'r', 'u', 'e'] {
                 self.expect(expected)?;
@@ -202,7 +203,7 @@ impl Parser {
         }
     }
 
-    fn parse_string(&mut self) -> Result<String, String> {
+    fn parse_string(&mut self) -> Result<String, Error> {
         self.expect('"')?;
         let mut result = String::new();
         loop {
@@ -223,28 +224,28 @@ impl Parser {
                             for _ in 0..4 {
                                 match self.consume() {
                                     Some(h) if h.is_ascii_hexdigit() => hex.push(h),
-                                    Some(c) => return Err(format!("Invalid hex digit '{}' in unicode escape", c)),
-                                    None => return Err("Unexpected end in unicode escape".to_string()),
+                                    Some(c) => return Err(Error::Json(format!("Invalid hex digit '{}' in unicode escape", c))),
+                                    None => return Err(Error::Json("Unexpected end in unicode escape".to_string())),
                                 }
                             }
                             let code_point = u32::from_str_radix(&hex, 16)
-                                .map_err(|e| format!("Invalid unicode escape: {}", e))?;
+                                .map_err(|e| Error::Json(format!("Invalid unicode escape: {}", e)))?;
                             let ch = char::from_u32(code_point)
-                                .ok_or_else(|| format!("Invalid unicode code point: {}", code_point))?;
+                                .ok_or_else(|| Error::Json(format!("Invalid unicode code point: {}", code_point)))?;
                             result.push(ch);
                         }
-                        Some(c) => return Err(format!("Invalid escape sequence '\\{}' at position {}", c, self.pos - 1)),
-                        None => return Err("Unexpected end of input in string escape".to_string()),
+                        Some(c) => return Err(Error::Json(format!("Invalid escape sequence '\\{}' at position {}", c, self.pos - 1))),
+                        None => return Err(Error::Json("Unexpected end of input in string escape".to_string())),
                     }
                 }
                 Some(c) => result.push(c),
-                None => return Err("Unexpected end of input in string".to_string()),
+                None => return Err(Error::Json("Unexpected end of input in string".to_string())),
             }
         }
         Ok(result)
     }
 
-    fn parse_number(&mut self) -> Result<JsonValue, String> {
+    fn parse_number(&mut self) -> Result<JsonValue, Error> {
         let start = self.pos;
         // optional minus
         if self.peek() == Some('-') {
@@ -258,13 +259,13 @@ impl Parser {
                     self.pos += 1;
                 }
             }
-            _ => return Err(format!("Invalid number at position {}", self.pos)),
+            _ => return Err(Error::Json(format!("Invalid number at position {}", self.pos))),
         }
         // optional fractional part
         if self.peek() == Some('.') {
             self.pos += 1;
             if !self.peek().map_or(false, |c| c.is_ascii_digit()) {
-                return Err(format!("Expected digit after '.' at position {}", self.pos));
+                return Err(Error::Json(format!("Expected digit after '.' at position {}", self.pos)));
             }
             while self.peek().map_or(false, |c| c.is_ascii_digit()) {
                 self.pos += 1;
@@ -277,18 +278,18 @@ impl Parser {
                 self.pos += 1;
             }
             if !self.peek().map_or(false, |c| c.is_ascii_digit()) {
-                return Err(format!("Expected digit in exponent at position {}", self.pos));
+                return Err(Error::Json(format!("Expected digit in exponent at position {}", self.pos)));
             }
             while self.peek().map_or(false, |c| c.is_ascii_digit()) {
                 self.pos += 1;
             }
         }
         let num_str: String = self.chars[start..self.pos].iter().collect();
-        let n: f64 = num_str.parse().map_err(|e| format!("Invalid number '{}': {}", num_str, e))?;
+        let n: f64 = num_str.parse().map_err(|e| Error::Json(format!("Invalid number '{}': {}", num_str, e)))?;
         Ok(JsonValue::Number(n))
     }
 
-    fn parse_array(&mut self) -> Result<JsonValue, String> {
+    fn parse_array(&mut self) -> Result<JsonValue, Error> {
         self.expect('[')?;
         self.skip_whitespace();
         let mut items = Vec::new();
@@ -303,14 +304,14 @@ impl Parser {
             match self.peek() {
                 Some(',') => { self.pos += 1; }
                 Some(']') => { self.pos += 1; break; }
-                Some(c) => return Err(format!("Expected ',' or ']' in array, got '{}' at position {}", c, self.pos)),
-                None => return Err("Unexpected end of input in array".to_string()),
+                Some(c) => return Err(Error::Json(format!("Expected ',' or ']' in array, got '{}' at position {}", c, self.pos))),
+                None => return Err(Error::Json("Unexpected end of input in array".to_string())),
             }
         }
         Ok(JsonValue::Array(items))
     }
 
-    fn parse_object(&mut self) -> Result<JsonValue, String> {
+    fn parse_object(&mut self) -> Result<JsonValue, Error> {
         self.expect('{')?;
         self.skip_whitespace();
         let mut pairs = Vec::new();
@@ -329,8 +330,8 @@ impl Parser {
             match self.peek() {
                 Some(',') => { self.pos += 1; }
                 Some('}') => { self.pos += 1; break; }
-                Some(c) => return Err(format!("Expected ',' or '}}' in object, got '{}' at position {}", c, self.pos)),
-                None => return Err("Unexpected end of input in object".to_string()),
+                Some(c) => return Err(Error::Json(format!("Expected ',' or '}}' in object, got '{}' at position {}", c, self.pos))),
+                None => return Err(Error::Json("Unexpected end of input in object".to_string())),
             }
         }
         Ok(JsonValue::Object(pairs))

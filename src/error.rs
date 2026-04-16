@@ -1,0 +1,38 @@
+use std::fmt;
+
+#[derive(Debug)]
+pub enum Error {
+    /// JSON parse errors
+    Json(String),
+    /// Terminal operation errors
+    Terminal(String),
+    /// Network/IO errors
+    Io(std::io::Error),
+    /// TLS/SSL errors
+    Tls(String),
+    /// HTTP protocol errors
+    Http(String),
+    /// API errors (status code + message)
+    Api { status: u16, message: String },
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Error::Json(msg) => write!(f, "JSON error: {}", msg),
+            Error::Terminal(msg) => write!(f, "terminal error: {}", msg),
+            Error::Io(err) => write!(f, "IO error: {}", err),
+            Error::Tls(msg) => write!(f, "TLS error: {}", msg),
+            Error::Http(msg) => write!(f, "HTTP error: {}", msg),
+            Error::Api { status, message } => write!(f, "API error {}: {}", status, message),
+        }
+    }
+}
+
+impl std::error::Error for Error {}
+
+impl From<std::io::Error> for Error {
+    fn from(err: std::io::Error) -> Self {
+        Error::Io(err)
+    }
+}
