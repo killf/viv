@@ -1,134 +1,277 @@
-use std::io::{stdin, stdout, Read, Write};
-
 use crate::llm::{LlmClient, LlmConfig, Message, ModelTier};
-use crate::terminal::input::{InputParser, KeyEvent};
-use crate::terminal::raw_mode::RawMode;
+use crate::terminal::backend::{Backend, LinuxBackend};
+use crate::terminal::events::{Event, EventLoop};
+use crate::terminal::input::KeyEvent;
+use crate::tui::block::{Block, BorderStyle};
+use crate::tui::input::InputWidget;
+use crate::tui::layout::{Constraint, Direction, Layout};
+use crate::tui::paragraph::{Line, Paragraph, Span};
+use crate::tui::renderer::Renderer;
+use crate::tui::widget::Widget;
 
-/// Start the REPL: print banner, enter raw mode, and loop reading + processing input.
+/// Start the REPL: initialize TUI, enter raw mode, and run the event loop.
 pub fn run() -> crate::Result<()> {
     let config = LlmConfig::from_env()?;
     let client = LlmClient::new(config);
 
-    let mut out = stdout();
+    let mut backend = LinuxBackend::new();
+    backend.enable_raw_mode()?;
 
-    // Banner
-    write!(out, "viv \u{2014} AI coding agent (type /exit or Ctrl+D to quit)\r\n")?;
-    out.flush()?;
+    // Clear screen on startup
+    backend.write(b"\x1b[2J\x1b[H")?;
+    backend.flush()?;
 
-    // Enter raw mode — RAII guard restores terminal on drop
-    let _raw = RawMode::enable(0)?;
-
-    let mut messages: Vec<Message> = Vec::new();
+    let size = backend.size()?;
+    let mut renderer = Renderer::new(size);
+    let mut event_loop = EventLoop::new()?;
     let mut editor = LineEditor::new();
-    let mut parser = InputParser::new();
 
-    // Show initial prompt
-    // Green bold: \x1b[1;32m  Reset: \x1b[0m
-    write!(out, "\x1b[1;32m> \x1b[0m")?;
-    out.flush()?;
+    let mut history_lines: Vec<Line> = Vec::new();
+    let mut messages: Vec<Message> = Vec::new();
+    let mut scroll: u16 = 0;
 
-    let mut stdin_buf = [0u8; 256];
+    // Welcome message
+    history_lines.push(Line::from_spans(vec![
+        Span::styled("viv", 33, true),
+        Span::raw(" \u{2014} AI coding agent (type /exit or Ctrl+D to quit)"),
+    ]));
+    history_lines.push(Line::raw(""));
 
     loop {
-        // Blocking read of raw bytes from stdin
-        let n = stdin().read(&mut stdin_buf)?;
-        if n == 0 {
-            // EOF
-            write!(out, "\r\nBye!\r\n")?;
-            out.flush()?;
-            return Ok(());
-        }
+        // Render frame
+        render_frame(
+            &mut renderer,
+            &history_lines,
+            &editor,
+            scroll,
+        );
+        renderer.flush(&mut backend)?;
 
-        parser.feed(&stdin_buf[..n]);
+        // Position cursor at the input widget location
+        let area = renderer.area();
+        let chunks = main_layout().split(area);
+        let input_block = Block::new().border(BorderStyle::Rounded).title("viv");
+        let input_inner = input_block.inner(chunks[1]);
+        let input_widget = InputWidget::new(&editor.buf, editor.cursor, "> ").prompt_fg(32);
+        let (cx, cy) = input_widget.cursor_position(input_inner);
+        backend.move_cursor(cy, cx)?;
+        backend.show_cursor()?;
+        backend.flush()?;
 
-        // Process all available key events from the parser
-        while let Some(key) = parser.next_event() {
-            let action = editor.handle_key(key);
+        // Poll events (~60fps)
+        let events = event_loop.poll(16)?;
+        for event in events {
+            match event {
+                Event::Key(key) => {
+                    let action = editor.handle_key(key);
+                    match action {
+                        EditAction::Submit(line) => {
+                            // Skip empty lines
+                            if line.trim().is_empty() {
+                                continue;
+                            }
 
-            match action {
-                EditAction::Submit(line) => {
-                    // Move to next line after user input
-                    write!(out, "\r\n")?;
-                    out.flush()?;
+                            // Handle /exit command
+                            if line.trim() == "/exit" {
+                                backend.disable_raw_mode()?;
+                                // Clear screen and print farewell
+                                backend.write(b"\x1b[2J\x1b[H")?;
+                                backend.write(b"Bye!\n")?;
+                                backend.flush()?;
+                                return Ok(());
+                            }
 
-                    // Skip empty lines — just redraw prompt
-                    if line.trim().is_empty() {
-                        write!(out, "\x1b[1;32m> \x1b[0m")?;
-                        out.flush()?;
-                        continue;
-                    }
+                            // Add user message to history display
+                            history_lines.push(Line::from_spans(vec![
+                                Span::styled("> ", 32, true),
+                                Span::styled(&line, 32, false),
+                            ]));
 
-                    // Handle /exit command
-                    if line.trim() == "/exit" {
-                        write!(out, "Bye!\r\n")?;
-                        out.flush()?;
-                        return Ok(());
-                    }
-
-                    // Add user message to conversation history
-                    messages.push(Message {
-                        role: "user".into(),
-                        content: line,
-                    });
-
-                    // Print "claude: " prefix in magenta bold
-                    write!(out, "\x1b[1;35mclaude: \x1b[0m")?;
-                    out.flush()?;
-
-                    // Stream response from LLM
-                    let mut response = String::new();
-                    let stream_result = client.stream(&messages, ModelTier::Medium, |text| {
-                        // In raw mode we must use \r\n for newlines
-                        let replaced = text.replace('\n', "\r\n");
-                        let _ = out.write_all(replaced.as_bytes());
-                        let _ = out.flush();
-                        response.push_str(text);
-                    });
-
-                    match stream_result {
-                        Ok(full) => {
-                            // Use the accumulated text from the callback; full == response
-                            let _ = full; // already accumulated in `response`
+                            // Add to API messages
                             messages.push(Message {
-                                role: "assistant".into(),
-                                content: response,
+                                role: "user".into(),
+                                content: line,
                             });
+
+                            // Auto-scroll to bottom before streaming
+                            scroll = compute_max_scroll(&history_lines, &renderer);
+
+                            // Render before streaming starts
+                            render_frame(&mut renderer, &history_lines, &editor, scroll);
+                            renderer.flush(&mut backend)?;
+                            backend.flush()?;
+
+                            // Stream LLM response
+                            let mut response = String::new();
+
+                            // Add a placeholder line for the streaming response
+                            history_lines.push(Line::from_spans(vec![
+                                Span::styled("claude: ", 35, true),
+                            ]));
+                            let response_line_idx = history_lines.len() - 1;
+
+                            let stream_result =
+                                client.stream(&messages, ModelTier::Medium, |text| {
+                                    response.push_str(text);
+
+                                    // Update the response line with accumulated text
+                                    let spans = vec![
+                                        Span::styled("claude: ", 35, true),
+                                        Span::styled(&response, 35, false),
+                                    ];
+                                    history_lines[response_line_idx] = Line::from_spans(spans);
+
+                                    // Auto-scroll and re-render
+                                    scroll = compute_max_scroll(&history_lines, &renderer);
+                                    render_frame(
+                                        &mut renderer,
+                                        &history_lines,
+                                        &editor,
+                                        scroll,
+                                    );
+                                    let _ = renderer.flush(&mut backend);
+                                    let _ = backend.flush();
+                                });
+
+                            match stream_result {
+                                Ok(_full) => {
+                                    // Finalize the response line
+                                    let spans = vec![
+                                        Span::styled("claude: ", 35, true),
+                                        Span::styled(&response, 35, false),
+                                    ];
+                                    history_lines[response_line_idx] = Line::from_spans(spans);
+
+                                    messages.push(Message {
+                                        role: "assistant".into(),
+                                        content: response,
+                                    });
+                                }
+                                Err(e) => {
+                                    // Replace the placeholder with error
+                                    history_lines[response_line_idx] = Line::from_spans(vec![
+                                        Span::styled(
+                                            format!("error: {}", e),
+                                            31,
+                                            true,
+                                        ),
+                                    ]);
+                                }
+                            }
+
+                            // Add blank line after response
+                            history_lines.push(Line::raw(""));
+
+                            // Auto-scroll to bottom
+                            scroll = compute_max_scroll(&history_lines, &renderer);
                         }
-                        Err(e) => {
-                            write!(out, "\r\n\x1b[1;31merror: {}\x1b[0m\r\n", e)?;
+
+                        EditAction::Exit => {
+                            backend.disable_raw_mode()?;
+                            backend.write(b"\x1b[2J\x1b[H")?;
+                            backend.write(b"Bye!\n")?;
+                            backend.flush()?;
+                            return Ok(());
+                        }
+
+                        EditAction::Interrupt => {
+                            editor.buf.clear();
+                            editor.cursor = 0;
+                        }
+
+                        EditAction::Continue => {
+                            // Just re-render on next iteration
                         }
                     }
-
-                    // Trailing newlines then fresh prompt
-                    write!(out, "\r\n\r\n\x1b[1;32m> \x1b[0m")?;
-                    out.flush()?;
                 }
-
-                EditAction::Exit => {
-                    write!(out, "\r\nBye!\r\n")?;
-                    out.flush()?;
-                    return Ok(());
+                Event::Resize(new_size) => {
+                    renderer.resize(new_size);
+                    // Recalculate scroll after resize
+                    scroll = compute_max_scroll(&history_lines, &renderer);
                 }
-
-                EditAction::Interrupt => {
-                    // Clear current line and show a fresh prompt
-                    editor.buf.clear();
-                    editor.cursor = 0;
-                    write!(out, "\r\x1b[2K\x1b[1;32m> \x1b[0m")?;
-                    out.flush()?;
-                }
-
-                EditAction::Continue => {
-                    // Redraw the current line with the cursor at the correct position
-                    let cursor_col = 2 + editor.buf[..editor.cursor].chars().count();
-                    write!(out, "\r\x1b[2K\x1b[1;32m> \x1b[0m{}", &editor.buf)?;
-                    // Move cursor to correct column (1-based)
-                    write!(out, "\x1b[{}G", cursor_col + 1)?;
-                    out.flush()?;
+                Event::Tick => {
+                    // Nothing to do on tick
                 }
             }
         }
     }
+}
+
+/// Build the main vertical layout: conversation area (Fill) + input box (Fixed 3).
+fn main_layout() -> Layout {
+    Layout::new(Direction::Vertical).constraints(vec![Constraint::Fill, Constraint::Fixed(3)])
+}
+
+/// Render a full frame: conversation history on top, input box on bottom.
+fn render_frame(
+    renderer: &mut Renderer,
+    history_lines: &[Line],
+    editor: &LineEditor,
+    scroll: u16,
+) {
+    let area = renderer.area();
+    let chunks = main_layout().split(area);
+
+    let buf = renderer.buffer_mut();
+
+    // Top area: conversation history as a scrollable Paragraph
+    let paragraph = Paragraph::new(history_lines.to_vec()).scroll(scroll);
+    paragraph.render(chunks[0], buf);
+
+    // Bottom area: input box with border
+    let input_block = Block::new().border(BorderStyle::Rounded).title("viv");
+    let input_inner = input_block.inner(chunks[1]);
+    input_block.render(chunks[1], buf);
+
+    // Input widget inside the block's inner area
+    let input_widget = InputWidget::new(&editor.buf, editor.cursor, "> ").prompt_fg(32);
+    input_widget.render(input_inner, buf);
+}
+
+/// Compute the maximum scroll offset so the last line of history is visible
+/// at the bottom of the conversation area.
+fn compute_max_scroll(history_lines: &[Line], renderer: &Renderer) -> u16 {
+    let area = renderer.area();
+    let chunks = main_layout().split(area);
+    let conv_height = chunks[0].height as usize;
+    let conv_width = chunks[0].width as usize;
+
+    if conv_width == 0 || conv_height == 0 {
+        return 0;
+    }
+
+    // Count total physical (wrapped) lines
+    let mut total_rows: usize = 0;
+    for line in history_lines {
+        let wrapped = count_wrapped_rows(line, conv_width);
+        total_rows += wrapped;
+    }
+
+    if total_rows > conv_height {
+        (total_rows - conv_height) as u16
+    } else {
+        0
+    }
+}
+
+/// Count how many physical rows a Line will occupy after word-wrapping to `width`.
+fn count_wrapped_rows(line: &Line, width: usize) -> usize {
+    if width == 0 {
+        return 0;
+    }
+
+    // Count total chars in the line
+    let total_chars: usize = line.spans.iter().map(|s| s.text.chars().count()).sum();
+
+    if total_chars == 0 {
+        return 1; // empty line still takes one row
+    }
+
+    // Approximate: this is a rough count. For exact results we'd need the same
+    // wrap_line logic, but for scroll purposes a ceiling division is close enough
+    // for most cases. We use a simple heuristic: ceil(total_chars / width).
+    // This won't be exact for word-wrap but is good enough for auto-scroll.
+    total_chars.div_ceil(width)
 }
 
 #[derive(Debug, PartialEq)]
