@@ -13,7 +13,7 @@ pub struct Termios {
     pub c_ospeed: u32,
 }
 
-extern "C" {
+unsafe extern "C" {
     pub fn tcgetattr(fd: RawFd, termios: *mut Termios) -> i32;
     pub fn tcsetattr(fd: RawFd, optional_actions: i32, termios: *const Termios) -> i32;
 }
