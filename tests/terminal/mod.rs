@@ -1,4 +1,5 @@
 mod buffer_test;
+mod events_test;
 mod raw_mode_test;
 mod output_test;
 mod input_test;

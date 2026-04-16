@@ -1,5 +1,6 @@
 pub mod backend;
 pub mod buffer;
+pub mod events;
 pub mod input;
 pub mod output;
 pub mod raw_mode;
