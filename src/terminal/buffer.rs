@@ -69,6 +69,7 @@ impl Default for Cell {
 }
 
 /// A flat buffer of cells covering a rectangular area.
+#[derive(Clone)]
 pub struct Buffer {
     pub area: Rect,
     cells: Vec<Cell>,
