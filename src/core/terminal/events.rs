@@ -7,6 +7,8 @@ use super::size::{terminal_size, TermSize};
 unsafe extern "C" {
     fn fcntl(fd: i32, cmd: i32, ...) -> i32;
     fn read(fd: i32, buf: *mut u8, count: usize) -> isize;
+    fn open(path: *const u8, flags: i32, ...) -> i32;
+    fn close(fd: i32) -> i32;
     fn __errno_location() -> *mut i32;
     fn epoll_ctl(epfd: i32, op: i32, fd: i32, event: *mut EpollEventRaw) -> i32;
 }
@@ -23,7 +25,9 @@ const EPOLLIN: u32 = 0x001;
 
 const F_GETFL: i32 = 3;
 const F_SETFL: i32 = 4;
+const O_RDONLY: i32 = 0;
 const O_NONBLOCK: i32 = 0o4000;
+const O_CLOEXEC: i32 = 0o2000000;
 const EAGAIN: i32 = 11;
 /// EPERM: operation not permitted — e.g. epoll on /dev/null (test redirects)
 const EPERM: i32 = 1;
@@ -39,15 +43,27 @@ pub enum Event {
     Tick,
 }
 
-/// Multiplexes stdin key events and SIGWINCH resize signals via epoll.
+/// Multiplexes keyboard input and SIGWINCH resize signals via epoll.
+///
+/// Input fd selection (in order):
+/// 1. `open("/dev/tty", O_RDONLY)` — a fresh "open file description" so we can
+///    freely set `O_NONBLOCK` without leaking it to stdout/stderr (which
+///    typically share fd 0's file description via `dup`). This is the happy path
+///    in real terminals.
+/// 2. Fall back to fd 0 when `/dev/tty` isn't available (sandboxed tests, CI).
+///    In this mode we MUST NOT touch fd 0's flags — drain_stdin does a single
+///    read per epoll wake instead of a drain-to-EAGAIN loop.
 pub struct EventLoop {
     epoll: Epoll,
     input: InputParser,
     signal: SignalPipe,
-    /// Whether stdin was successfully registered with epoll.
+    /// Keyboard input fd.
+    input_fd: i32,
+    /// True when we opened `/dev/tty` and must `close` + blindly drain.
+    /// False when we fell back to fd 0 — don't touch its flags, single read per wake.
+    owns_input_fd: bool,
+    /// Whether input_fd was successfully registered with epoll.
     stdin_in_epoll: bool,
-    /// Original stdin flags, restored on Drop.
-    orig_stdin_flags: i32,
 }
 
 /// Try to add `fd` to `epoll_fd` with the given token.
@@ -72,6 +88,14 @@ fn epoll_try_add(epoll_fd: i32, fd: i32, token: u64) -> crate::Result<bool> {
     )))
 }
 
+/// Try to open `/dev/tty` as a fresh fd (isolated file description).
+/// Returns `Some(fd)` on success or `None` if unavailable.
+fn open_tty() -> Option<i32> {
+    let path = b"/dev/tty\0";
+    let fd = unsafe { open(path.as_ptr(), O_RDONLY | O_CLOEXEC) };
+    if fd < 0 { None } else { Some(fd) }
+}
+
 impl EventLoop {
     pub fn new() -> crate::Result<Self> {
         // 1. Create Epoll
@@ -80,26 +104,44 @@ impl EventLoop {
         // 2. Create SignalPipe (installs SIGWINCH handler)
         let signal = SignalPipe::new()?;
 
-        // 3. Save original stdin flags
-        let orig_stdin_flags = unsafe { fcntl(0, F_GETFL) };
-        if orig_stdin_flags < 0 {
-            return Err(crate::Error::Terminal(
-                "fcntl(F_GETFL) on stdin failed".to_string(),
-            ));
+        // 3. Pick an input fd. Prefer /dev/tty (fresh file description); fall
+        //    back to fd 0 when unavailable.
+        let (input_fd, owns_input_fd) = match open_tty() {
+            Some(fd) => (fd, true),
+            None => (0, false),
+        };
+
+        // 4. Set non-blocking ONLY on owned fds. Touching fd 0's flags would
+        //    leak O_NONBLOCK to stdout/stderr via the shared file description.
+        if owns_input_fd {
+            let flags = unsafe { fcntl(input_fd, F_GETFL) };
+            if flags < 0 {
+                unsafe { close(input_fd) };
+                return Err(crate::Error::Terminal(
+                    "fcntl(F_GETFL) on /dev/tty failed".to_string(),
+                ));
+            }
+            let ret = unsafe { fcntl(input_fd, F_SETFL, flags | O_NONBLOCK) };
+            if ret < 0 {
+                unsafe { close(input_fd) };
+                return Err(crate::Error::Terminal(
+                    "fcntl(F_SETFL) on /dev/tty failed".to_string(),
+                ));
+            }
         }
 
-        // 4. Set stdin non-blocking
-        let ret = unsafe { fcntl(0, F_SETFL, orig_stdin_flags | O_NONBLOCK) };
-        if ret < 0 {
-            return Err(crate::Error::Terminal(
-                "fcntl(F_SETFL) on stdin failed".to_string(),
-            ));
-        }
-
-        // 5. Register stdin with epoll (best-effort: /dev/null redirects in tests
-        //    return EPERM and are silently skipped)
+        // 5. Register input fd with epoll (best-effort: /dev/null redirects in
+        //    tests return EPERM and are silently skipped)
         let epoll_fd = epoll_raw_fd(&epoll);
-        let stdin_in_epoll = epoll_try_add(epoll_fd, 0, TOKEN_STDIN)?;
+        let stdin_in_epoll = match epoll_try_add(epoll_fd, input_fd, TOKEN_STDIN) {
+            Ok(v) => v,
+            Err(e) => {
+                if owns_input_fd {
+                    unsafe { close(input_fd) };
+                }
+                return Err(e);
+            }
+        };
 
         // 6. Register signal pipe read end with epoll
         epoll.add(signal.read_fd(), TOKEN_SIGNAL)?;
@@ -111,8 +153,9 @@ impl EventLoop {
             epoll,
             input,
             signal,
+            input_fd,
+            owns_input_fd,
             stdin_in_epoll,
-            orig_stdin_flags,
         })
     }
 
@@ -126,7 +169,6 @@ impl EventLoop {
         for token in &tokens {
             match *token {
                 TOKEN_STDIN => {
-                    // Non-blocking drain of stdin
                     self.drain_stdin(&mut events)?;
                 }
                 TOKEN_SIGNAL => {
@@ -152,26 +194,43 @@ impl EventLoop {
 
     fn drain_stdin(&mut self, events: &mut Vec<Event>) -> crate::Result<()> {
         let mut buf = [0u8; 4096];
-        loop {
-            let n = unsafe { read(0, buf.as_mut_ptr(), buf.len()) };
+        if self.owns_input_fd {
+            // Owned fd is non-blocking — safe to drain until EAGAIN.
+            loop {
+                let n = unsafe { read(self.input_fd, buf.as_mut_ptr(), buf.len()) };
+                if n > 0 {
+                    self.input.feed(&buf[..n as usize]);
+                } else if n == 0 {
+                    break; // EOF
+                } else {
+                    let errno = unsafe { *__errno_location() };
+                    if errno == EAGAIN {
+                        break;
+                    }
+                    return Err(crate::Error::Terminal(format!(
+                        "read() on input fd failed: errno {}",
+                        errno
+                    )));
+                }
+                if (n as usize) < buf.len() {
+                    break;
+                }
+            }
+        } else {
+            // Borrowed fd 0 — flags are untouchable. Epoll level-triggered woke
+            // us because data is ready, so one blocking read returns immediately;
+            // residual data triggers another wake on the next poll.
+            let n = unsafe { read(self.input_fd, buf.as_mut_ptr(), buf.len()) };
             if n > 0 {
                 self.input.feed(&buf[..n as usize]);
-            } else if n == 0 {
-                // EOF on stdin
-                break;
-            } else {
+            } else if n < 0 {
                 let errno = unsafe { *__errno_location() };
-                if errno == EAGAIN {
-                    break; // no more data right now
+                if errno != EAGAIN {
+                    return Err(crate::Error::Terminal(format!(
+                        "read() on input fd failed: errno {}",
+                        errno
+                    )));
                 }
-                return Err(crate::Error::Terminal(format!(
-                    "read() on stdin failed: errno {}",
-                    errno
-                )));
-            }
-            // If we read less than the full buffer there's no more data immediately
-            if (n as usize) < buf.len() {
-                break;
             }
         }
         while let Some(key) = self.input.next_event() {
@@ -183,10 +242,10 @@ impl EventLoop {
 
 impl Drop for EventLoop {
     fn drop(&mut self) {
-        // Restore original stdin flags (clear O_NONBLOCK if it wasn't set before)
-        unsafe {
-            fcntl(0, F_SETFL, self.orig_stdin_flags);
+        if self.owns_input_fd {
+            unsafe { close(self.input_fd) };
         }
+        // Borrowed fd 0: flags were never modified, so nothing to restore.
     }
 }
 
