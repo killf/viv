@@ -68,6 +68,11 @@ impl TerminalUI {
         let mut backend = LinuxBackend::new();
         backend.enter_alt_screen()?;
         backend.enable_raw_mode()?;
+        // Switch to a steady (non-blinking) bar cursor via DECSCUSR. Blinking
+        // cursors interact badly with streaming redraws — even when we avoid
+        // toggling visibility, some terminals re-trigger the blink phase on
+        // cursor moves. A steady caret sidesteps the whole class of issues.
+        backend.write(b"\x1b[6 q")?;
         backend.flush()?;
 
         let size = backend.size()?;
@@ -460,6 +465,8 @@ impl TerminalUI {
     }
 
     fn cleanup(&mut self) -> crate::Result<()> {
+        // Restore the terminal's default cursor style (DECSCUSR reset).
+        self.backend.write(b"\x1b[0 q")?;
         self.backend.disable_raw_mode()?;
         self.backend.leave_alt_screen()?;
         self.backend.write(b"Bye!\n")?;
