@@ -8,16 +8,23 @@ pub struct InputWidget<'a> {
     pub cursor: usize,
     pub prompt: &'a str,
     pub prompt_fg: Option<Color>,
+    pub placeholder: Option<&'a str>,
 }
 
 impl<'a> InputWidget<'a> {
     pub fn new(content: &'a str, cursor: usize, prompt: &'a str) -> Self {
-        InputWidget { content, cursor, prompt, prompt_fg: None }
+        InputWidget { content, cursor, prompt, prompt_fg: None, placeholder: None }
     }
 
     /// Builder: set prompt foreground color.
     pub fn prompt_fg(mut self, fg: Color) -> Self {
         self.prompt_fg = Some(fg);
+        self
+    }
+
+    /// Builder: set placeholder text (shown when content is empty).
+    pub fn placeholder(mut self, text: Option<&'a str>) -> Self {
+        self.placeholder = text;
         self
     }
 
@@ -47,6 +54,33 @@ impl Widget for InputWidget<'_> {
     fn render(&self, area: Rect, buf: &mut Buffer) {
         if area.is_empty() {
             return;
+        }
+
+        // If content is empty and placeholder is set, render prompt + placeholder
+        if self.content.is_empty() {
+            if let Some(ph) = self.placeholder {
+                let prompt_chars: Vec<char> = self.prompt.chars().collect();
+                let ph_chars: Vec<char> = ph.chars().collect();
+                let mut col = area.x;
+                for (ch, is_prompt) in prompt_chars.iter().map(|&c| (c, true))
+                    .chain(ph_chars.iter().map(|&c| (c, false)))
+                {
+                    let w = char_width(ch) as usize;
+                    if w == 0 { continue; }
+                    if col + w as u16 > area.x + area.width { break; }
+                    let fg = if is_prompt {
+                        self.prompt_fg
+                    } else {
+                        Some(crate::terminal::style::theme::DIM)
+                    };
+                    let cell = buf.get_mut(col, area.y);
+                    cell.ch = ch;
+                    cell.fg = fg;
+                    cell.bold = false;
+                    col += w as u16;
+                }
+                return;
+            }
         }
 
         let scroll = self.scroll_offset(area);

@@ -71,3 +71,31 @@ fn empty_content() {
     assert_eq!(buf.get(0, 0).ch, '>');
     assert_eq!(buf.get(2, 0).ch, ' '); // empty content, just spaces
 }
+
+#[test]
+fn placeholder_shown_when_content_empty() {
+    let w = InputWidget::new("", 0, "> ")
+        .placeholder(Some("How can I help you?"));
+    let mut buf = Buffer::empty(Rect::new(0, 0, 30, 1));
+    w.render(Rect::new(0, 0, 30, 1), &mut buf);
+    // After the prompt "> " (col 0-1), placeholder text starts at col 2
+    assert_eq!(buf.get(2, 0).ch, 'H');
+}
+
+#[test]
+fn placeholder_hidden_when_content_present() {
+    let w = InputWidget::new("x", 1, "> ")
+        .placeholder(Some("How can I help you?"));
+    let mut buf = Buffer::empty(Rect::new(0, 0, 30, 1));
+    w.render(Rect::new(0, 0, 30, 1), &mut buf);
+    assert_eq!(buf.get(2, 0).ch, 'x');
+}
+
+#[test]
+fn placeholder_is_dim_colored() {
+    let w = InputWidget::new("", 0, "> ")
+        .placeholder(Some("hint"));
+    let mut buf = Buffer::empty(Rect::new(0, 0, 20, 1));
+    w.render(Rect::new(0, 0, 20, 1), &mut buf);
+    assert_eq!(buf.get(2, 0).fg, Some(viv::terminal::style::theme::DIM));
+}
