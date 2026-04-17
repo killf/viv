@@ -16,14 +16,16 @@ use std::sync::mpsc;
 use std::thread;
 
 /// Runtime 运行在独立线程，暴露 spawn 接口
+type SpawnFn = Box<dyn FnOnce(&mut Executor) + Send>;
+
 pub struct Runtime {
     _handle: thread::JoinHandle<()>,
-    tx: mpsc::Sender<Box<dyn FnOnce(&mut Executor) + Send>>,
+    tx: mpsc::Sender<SpawnFn>,
 }
 
 impl Runtime {
     pub fn new() -> Self {
-        let (tx, rx) = mpsc::channel::<Box<dyn FnOnce(&mut Executor) + Send>>();
+        let (tx, rx) = mpsc::channel::<SpawnFn>();
         let handle = thread::spawn(move || {
             let mut exec = Executor::new();
             loop {

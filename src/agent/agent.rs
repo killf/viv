@@ -154,6 +154,7 @@ impl Agent {
         Ok(())
     }
 
+    #[allow(clippy::await_holding_lock)]
     async fn shutdown(&mut self) -> Result<()> {
         self.evolve().await?;
         // Take servers out of mutex to avoid holding guard across awaits
@@ -167,6 +168,8 @@ impl Agent {
         Ok(())
     }
 
+    // Safe: single-threaded runtime (block_on_local), MutexGuard never crosses threads
+    #[allow(clippy::await_holding_lock)]
     async fn handle_input(&mut self, text: String) -> Result<()> {
         let _ = self.msg_tx.send(AgentMessage::Thinking);
 
@@ -338,6 +341,7 @@ impl Agent {
         }
     }
 
+    #[allow(clippy::await_holding_lock)]
     async fn evolve(&mut self) -> Result<()> {
         let mut idx = self.index.lock().unwrap();
         evolve_from_session(&self.messages, &self.store, &mut idx, &self.llm).await?;

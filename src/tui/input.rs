@@ -46,8 +46,8 @@ impl Widget for InputWidget<'_> {
         }
 
         // If content is empty and placeholder is set, render prompt + placeholder
-        if self.content.is_empty() {
-            if let Some(ph) = self.placeholder {
+        if self.content.is_empty()
+            && let Some(ph) = self.placeholder {
                 let prompt_chars: Vec<char> = self.prompt.chars().collect();
                 let ph_chars: Vec<char> = ph.chars().collect();
                 let mut col = area.x;
@@ -70,7 +70,6 @@ impl Widget for InputWidget<'_> {
                 }
                 return;
             }
-        }
 
         let prompt_width: u16 = self.prompt.chars().map(char_width).sum();
         let logical_lines: Vec<&str> = self.content.split('\n').collect();

@@ -1,14 +1,10 @@
 use std::collections::HashSet;
 
+#[derive(Default)]
 pub struct PermissionManager {
     session_allowed: HashSet<String>,
 }
 
-impl Default for PermissionManager {
-    fn default() -> Self {
-        PermissionManager { session_allowed: HashSet::new() }
-    }
-}
 
 impl PermissionManager {
     /// Returns true if the tool has already been granted in this session.

@@ -299,7 +299,7 @@ impl Parser {
         match self.peek() {
             Some('0') => { self.pos += 1; }
             Some(c) if c.is_ascii_digit() => {
-                while self.peek().map_or(false, |c| c.is_ascii_digit()) {
+                while self.peek().is_some_and(|c| c.is_ascii_digit()) {
                     self.pos += 1;
                 }
             }
@@ -309,10 +309,10 @@ impl Parser {
         if self.peek() == Some('.') {
             is_float = true;
             self.pos += 1;
-            if !self.peek().map_or(false, |c| c.is_ascii_digit()) {
+            if !self.peek().is_some_and(|c| c.is_ascii_digit()) {
                 return Err(Error::Json(format!("Expected digit after '.' at position {}", self.pos)));
             }
-            while self.peek().map_or(false, |c| c.is_ascii_digit()) {
+            while self.peek().is_some_and(|c| c.is_ascii_digit()) {
                 self.pos += 1;
             }
         }
@@ -323,10 +323,10 @@ impl Parser {
             if matches!(self.peek(), Some('+') | Some('-')) {
                 self.pos += 1;
             }
-            if !self.peek().map_or(false, |c| c.is_ascii_digit()) {
+            if !self.peek().is_some_and(|c| c.is_ascii_digit()) {
                 return Err(Error::Json(format!("Expected digit in exponent at position {}", self.pos)));
             }
-            while self.peek().map_or(false, |c| c.is_ascii_digit()) {
+            while self.peek().is_some_and(|c| c.is_ascii_digit()) {
                 self.pos += 1;
             }
         }

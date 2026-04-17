@@ -80,9 +80,10 @@ impl TerminalUI {
         let renderer = Renderer::new(size);
 
         let header = HeaderWidget::from_env();
-        let mut history_lines: Vec<Line> = Vec::new();
-        history_lines.push(format_welcome(&header.cwd, header.branch.as_deref()));
-        history_lines.push(Line::raw(""));
+        let history_lines: Vec<Line> = vec![
+            format_welcome(&header.cwd, header.branch.as_deref()),
+            Line::raw(""),
+        ];
 
         let seed = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -144,8 +145,8 @@ impl TerminalUI {
             }
 
             // Animate spinner while busy and no real response yet
-            if self.busy && self.current_response.is_empty() {
-                if let Some(idx) = self.response_line_idx {
+            if self.busy && self.current_response.is_empty()
+                && let Some(idx) = self.response_line_idx {
                     let elapsed = self
                         .spinner_start
                         .map(|s| s.elapsed().as_millis() as u64)
@@ -165,12 +166,11 @@ impl TerminalUI {
                     ]));
                     dirty = true;
                 }
-            }
 
             // Animate the shutdown spinner while waiting for the agent to
             // finish `evolve()` after Ctrl+D.
-            if self.quitting {
-                if let (Some(start), Some(idx)) =
+            if self.quitting
+                && let (Some(start), Some(idx)) =
                     (self.quitting_start, self.quitting_line_idx)
                 {
                     let elapsed = start.elapsed().as_millis() as u64;
@@ -190,7 +190,6 @@ impl TerminalUI {
                     ]));
                     dirty = true;
                 }
-            }
 
             if dirty {
                 // Compute the cursor position before painting, then hand it to
@@ -200,7 +199,7 @@ impl TerminalUI {
                 // visibility, which would otherwise reset the terminal's
                 // blink phase on every frame.
                 let area = self.renderer.area();
-                let input_height = (self.editor.line_count() as u16 + 2).min(8).max(3);
+                let input_height = (self.editor.line_count() as u16 + 2).clamp(3, 8);
                 let chunks = main_layout(input_height).split(area);
                 let input_block = Block::new()
                     .border(BorderStyle::Rounded)
@@ -428,7 +427,7 @@ impl TerminalUI {
 
     fn render_frame(&mut self) {
         let area = self.renderer.area();
-        let input_height = (self.editor.line_count() as u16 + 2).min(8).max(3);
+        let input_height = (self.editor.line_count() as u16 + 2).clamp(3, 8);
         let chunks = main_layout(input_height).split(area);
         // chunks: [0]=header, [1]=conversation, [2]=input, [3]=status
 
@@ -507,7 +506,7 @@ fn main_layout(input_height: u16) -> Layout {
 /// at the bottom of the conversation area.
 fn compute_max_scroll(history_lines: &[Line], renderer: &Renderer, editor: &LineEditor) -> u16 {
     let area = renderer.area();
-    let input_height = (editor.line_count() as u16 + 2).min(8).max(3);
+    let input_height = (editor.line_count() as u16 + 2).clamp(3, 8);
     let chunks = main_layout(input_height).split(area);
     let conv_height = chunks[1].height as usize;
     let conv_width = chunks[1].width as usize;

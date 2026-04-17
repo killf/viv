@@ -109,7 +109,7 @@ impl Read for TlsStream {
             SSL_read(self.ssl, buf.as_mut_ptr() as *mut c_void, buf.len() as i32)
         };
         if ret < 0 {
-            Err(io::Error::new(io::ErrorKind::Other, "SSL_read failed"))
+            Err(io::Error::other("SSL_read failed"))
         } else {
             Ok(ret as usize)
         }
@@ -122,7 +122,7 @@ impl Write for TlsStream {
             SSL_write(self.ssl, buf.as_ptr() as *const c_void, buf.len() as i32)
         };
         if ret < 0 {
-            Err(io::Error::new(io::ErrorKind::Other, "SSL_write failed"))
+            Err(io::Error::other("SSL_write failed"))
         } else {
             Ok(ret as usize)
         }

@@ -60,20 +60,16 @@ impl Reactor {
     /// 等待 I/O 事件，超时后返回。唤醒已就绪的 Waker。
     pub fn wait(&mut self, timeout: Duration) {
         let ms = timeout.as_millis().min(i32::MAX as u128) as i32;
-        match self.epoll.wait(ms) {
-            Ok(tokens) => {
-                for token in tokens {
-                    // 移除注册（one-shot：就绪后自动移除）
-                    if let Some(&fd) = self.token_to_fd.get(&token) {
-                        self.epoll.remove(fd).ok();
-                        self.token_to_fd.remove(&token);
-                    }
-                    if let Some(waker) = self.wakers.remove(&token) {
-                        waker.wake();
-                    }
+        if let Ok(tokens) = self.epoll.wait(ms) {
+            for token in tokens {
+                if let Some(&fd) = self.token_to_fd.get(&token) {
+                    self.epoll.remove(fd).ok();
+                    self.token_to_fd.remove(&token);
+                }
+                if let Some(waker) = self.wakers.remove(&token) {
+                    waker.wake();
                 }
             }
-            Err(_) => {} // EINTR 或超时，忽略
         }
     }
 }

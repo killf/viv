@@ -71,13 +71,12 @@ impl Renderer {
             }
             backend.write(b"\x1b[?2026l")?;
             backend.flush()?;
-        } else if let Some((col, row)) = cursor {
-            if self.last_cursor != Some((col, row)) {
+        } else if let Some((col, row)) = cursor
+            && self.last_cursor != Some((col, row)) {
                 backend.move_cursor(row, col)?;
                 backend.flush()?;
                 self.last_cursor = Some((col, row));
             }
-        }
 
         // Swap buffers regardless so the buffer bookkeeping stays consistent.
         std::mem::swap(&mut self.current, &mut self.previous);

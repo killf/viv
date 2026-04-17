@@ -183,13 +183,13 @@ impl Widget for Block {
         }
 
         // Title rendered on the top border row, starting at column offset 1
-        if let Some(ref title) = self.title {
-            if self.sides.top {
+        if let Some(ref title) = self.title
+            && self.sides.top {
                 let title_x = x + 1;
                 let max_x = right;
                 let tfg = self.title_fg.or(self.border_fg);
-                let mut cur_x = title_x;
-                for ch in title.chars() {
+                for (i, ch) in title.chars().enumerate() {
+                    let cur_x = title_x + i as u16;
                     if cur_x >= max_x {
                         break;
                     }
@@ -197,9 +197,7 @@ impl Widget for Block {
                     cell.ch = ch;
                     cell.fg = tfg;
                     cell.bold = false;
-                    cur_x += 1;
                 }
             }
-        }
     }
 }

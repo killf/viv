@@ -49,7 +49,7 @@ impl Future for ConnectFuture {
             }
         } else {
             Poll::Ready(Err(crate::Error::Io(
-                io::Error::new(io::ErrorKind::Other, "already connected"),
+                io::Error::other("already connected"),
             )))
         }
     }

@@ -222,8 +222,8 @@ impl LLMClient {
             raw.extend_from_slice(&tmp[..n]);
 
             // Check if we have the header separator
-            if header_end.is_none() {
-                if let Some(pos) = raw.windows(4).position(|w| w == b"\r\n\r\n") {
+            if header_end.is_none()
+                && let Some(pos) = raw.windows(4).position(|w| w == b"\r\n\r\n") {
                     header_end = Some(pos + 4);
 
                     // Parse status from the header
@@ -242,7 +242,6 @@ impl LLMClient {
                         return Err(Error::LLM { status, message: body_str });
                     }
                 }
-            }
 
             // Once we have the header, process SSE body incrementally
             if let Some(hend) = header_end {
@@ -345,8 +344,8 @@ impl LLMClient {
             if n == 0 { break; }
             raw.extend_from_slice(&tmp[..n]);
 
-            if header_end.is_none() {
-                if let Some(pos) = raw.windows(4).position(|w| w == b"\r\n\r\n") {
+            if header_end.is_none()
+                && let Some(pos) = raw.windows(4).position(|w| w == b"\r\n\r\n") {
                     header_end = Some(pos + 4);
                     let header_section = std::str::from_utf8(&raw[..pos])
                         .map_err(|_| Error::Http("invalid UTF-8 in headers".into()))?;
@@ -361,12 +360,10 @@ impl LLMClient {
                         return Err(Error::LLM { status, message: body });
                     }
                 }
-            }
-            if let Some(hend) = header_end {
-                if String::from_utf8_lossy(&raw[hend..]).contains("message_stop") {
+            if let Some(hend) = header_end
+                && String::from_utf8_lossy(&raw[hend..]).contains("message_stop") {
                     break;
                 }
-            }
         }
 
         parse_agent_stream(&raw, header_end, &mut on_text)
@@ -487,11 +484,10 @@ impl StreamAccumulator {
                         }
                     }
                     "input_json_delta" => {
-                        if let Some(partial) = delta.get("partial_json").and_then(|v| v.as_str()) {
-                            if let Some(entry) = self.tool_acc.get_mut(&idx) {
+                        if let Some(partial) = delta.get("partial_json").and_then(|v| v.as_str())
+                            && let Some(entry) = self.tool_acc.get_mut(&idx) {
                                 entry.2.push_str(partial);
                             }
-                        }
                     }
                     _ => {}
                 }
@@ -603,7 +599,7 @@ impl LLMClient {
         let mut raw: Vec<u8> = Vec::new();
         let mut buf = [0u8; 4096];
 
-        let mut header_end: usize;
+        let header_end: usize;
         loop {
             let n = stream.read(&mut buf).await?;
             if n == 0 {
