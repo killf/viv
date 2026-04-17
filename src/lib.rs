@@ -7,6 +7,7 @@ pub mod error;
 pub mod tui;
 pub mod permissions;
 pub mod tools;
+pub mod mcp;
 
 pub use error::Error;
 pub type Result<T> = std::result::Result<T, Error>;
