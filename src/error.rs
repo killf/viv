@@ -20,6 +20,8 @@ pub enum Error {
     JsonRpc { code: i64, message: String },
     /// MCP runtime errors
     Mcp { server: String, message: String },
+    /// LSP runtime errors
+    Lsp { server: String, message: String },
 }
 
 impl fmt::Display for Error {
@@ -34,6 +36,7 @@ impl fmt::Display for Error {
             Error::Tool(msg) => write!(f, "tool error: {}", msg),
             Error::JsonRpc { code, message } => write!(f, "JSON-RPC error {}: {}", code, message),
             Error::Mcp { server, message } => write!(f, "MCP error [{}]: {}", server, message),
+            Error::Lsp { server, message } => write!(f, "LSP error [{}]: {}", server, message),
         }
     }
 }
