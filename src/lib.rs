@@ -3,6 +3,7 @@ pub mod bus;
 pub mod core;
 pub mod error;
 pub mod llm;
+pub mod lsp;
 pub mod mcp;
 pub mod memory;
 pub mod permissions;
