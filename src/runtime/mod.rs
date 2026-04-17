@@ -24,11 +24,15 @@ impl Runtime {
             let mut exec = Executor::new();
             loop {
                 // 接收新任务提交
-                while let Ok(f) = rx.try_recv() {
-                    f(&mut exec);
+                loop {
+                    match rx.try_recv() {
+                        Ok(f) => f(&mut exec),
+                        Err(std::sync::mpsc::TryRecvError::Empty) => break,
+                        Err(std::sync::mpsc::TryRecvError::Disconnected) => return,
+                    }
                 }
-                exec.run_ready();
-                if exec.is_idle() {
+                let did_work = exec.run_ready();
+                if !did_work {
                     reactor().lock().unwrap().wait(std::time::Duration::from_millis(10));
                 }
             }
@@ -36,7 +40,7 @@ impl Runtime {
         Runtime { _handle: handle, tx }
     }
 
-    pub fn spawn<T>(&self, f: impl FnOnce(&mut Executor) + Send + 'static) {
+    pub fn spawn(&self, f: impl FnOnce(&mut Executor) + Send + 'static) {
         self.tx.send(Box::new(f)).ok();
     }
 }

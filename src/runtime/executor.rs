@@ -66,6 +66,10 @@ impl Executor {
     pub fn sender(&self) -> mpsc::Sender<TaskId> { self.ready_tx.clone() }
 }
 
+impl Default for Executor {
+    fn default() -> Self { Self::new() }
+}
+
 /// 阻塞当前线程运行 future 至完成
 pub fn block_on<T: Unpin + Send + 'static>(
     future: impl Future<Output = T> + Send + 'static,
