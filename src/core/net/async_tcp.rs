@@ -17,6 +17,10 @@ impl AsyncTcpStream {
         AsyncTcpStream { inner: stream }
     }
 
+    pub fn raw_fd(&self) -> std::os::unix::io::RawFd {
+        self.inner.as_raw_fd()
+    }
+
     pub fn connect(host: &str, port: u16) -> ConnectFuture {
         ConnectFuture { host: host.to_string(), port, done: false }
     }
