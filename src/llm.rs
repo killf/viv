@@ -370,6 +370,22 @@ impl LLMClient {
         parse_agent_stream(&raw, header_end, &mut on_text)
     }
 
+    /// Async wrapper around `stream_agent` — runs the blocking TLS I/O on the
+    /// current thread (the Agent thread) but returns a Future so the caller can
+    /// `.await` it inside `block_on`.  Because our custom runtime is
+    /// single-threaded and TLS is inherently blocking, this is equivalent in
+    /// behaviour but allows the Agent to be expressed as async code.
+    pub async fn stream_agent_async(
+        &self,
+        system_blocks: &[crate::agent::message::SystemBlock],
+        messages: &[crate::agent::message::Message],
+        tools_json: &str,
+        tier: ModelTier,
+        on_text: impl FnMut(&str),
+    ) -> crate::Result<StreamResult> {
+        self.stream_agent(system_blocks, messages, tools_json, tier, on_text)
+    }
+
     fn build_agent_request(
         &self,
         system_blocks: &[crate::agent::message::SystemBlock],

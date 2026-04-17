@@ -1,6 +1,7 @@
-use std::sync::mpsc::{Receiver, Sender};
+use std::sync::mpsc::Receiver;
 
 use crate::bus::{AgentEvent, AgentMessage};
+use crate::core::runtime::channel::NotifySender;
 use crate::core::terminal::backend::{Backend, LinuxBackend};
 use crate::core::terminal::buffer::char_width;
 use crate::core::terminal::events::{Event, EventLoop};
@@ -33,7 +34,7 @@ enum UiAction {
 // ─────────────────────────────────────────────────────────────────────────────
 
 pub struct TerminalUI {
-    event_tx: Sender<AgentEvent>,
+    event_tx: NotifySender<AgentEvent>,
     msg_rx: Receiver<AgentMessage>,
     backend: LinuxBackend,
     renderer: Renderer,
@@ -62,7 +63,7 @@ pub struct TerminalUI {
 
 impl TerminalUI {
     pub fn new(
-        event_tx: Sender<AgentEvent>,
+        event_tx: NotifySender<AgentEvent>,
         msg_rx: Receiver<AgentMessage>,
     ) -> crate::Result<Self> {
         let mut backend = LinuxBackend::new();
