@@ -26,7 +26,7 @@ fn renders_branch_when_present() {
 fn truncates_long_cwd() {
     let long = "~/very/long/path/that/exceeds/thirty/chars/yes";
     let w = HeaderWidget::from_path(long, None);
-    assert!(w.cwd.chars().count() <= 32); // "…" + 29 chars
+    assert!(w.cwd.chars().count() <= 30); // "…" + 29 chars
 }
 
 #[test]
