@@ -1,4 +1,8 @@
-use crate::llm::{LLMClient, LLMConfig, Message, ModelTier};
+use std::sync::Arc;
+use crate::agent::context::AgentContext;
+use crate::agent::evolution::evolve_from_session;
+use crate::agent::run::run_agent;
+use crate::llm::{LLMClient, LLMConfig};
 use crate::terminal::backend::{Backend, LinuxBackend};
 use crate::terminal::buffer::char_width;
 use crate::terminal::events::{Event, EventLoop};
@@ -19,6 +23,8 @@ use crate::tui::widget::Widget;
 pub fn run() -> crate::Result<()> {
     let config = LLMConfig::from_env()?;
     let client = LLMClient::new(config);
+    let viv_dir = std::path::PathBuf::from(".viv/memory");
+    let mut agent_ctx = AgentContext::new(Arc::new(client), viv_dir)?;
 
     let mut backend = LinuxBackend::new();
     backend.enter_alt_screen()?;
@@ -31,7 +37,6 @@ pub fn run() -> crate::Result<()> {
     let mut editor = LineEditor::new();
 
     let mut history_lines: Vec<Line> = Vec::new();
-    let mut messages: Vec<Message> = Vec::new();
     let mut scroll: u16 = 0;
     let mut dirty: bool = true;
     let mut last_cursor: (u16, u16) = (0, 0);
@@ -88,6 +93,11 @@ pub fn run() -> crate::Result<()> {
 
                             // Handle /exit command
                             if line.trim() == "/exit" {
+                                let mut idx = agent_ctx.index.lock().unwrap();
+                                let _ = evolve_from_session(
+                                    &agent_ctx.messages, &agent_ctx.store, &mut idx, &agent_ctx.llm,
+                                );
+                                drop(idx);
                                 backend.disable_raw_mode()?;
                                 backend.leave_alt_screen()?;
                                 backend.write(b"Bye!\n")?;
@@ -97,12 +107,6 @@ pub fn run() -> crate::Result<()> {
 
                             // User message
                             history_lines.push(format_user_message(&line));
-
-                            // Add to API messages
-                            messages.push(Message {
-                                role: "user".into(),
-                                content: line,
-                            });
 
                             // Auto-scroll to bottom before streaming
                             scroll = compute_max_scroll(&history_lines, &renderer);
@@ -140,8 +144,8 @@ pub fn run() -> crate::Result<()> {
                             renderer.flush(&mut backend)?;
                             backend.flush()?;
 
-                            let stream_result =
-                                client.stream(&messages, ModelTier::Medium, |text| {
+                            let agent_result =
+                                run_agent(line, &mut agent_ctx, "", "", |text| {
                                     response.push_str(text);
 
                                     if response.trim().is_empty() {
@@ -178,15 +182,10 @@ pub fn run() -> crate::Result<()> {
                                     let _ = backend.flush();
                                 });
 
-                            match stream_result {
-                                Ok(_full) => {
+                            match agent_result {
+                                Ok(_output) => {
                                     history_lines.truncate(response_line_idx);
                                     history_lines.extend(format_assistant_message(&response));
-
-                                    messages.push(Message {
-                                        role: "assistant".into(),
-                                        content: response,
-                                    });
                                 }
                                 Err(e) => {
                                     history_lines.truncate(response_line_idx);
@@ -201,6 +200,11 @@ pub fn run() -> crate::Result<()> {
                         }
 
                         EditAction::Exit => {
+                            let mut idx = agent_ctx.index.lock().unwrap();
+                            let _ = evolve_from_session(
+                                &agent_ctx.messages, &agent_ctx.store, &mut idx, &agent_ctx.llm,
+                            );
+                            drop(idx);
                             backend.disable_raw_mode()?;
                             backend.leave_alt_screen()?;
                             backend.write(b"Bye!\n")?;
