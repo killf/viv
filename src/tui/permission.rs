@@ -10,7 +10,7 @@ use crate::tui::paragraph::{Line, Span};
 pub fn render_permission_pending(tool: &str, summary: &str) -> Line {
     Line::from_spans(vec![
         Span::styled("  \u{25c6} ", theme::SUGGESTION, false),
-        Span::raw(tool.to_string()),
+        Span::raw(tool),
         Span::styled(format!("({})", summary), theme::DIM, false),
         Span::styled(" [y/n]", theme::DIM, false),
     ])

@@ -159,6 +159,7 @@ pub fn run() -> crate::Result<()> {
                             let mut ask_fn = |tool_name: &str, tool_input: &crate::json::JsonValue| -> bool {
                                 let summary = format_tool_summary(tool_input);
 
+                                // SAFETY: same invariants as ask_fn above — single-threaded, not called concurrently.
                                 let hl = unsafe { &mut *hl_ptr };
                                 let rend = unsafe { &mut *rend_ptr };
                                 let back = unsafe { &mut *back_ptr };
@@ -178,8 +179,7 @@ pub fn run() -> crate::Result<()> {
                                 let allowed = blocking_read_yn();
 
                                 // Replace pending line with a result line
-                                hl.truncate(perm_line_idx);
-                                hl.push(render_permission_result(tool_name, &summary, allowed));
+                                hl[perm_line_idx] = render_permission_result(tool_name, &summary, allowed);
 
                                 *scr = compute_max_scroll(hl, rend);
                                 render_frame(rend, hl, &editor, *scr);
