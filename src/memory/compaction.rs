@@ -28,7 +28,7 @@ pub fn compact_if_needed(
     let system = vec![SystemBlock::dynamic("You are a conversation summarizer.")];
     let req_msgs = vec![Message::user_text(summary_prompt)];
     let mut summary = String::new();
-    llm.stream_agent(&system, &req_msgs, ModelTier::Fast, |t| summary.push_str(t))?;
+    llm.stream_agent(&system, &req_msgs, "", ModelTier::Fast, |t| summary.push_str(t))?;
 
     let recent = messages.split_off(split_at);
     messages.clear();

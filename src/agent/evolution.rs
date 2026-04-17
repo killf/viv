@@ -38,7 +38,7 @@ pub fn evolve_from_session(
     let system = vec![SystemBlock::dynamic("You are an AI learning extractor.")];
     let req_msgs = vec![Message::user_text(prompt)];
     let mut response = String::new();
-    llm.stream_agent(&system, &req_msgs, ModelTier::Medium, |t| response.push_str(t))?;
+    llm.stream_agent(&system, &req_msgs, "", ModelTier::Medium, |t| response.push_str(t))?;
 
     let learnings = parse_learnings(&response);
     let count = learnings.len();
@@ -107,7 +107,7 @@ fn save_episode(
     let system = vec![SystemBlock::dynamic("You are a conversation summarizer.")];
     let req_msgs = vec![Message::user_text(summary_prompt)];
     let mut summary = String::new();
-    llm.stream_agent(&system, &req_msgs, ModelTier::Fast, |t| summary.push_str(t))?;
+    llm.stream_agent(&system, &req_msgs, "", ModelTier::Fast, |t| summary.push_str(t))?;
     let summary = summary.trim().to_string();
 
     let ts = std::time::SystemTime::now()

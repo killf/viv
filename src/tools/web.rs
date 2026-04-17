@@ -47,7 +47,7 @@ impl Tool for WebFetchTool {
         let user_msg = format!("Answer this about the page: {}\n\nPage:\n{}", prompt, truncated);
         let messages = vec![Message::user_text(user_msg)];
         let mut response = String::new();
-        self.llm.stream_agent(&system, &messages, ModelTier::Fast, |t| response.push_str(t))?;
+        self.llm.stream_agent(&system, &messages, "", ModelTier::Fast, |t| response.push_str(t))?;
         Ok(response)
     }
 

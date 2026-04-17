@@ -321,10 +321,11 @@ impl LLMClient {
         &self,
         system_blocks: &[crate::agent::message::SystemBlock],
         messages: &[crate::agent::message::Message],
+        tools_json: &str,
         tier: ModelTier,
         mut on_text: impl FnMut(&str),
     ) -> crate::Result<StreamResult> {
-        let req = self.build_agent_request(system_blocks, messages, tier);
+        let req = self.build_agent_request(system_blocks, messages, tools_json, tier);
         let bytes = req.to_bytes();
         let url = parse_base_url(&self.config.base_url);
 
@@ -371,6 +372,7 @@ impl LLMClient {
         &self,
         system_blocks: &[crate::agent::message::SystemBlock],
         messages: &[crate::agent::message::Message],
+        tools_json: &str,
         tier: ModelTier,
     ) -> HttpRequest {
         let model = self.config.model(tier.clone()).to_string();
@@ -380,13 +382,24 @@ impl LLMClient {
         let system_json: Vec<String> = system_blocks.iter().map(|b| b.to_json()).collect();
         let messages_json: Vec<String> = messages.iter().map(|m| m.to_json()).collect();
 
-        let body = format!(
-            "{{\"model\":{},\"max_tokens\":{},\"stream\":true,\"system\":[{}],\"messages\":[{}]}}",
-            JsonValue::Str(model),
-            max_tokens,
-            system_json.join(","),
-            messages_json.join(","),
-        );
+        let body = if tools_json.is_empty() {
+            format!(
+                "{{\"model\":{},\"max_tokens\":{},\"stream\":true,\"system\":[{}],\"messages\":[{}]}}",
+                JsonValue::Str(model),
+                max_tokens,
+                system_json.join(","),
+                messages_json.join(","),
+            )
+        } else {
+            format!(
+                "{{\"model\":{},\"max_tokens\":{},\"stream\":true,\"tools\":{},\"system\":[{}],\"messages\":[{}]}}",
+                JsonValue::Str(model),
+                max_tokens,
+                tools_json,
+                system_json.join(","),
+                messages_json.join(","),
+            )
+        };
 
         HttpRequest {
             method: "POST".into(),

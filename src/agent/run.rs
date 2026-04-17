@@ -44,6 +44,7 @@ pub fn run_agent(
         let stream_result = ctx.llm.stream_agent(
             &system.blocks,
             &ctx.messages,
+            "",
             ctx.config.model_tier.clone(),
             &mut on_text,
         )?;

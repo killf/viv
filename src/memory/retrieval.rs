@@ -64,7 +64,7 @@ fn llm_rank<'a>(
     let system = vec![SystemBlock::dynamic("You are a memory retrieval assistant.")];
     let messages = vec![Message::user_text(prompt)];
     let mut response = String::new();
-    llm.stream_agent(&system, &messages, ModelTier::Fast, |t| response.push_str(t))?;
+    llm.stream_agent(&system, &messages, "", ModelTier::Fast, |t| response.push_str(t))?;
 
     let indices = parse_index_array(&response);
     Ok(indices.into_iter()
