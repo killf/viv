@@ -2,8 +2,6 @@
 
 一个自我进化的 AI 编程 Agent。核心理念是"越用越好用"——Agent 在使用过程中持续积累经验、进化能力，随时间变得越来越顺手。
 
-长期目标是将 viv 作为 AgentOS 部署在裸机上，成为开发者的第二大脑。
-
 ## 核心特性
 
 - **自我进化** — 每次会话结束后自动提炼经验、更新记忆，下次更聪明
@@ -12,7 +10,7 @@
 - **MCP 集成** — 通过 stdio / SSE / HTTP / WebSocket 接入外部工具生态
 - **Skill 系统** — 可扩展的技能库，按需加载注入上下文
 - **零外部依赖** — JSON、TLS、HTTP、SSE、async runtime 全部从零实现，无任何第三方 crate
-- **跨平台** — 目标支持 Linux、macOS、Windows
+- **跨平台** — 支持 Linux、macOS、Windows
 
 ## 构建
 
@@ -140,3 +138,4 @@ L5 Skill Memory      技能库（.viv/skills/）
 - https://github.com/anthropics/claude-code
 - https://github.com/crossterm-rs/crossterm
 - https://github.com/ratatui/ratatui
+- https://github.com/rustls/rustls

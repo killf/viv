@@ -38,11 +38,7 @@ impl Executor {
 
     /// 排干就绪队列，poll 所有就绪任务一次
     pub fn run_ready(&mut self) {
-        let mut ids = vec![];
         while let Ok(id) = self.ready_rx.try_recv() {
-            ids.push(id);
-        }
-        for id in ids {
             self.poll_task(id);
         }
     }

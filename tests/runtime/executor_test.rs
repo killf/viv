@@ -1,4 +1,4 @@
-use viv::runtime::executor::{block_on, Executor};
+use viv::runtime::executor::block_on;
 
 #[test]
 fn block_on_immediate_future() {
