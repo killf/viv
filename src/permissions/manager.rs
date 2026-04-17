@@ -1,3 +1,29 @@
-// stub — implemented in Task 2
+use std::collections::HashSet;
+use crate::json::JsonValue;
+use crate::tools::{Tool, PermissionLevel};
 
-pub struct PermissionManager;
+#[derive(Default)]
+pub struct PermissionManager {
+    session_allowed: HashSet<String>,
+}
+
+impl PermissionManager {
+    pub fn check(
+        &mut self,
+        tool: &dyn Tool,
+        input: &JsonValue,
+        ask_fn: &mut dyn FnMut(&str, &JsonValue) -> bool,
+    ) -> bool {
+        if tool.permission_level() == PermissionLevel::ReadOnly {
+            return true;
+        }
+        if self.session_allowed.contains(tool.name()) {
+            return true;
+        }
+        let granted = ask_fn(tool.name(), input);
+        if granted {
+            self.session_allowed.insert(tool.name().to_string());
+        }
+        granted
+    }
+}
