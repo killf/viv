@@ -64,7 +64,8 @@ pub fn run() -> crate::Result<()> {
                 .borders(BorderSides::HORIZONTAL)
                 .border_fg(theme::DIM);
             let input_inner = input_block.inner(chunks[1]);
-            let input_widget = InputWidget::new(&editor.buf, editor.cursor, "\u{276F} ")
+            let editor_content = editor.content();
+            let input_widget = InputWidget::new(&editor_content, editor.cursor_offset(), "\u{276F} ")
                 .prompt_fg(theme::CLAUDE);
             let (cx, cy) = input_widget.cursor_position(input_inner);
             if (cx, cy) != last_cursor {
@@ -241,8 +242,9 @@ pub fn run() -> crate::Result<()> {
                         }
 
                         EditAction::Interrupt => {
-                            editor.buf.clear();
-                            editor.cursor = 0;
+                            editor.lines = vec![String::new()];
+                            editor.row = 0;
+                            editor.col = 0;
                         }
 
                         EditAction::Continue => {
@@ -318,8 +320,9 @@ fn render_frame(
     input_block.render(chunks[1], buf);
 
     // Input widget with ❯ prompt (Claude orange)
+    let editor_content = editor.content();
     let input_widget =
-        InputWidget::new(&editor.buf, editor.cursor, "\u{276F} ").prompt_fg(theme::CLAUDE);
+        InputWidget::new(&editor_content, editor.cursor_offset(), "\u{276F} ").prompt_fg(theme::CLAUDE);
     input_widget.render(input_inner, buf);
 
     // Footer line (dim): keybind hints, Claude Code style
@@ -383,98 +386,142 @@ pub enum EditAction {
 }
 
 pub struct LineEditor {
-    pub buf: String,
-    pub cursor: usize,
+    pub lines: Vec<String>,
+    pub row: usize,
+    pub col: usize,
 }
 
 impl LineEditor {
     pub fn new() -> Self {
-        LineEditor {
-            buf: String::new(),
-            cursor: 0,
-        }
+        LineEditor { lines: vec![String::new()], row: 0, col: 0 }
+    }
+
+    pub fn content(&self) -> String {
+        self.lines.join("\n")
+    }
+
+    pub fn cursor_offset(&self) -> usize {
+        let prefix: usize = self.lines[..self.row].iter().map(|l| l.len() + 1).sum();
+        prefix + self.col
+    }
+
+    pub fn line_count(&self) -> usize {
+        self.lines.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.lines.len() == 1 && self.lines[0].is_empty()
     }
 
     pub fn handle_key(&mut self, key: KeyEvent) -> EditAction {
         match key {
             KeyEvent::Char(ch) => {
-                self.buf.insert(self.cursor, ch);
-                self.cursor += ch.len_utf8();
+                self.lines[self.row].insert(self.col, ch);
+                self.col += ch.len_utf8();
+                EditAction::Continue
+            }
+            KeyEvent::ShiftEnter => {
+                let rest = self.lines[self.row].split_off(self.col);
+                self.lines.insert(self.row + 1, rest);
+                self.row += 1;
+                self.col = 0;
                 EditAction::Continue
             }
             KeyEvent::Enter => {
-                let line = self.buf.clone();
-                self.buf.clear();
-                self.cursor = 0;
-                EditAction::Submit(line)
+                let content = self.content();
+                self.lines = vec![String::new()];
+                self.row = 0;
+                self.col = 0;
+                EditAction::Submit(content)
             }
             KeyEvent::Backspace => {
-                if self.cursor > 0 {
-                    // Find the char boundary before cursor
+                if self.col > 0 {
                     let prev = self.prev_char_boundary();
-                    self.buf.drain(prev..self.cursor);
-                    self.cursor = prev;
+                    self.lines[self.row].drain(prev..self.col);
+                    self.col = prev;
+                } else if self.row > 0 {
+                    let current = self.lines.remove(self.row);
+                    self.row -= 1;
+                    self.col = self.lines[self.row].len();
+                    self.lines[self.row].push_str(&current);
                 }
                 EditAction::Continue
             }
             KeyEvent::Delete => {
-                if self.cursor < self.buf.len() {
+                if self.col < self.lines[self.row].len() {
                     let next = self.next_char_boundary();
-                    self.buf.drain(self.cursor..next);
+                    self.lines[self.row].drain(self.col..next);
+                } else if self.row + 1 < self.lines.len() {
+                    let next_line = self.lines.remove(self.row + 1);
+                    self.lines[self.row].push_str(&next_line);
                 }
                 EditAction::Continue
             }
             KeyEvent::Left => {
-                if self.cursor > 0 {
-                    self.cursor = self.prev_char_boundary();
+                if self.col > 0 {
+                    self.col = self.prev_char_boundary();
+                } else if self.row > 0 {
+                    self.row -= 1;
+                    self.col = self.lines[self.row].len();
                 }
                 EditAction::Continue
             }
             KeyEvent::Right => {
-                if self.cursor < self.buf.len() {
-                    self.cursor = self.next_char_boundary();
+                if self.col < self.lines[self.row].len() {
+                    self.col = self.next_char_boundary();
+                } else if self.row + 1 < self.lines.len() {
+                    self.row += 1;
+                    self.col = 0;
                 }
                 EditAction::Continue
             }
-            KeyEvent::Home => {
-                self.cursor = 0;
+            KeyEvent::Up => {
+                if self.row > 0 {
+                    self.row -= 1;
+                    self.col = self.col.min(self.lines[self.row].len());
+                    while self.col > 0 && !self.lines[self.row].is_char_boundary(self.col) {
+                        self.col -= 1;
+                    }
+                }
                 EditAction::Continue
             }
+            KeyEvent::Down => {
+                if self.row + 1 < self.lines.len() {
+                    self.row += 1;
+                    self.col = self.col.min(self.lines[self.row].len());
+                    while self.col > 0 && !self.lines[self.row].is_char_boundary(self.col) {
+                        self.col -= 1;
+                    }
+                }
+                EditAction::Continue
+            }
+            KeyEvent::Home => { self.col = 0; EditAction::Continue }
             KeyEvent::End => {
-                self.cursor = self.buf.len();
+                self.col = self.lines[self.row].len();
                 EditAction::Continue
             }
             KeyEvent::CtrlC => EditAction::Interrupt,
             KeyEvent::CtrlD => {
-                if self.buf.is_empty() {
-                    EditAction::Exit
-                } else {
-                    EditAction::Continue
-                }
+                if self.is_empty() { EditAction::Exit } else { EditAction::Continue }
             }
             _ => EditAction::Continue,
         }
     }
 
     fn prev_char_boundary(&self) -> usize {
-        let mut pos = self.cursor.saturating_sub(1);
-        while pos > 0 && !self.buf.is_char_boundary(pos) {
-            pos -= 1;
-        }
+        let mut pos = self.col.saturating_sub(1);
+        while pos > 0 && !self.lines[self.row].is_char_boundary(pos) { pos -= 1; }
         pos
     }
 
     fn next_char_boundary(&self) -> usize {
-        let mut pos = self.cursor + 1;
-        while pos < self.buf.len() && !self.buf.is_char_boundary(pos) {
-            pos += 1;
-        }
+        let line = &self.lines[self.row];
+        let mut pos = self.col + 1;
+        while pos < line.len() && !line.is_char_boundary(pos) { pos += 1; }
         pos
     }
 }
 
 impl Default for LineEditor {
-    fn default() -> Self {
-        Self::new()
-    }
+    fn default() -> Self { Self::new() }
 }
