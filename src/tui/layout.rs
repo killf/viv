@@ -1,4 +1,4 @@
-use crate::terminal::buffer::Rect;
+use crate::core::terminal::buffer::Rect;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Direction {

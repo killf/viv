@@ -1,7 +1,7 @@
 use viv::tui::header::HeaderWidget;
 use viv::tui::widget::Widget;
-use viv::terminal::buffer::{Buffer, Rect};
-use viv::terminal::style::theme;
+use viv::core::terminal::buffer::{Buffer, Rect};
+use viv::core::terminal::style::theme;
 
 #[test]
 fn renders_cwd_without_branch() {

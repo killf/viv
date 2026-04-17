@@ -1,4 +1,4 @@
-use crate::terminal::buffer::{Rect, Buffer};
+use crate::core::terminal::buffer::{Rect, Buffer};
 
 pub trait Widget {
     fn render(&self, area: Rect, buf: &mut Buffer);

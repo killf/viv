@@ -1,5 +1,5 @@
-use crate::terminal::buffer::{char_width, Buffer, Rect};
-use crate::terminal::style::Color;
+use crate::core::terminal::buffer::{char_width, Buffer, Rect};
+use crate::core::terminal::style::Color;
 use crate::tui::widget::Widget;
 
 /// A text input widget with a prompt, cursor, and multiline support.
@@ -60,7 +60,7 @@ impl Widget for InputWidget<'_> {
                     let fg = if is_prompt {
                         self.prompt_fg
                     } else {
-                        Some(crate::terminal::style::theme::DIM)
+                        Some(crate::core::terminal::style::theme::DIM)
                     };
                     let cell = buf.get_mut(col, area.y);
                     cell.ch = ch;

@@ -1,4 +1,4 @@
-use viv::json::{JsonValue, Number};
+use viv::core::json::{JsonValue, Number};
 
 // --- Null ---
 #[test]

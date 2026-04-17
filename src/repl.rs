@@ -3,11 +3,11 @@ use crate::agent::context::AgentContext;
 use crate::agent::evolution::evolve_from_session;
 use crate::agent::run::run_agent;
 use crate::llm::{LLMClient, LLMConfig};
-use crate::terminal::backend::{Backend, LinuxBackend};
-use crate::terminal::buffer::char_width;
-use crate::terminal::events::{Event, EventLoop};
-use crate::terminal::input::KeyEvent;
-use crate::terminal::style::theme;
+use crate::core::terminal::backend::{Backend, LinuxBackend};
+use crate::core::terminal::buffer::char_width;
+use crate::core::terminal::events::{Event, EventLoop};
+use crate::core::terminal::input::KeyEvent;
+use crate::core::terminal::style::theme;
 use crate::tui::block::{Block, BorderSides, BorderStyle};
 use crate::tui::header::HeaderWidget;
 use crate::tui::input::InputWidget;
@@ -169,7 +169,7 @@ pub fn run() -> crate::Result<()> {
 
                             let model_name_clone = model_name.clone();
                             let header_clone = &header;
-                            let mut ask_fn = |tool_name: &str, tool_input: &crate::json::JsonValue| -> bool {
+                            let mut ask_fn = |tool_name: &str, tool_input: &crate::core::json::JsonValue| -> bool {
                                 let summary = format_tool_summary(tool_input);
 
                                 // SAFETY: same invariants as ask_fn above — single-threaded, not called concurrently.
@@ -344,14 +344,14 @@ fn blocking_read_yn() -> bool {
     }
 }
 
-fn format_tool_summary(input: &crate::json::JsonValue) -> String {
+fn format_tool_summary(input: &crate::core::json::JsonValue) -> String {
     match input {
-        crate::json::JsonValue::Object(pairs) => pairs
+        crate::core::json::JsonValue::Object(pairs) => pairs
             .iter()
             .take(2)
             .map(|(k, v)| {
                 let val = match v {
-                    crate::json::JsonValue::Str(s) => {
+                    crate::core::json::JsonValue::Str(s) => {
                         format!("\"{}\"", s.chars().take(40).collect::<String>())
                     }
                     other => format!("{}", other).chars().take(40).collect::<String>(),

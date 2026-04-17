@@ -1,5 +1,5 @@
-use crate::terminal::buffer::{Buffer, Rect};
-use crate::terminal::style::theme;
+use crate::core::terminal::buffer::{Buffer, Rect};
+use crate::core::terminal::style::theme;
 use crate::tui::widget::Widget;
 
 pub struct HeaderWidget {

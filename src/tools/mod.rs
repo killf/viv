@@ -1,4 +1,4 @@
-use crate::json::JsonValue;
+use crate::core::json::JsonValue;
 
 pub trait Tool: Send + Sync {
     fn name(&self) -> &str;

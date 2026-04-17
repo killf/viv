@@ -1,13 +1,9 @@
 pub mod agent;
+pub mod core;
 pub mod memory;
-pub mod runtime;
 pub mod llm;
 pub mod error;
-pub mod event;
-pub mod json;
-pub mod net;
 pub mod repl;
-pub mod terminal;
 pub mod tui;
 pub mod permissions;
 pub mod tools;

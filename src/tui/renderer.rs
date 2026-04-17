@@ -1,6 +1,6 @@
-use crate::terminal::backend::Backend;
-use crate::terminal::buffer::{Buffer, Rect};
-use crate::terminal::size::TermSize;
+use crate::core::terminal::backend::Backend;
+use crate::core::terminal::buffer::{Buffer, Rect};
+use crate::core::terminal::size::TermSize;
 
 /// Double-buffered renderer: widgets paint into `current`, then `flush` diffs
 /// it against `previous`, writes only changed cells to the backend, and swaps.

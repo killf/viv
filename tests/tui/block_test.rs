@@ -1,6 +1,6 @@
 use viv::tui::block::*;
 use viv::tui::widget::Widget;
-use viv::terminal::buffer::{Rect, Buffer};
+use viv::core::terminal::buffer::{Rect, Buffer};
 
 #[test]
 fn no_border_inner_equals_area() {

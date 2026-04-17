@@ -1,6 +1,6 @@
 use viv::tui::input::*;
 use viv::tui::widget::Widget;
-use viv::terminal::buffer::{Rect, Buffer};
+use viv::core::terminal::buffer::{Rect, Buffer};
 
 #[test]
 fn renders_prompt_and_content() {
@@ -40,10 +40,10 @@ fn cursor_position_with_area_offset() {
 
 #[test]
 fn prompt_color() {
-    let w = InputWidget::new("hi", 0, "> ").prompt_fg(viv::terminal::style::Color::Ansi(32));
+    let w = InputWidget::new("hi", 0, "> ").prompt_fg(viv::core::terminal::style::Color::Ansi(32));
     let mut buf = Buffer::empty(Rect::new(0, 0, 20, 1));
     w.render(Rect::new(0, 0, 20, 1), &mut buf);
-    assert_eq!(buf.get(0, 0).fg, Some(viv::terminal::style::Color::Ansi(32)));
+    assert_eq!(buf.get(0, 0).fg, Some(viv::core::terminal::style::Color::Ansi(32)));
     assert_eq!(buf.get(2, 0).fg, None); // content has no color
 }
 
@@ -94,7 +94,7 @@ fn placeholder_is_dim_colored() {
         .placeholder(Some("hint"));
     let mut buf = Buffer::empty(Rect::new(0, 0, 20, 1));
     w.render(Rect::new(0, 0, 20, 1), &mut buf);
-    assert_eq!(buf.get(2, 0).fg, Some(viv::terminal::style::theme::DIM));
+    assert_eq!(buf.get(2, 0).fg, Some(viv::core::terminal::style::theme::DIM));
 }
 
 #[test]

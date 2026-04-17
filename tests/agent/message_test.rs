@@ -1,5 +1,5 @@
 use viv::agent::message::{ContentBlock, Message, SystemBlock, hash_str};
-use viv::json::ToJson;
+use viv::core::json::ToJson;
 
 #[test]
 fn text_block_serializes_correctly() {
@@ -11,7 +11,7 @@ fn text_block_serializes_correctly() {
 
 #[test]
 fn tool_use_block_serializes_correctly() {
-    use viv::json::JsonValue;
+    use viv::core::json::JsonValue;
     let b = ContentBlock::ToolUse {
         id: "tu_01".into(),
         name: "bash".into(),

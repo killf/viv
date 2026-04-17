@@ -1,5 +1,5 @@
 use viv::tui::layout::*;
-use viv::terminal::buffer::Rect;
+use viv::core::terminal::buffer::Rect;
 
 #[test]
 fn split_two_fixed_vertical() {

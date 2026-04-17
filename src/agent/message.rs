@@ -1,4 +1,4 @@
-use crate::json::{JsonValue, ToJson};
+use crate::core::json::{JsonValue, ToJson};
 
 // ── ContentBlock ──────────────────────────────────────────────────────────────
 

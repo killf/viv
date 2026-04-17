@@ -1,5 +1,5 @@
 use viv::tui::permission::{render_permission_pending, render_permission_result};
-use viv::terminal::style::theme;
+use viv::core::terminal::style::theme;
 
 #[test]
 fn pending_line_starts_with_suggestion_bullet() {

@@ -1,5 +1,5 @@
-use crate::terminal::buffer::{char_width, Buffer, Rect};
-use crate::terminal::style::Color;
+use crate::core::terminal::buffer::{char_width, Buffer, Rect};
+use crate::core::terminal::style::Color;
 use crate::tui::widget::Widget;
 
 /// A styled text segment within a line.

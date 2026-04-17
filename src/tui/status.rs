@@ -1,5 +1,5 @@
-use crate::terminal::buffer::{Buffer, Rect};
-use crate::terminal::style::theme;
+use crate::core::terminal::buffer::{Buffer, Rect};
+use crate::core::terminal::style::theme;
 use crate::tui::widget::Widget;
 
 // Anthropic claude-sonnet-4-6 pricing (USD per million tokens, as of 2026-04)

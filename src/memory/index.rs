@@ -1,4 +1,4 @@
-use crate::json::JsonValue;
+use crate::core::json::JsonValue;
 use crate::Result;
 use super::store::MemoryStore;
 

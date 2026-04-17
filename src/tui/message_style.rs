@@ -4,7 +4,7 @@
 //! - Assistant:      `● ` Claude-orange bullet, continuation rows indented 2 spaces
 //! - Errors:         `● ` + text, all in error red
 //! - Welcome:        `● viv  ready`
-use crate::terminal::style::theme;
+use crate::core::terminal::style::theme;
 use crate::tui::paragraph::{Line, Span};
 
 /// Format a user-entered line for the history area.

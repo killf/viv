@@ -1,5 +1,5 @@
 use viv::tui::markdown::render_markdown;
-use viv::terminal::style::theme;
+use viv::core::terminal::style::theme;
 
 #[test]
 fn bold_text_is_rendered_bold() {

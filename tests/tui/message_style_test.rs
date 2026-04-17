@@ -1,6 +1,6 @@
 //! Tests for ClaudeStyle message formatting helpers.
 use viv::tui::message_style::*;
-use viv::terminal::style::theme;
+use viv::core::terminal::style::theme;
 
 #[test]
 fn user_message_has_angle_prefix() {

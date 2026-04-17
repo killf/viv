@@ -1,5 +1,5 @@
-use crate::terminal::buffer::{Buffer, Rect};
-use crate::terminal::style::Color;
+use crate::core::terminal::buffer::{Buffer, Rect};
+use crate::core::terminal::style::Color;
 use crate::tui::widget::Widget;
 
 #[derive(Debug, Clone, Copy, PartialEq)]

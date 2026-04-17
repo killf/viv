@@ -1,10 +1,10 @@
 use std::io::{Read, Write};
 use std::sync::Arc;
+use crate::core::json::JsonValue;
+use crate::core::net::http::HttpRequest;
+use crate::core::net::tls::TlsStream;
 use crate::error::Error;
-use crate::json::JsonValue;
 use crate::llm::{LLMClient, ModelTier};
-use crate::net::http::HttpRequest;
-use crate::net::tls::TlsStream;
 use crate::tools::{PermissionLevel, Tool};
 
 pub struct WebFetchTool { pub llm: Arc<LLMClient> }

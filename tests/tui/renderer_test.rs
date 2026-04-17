@@ -1,7 +1,7 @@
 use viv::tui::renderer::*;
-use viv::terminal::backend::TestBackend;
-use viv::terminal::size::TermSize;
-use viv::terminal::buffer::Rect;
+use viv::core::terminal::backend::TestBackend;
+use viv::core::terminal::size::TermSize;
+use viv::core::terminal::buffer::Rect;
 
 #[test]
 fn new_renderer_has_correct_area() {

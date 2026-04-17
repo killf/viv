@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 use crate::error::Error;
-use crate::json::JsonValue;
+use crate::core::json::JsonValue;
 use crate::tools::{PermissionLevel, Tool};
 
 pub struct TodoWriteTool { path: PathBuf }

@@ -3,7 +3,7 @@ use crate::agent::message::{Message, ContentBlock, SystemBlock};
 use crate::llm::{LLMClient, ModelTier};
 use crate::memory::store::MemoryStore;
 use crate::memory::index::{MemoryIndex, MemoryEntry, EntryKind};
-use crate::json::JsonValue;
+use crate::core::json::JsonValue;
 
 const EVOLUTION_PROMPT: &str = r#"You just completed a conversation session. Analyze it and extract learnings.
 

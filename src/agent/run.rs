@@ -1,5 +1,5 @@
 use crate::Result;
-use crate::json::JsonValue;
+use crate::core::json::JsonValue;
 use crate::agent::context::AgentContext;
 use crate::agent::message::{Message, ContentBlock};
 use crate::agent::prompt::build_system_prompt;

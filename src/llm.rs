@@ -1,9 +1,9 @@
 use std::io::{Read, Write};
 
-use crate::json::{JsonValue, ToJson};
-use crate::net::http::HttpRequest;
-use crate::net::sse::SseParser;
-use crate::net::tls::TlsStream;
+use crate::core::json::{JsonValue, ToJson};
+use crate::core::net::http::HttpRequest;
+use crate::core::net::sse::SseParser;
+use crate::core::net::tls::TlsStream;
 use crate::error::Error;
 
 /// A single chat message with a role and content.

@@ -1,5 +1,5 @@
 use viv::agent::message::{Message, ContentBlock};
-use viv::json::ToJson;
+use viv::core::json::ToJson;
 
 #[test]
 fn message_sequence_builds_correctly() {

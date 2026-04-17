@@ -1,5 +1,5 @@
 use std::collections::HashSet;
-use crate::json::JsonValue;
+use crate::core::json::JsonValue;
 use crate::tools::{Tool, PermissionLevel};
 
 #[derive(Default)]

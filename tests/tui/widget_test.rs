@@ -1,4 +1,4 @@
-use viv::terminal::buffer::{Rect, Buffer};
+use viv::core::terminal::buffer::{Rect, Buffer};
 use viv::tui::widget::Widget;
 
 struct TestWidget {

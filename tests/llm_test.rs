@@ -1,5 +1,5 @@
 use viv::llm::*;
-use viv::json::JsonValue;
+use viv::core::json::JsonValue;
 
 #[test]
 fn build_api_request_with_tier() {

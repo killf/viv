@@ -1,4 +1,4 @@
-use viv::json::JsonValue;
+use viv::core::json::JsonValue;
 use viv::tools::{PermissionLevel, Tool, ToolRegistry};
 
 struct EchoTool;

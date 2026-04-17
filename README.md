@@ -138,6 +138,7 @@ L5 Skill Memory      skill library (.viv/skills/)
 
 - https://github.com/openai/codex
 - https://github.com/anthropics/claude-code
+- https://github.com/ultraworkers/claw-code
 - https://github.com/crossterm-rs/crossterm
 - https://github.com/ratatui/ratatui
 - https://github.com/rustls/rustls

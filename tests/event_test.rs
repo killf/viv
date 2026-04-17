@@ -1,4 +1,4 @@
-use viv::event::*;
+use viv::core::event::*;
 
 #[test]
 fn epoll_event_struct_size() {

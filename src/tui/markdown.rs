@@ -1,4 +1,4 @@
-use crate::terminal::style::theme;
+use crate::core::terminal::style::theme;
 use crate::tui::paragraph::{Line, Span};
 
 pub fn render_markdown(text: &str) -> Vec<Line> {

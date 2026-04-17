@@ -1,5 +1,5 @@
 use viv::repl::{LineEditor, EditAction};
-use viv::terminal::input::KeyEvent;
+use viv::core::terminal::input::KeyEvent;
 
 #[test]
 fn insert_char() {
