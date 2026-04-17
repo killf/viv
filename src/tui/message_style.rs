@@ -10,7 +10,7 @@ use crate::tui::paragraph::{Line, Span};
 /// Format a user-entered line for the history area.
 pub fn format_user_message(text: &str) -> Line {
     Line::from_spans(vec![
-        Span::styled("> ", theme::DIM, false),
+        Span::styled("> ", theme::CLAUDE, false),
         Span::raw(text),
     ])
 }

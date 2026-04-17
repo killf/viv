@@ -7,7 +7,7 @@ fn user_message_has_angle_prefix() {
     let line = format_user_message("hello world");
     assert_eq!(line.spans.len(), 2);
     assert_eq!(line.spans[0].text, "> ");
-    assert_eq!(line.spans[0].fg, Some(theme::DIM));
+    assert_eq!(line.spans[0].fg, Some(theme::CLAUDE));
     assert_eq!(line.spans[1].text, "hello world");
 }
 
