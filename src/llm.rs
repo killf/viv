@@ -1,6 +1,6 @@
 use std::io::{Read, Write};
 
-use crate::json::JsonValue;
+use crate::json::{JsonValue, ToJson};
 use crate::net::http::HttpRequest;
 use crate::net::sse::SseParser;
 use crate::net::tls::TlsStream;
@@ -306,7 +306,6 @@ pub fn extract_delta_text(data: &str) -> Option<String> {
 }
 
 // ---- agent stream -----------------------------------------------------------
-use crate::agent::message::ToJson;
 
 /// 一次 LLM 流响应的完整结果
 pub struct StreamResult {

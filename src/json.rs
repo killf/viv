@@ -1,6 +1,10 @@
 use std::fmt;
 use crate::Error;
 
+pub trait ToJson {
+    fn to_json(&self) -> String;
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Number {
     Int(i64),

@@ -1,8 +1,4 @@
-use crate::json::JsonValue;
-
-pub trait ToJson {
-    fn to_json(&self) -> String;
-}
+use crate::json::{JsonValue, ToJson};
 
 // ── ContentBlock ──────────────────────────────────────────────────────────────
 
