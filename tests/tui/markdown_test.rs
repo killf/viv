@@ -53,3 +53,17 @@ fn plain_text_passes_through() {
     let text: String = lines[0].spans.iter().map(|s| s.text.as_str()).collect();
     assert_eq!(text, "just plain text");
 }
+
+#[test]
+fn unclosed_bold_marker_does_not_drop_content() {
+    let lines = render_markdown("see **code");
+    let text: String = lines[0].spans.iter().map(|s| s.text.as_str()).collect();
+    // "code" must not be dropped
+    assert!(text.contains("code"), "content after unclosed ** should not be dropped");
+}
+
+#[test]
+fn empty_input_returns_one_line() {
+    let lines = render_markdown("");
+    assert!(!lines.is_empty(), "empty input should return at least one line");
+}

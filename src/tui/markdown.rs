@@ -72,11 +72,15 @@ fn parse_inline(line: &str) -> Vec<Span> {
             }
             i += 2;
             let mut inner = String::new();
-            while i + 1 < chars.len() && !(chars[i] == '*' && chars[i + 1] == '*') {
+            while i < chars.len() {
+                if i + 1 < chars.len() && chars[i] == '*' && chars[i + 1] == '*' {
+                    break;
+                }
                 inner.push(chars[i]);
                 i += 1;
             }
-            if i + 1 < chars.len() {
+            // consume closing ** if present
+            if i + 1 < chars.len() && chars[i] == '*' && chars[i + 1] == '*' {
                 i += 2;
             }
             spans.push(Span::styled(inner, theme::TEXT, true));
@@ -87,11 +91,15 @@ fn parse_inline(line: &str) -> Vec<Span> {
             }
             i += 2;
             let mut inner = String::new();
-            while i + 1 < chars.len() && !(chars[i] == '_' && chars[i + 1] == '_') {
+            while i < chars.len() {
+                if i + 1 < chars.len() && chars[i] == '_' && chars[i + 1] == '_' {
+                    break;
+                }
                 inner.push(chars[i]);
                 i += 1;
             }
-            if i + 1 < chars.len() {
+            // consume closing __ if present
+            if i + 1 < chars.len() && chars[i] == '_' && chars[i + 1] == '_' {
                 i += 2;
             }
             spans.push(Span::styled(inner, theme::TEXT, true));

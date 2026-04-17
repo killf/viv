@@ -19,15 +19,16 @@ pub fn format_user_message(text: &str) -> Line {
 /// The first line is prefixed with the `●` bullet in Claude orange;
 /// subsequent lines are indented by 2 spaces to align with the text column.
 pub fn format_assistant_message(response: &str) -> Vec<Line> {
-    let rendered = crate::tui::markdown::render_markdown(response);
+    let mut rendered = crate::tui::markdown::render_markdown(response);
     let mut lines = Vec::new();
-    if let Some((first, rest)) = rendered.split_first() {
+    let mut iter = rendered.drain(..);
+    if let Some(first) = iter.next() {
         let mut first_spans = vec![Span::styled("● ", theme::CLAUDE, false)];
-        first_spans.extend(first.spans.clone());
+        first_spans.extend(first.spans);
         lines.push(Line::from_spans(first_spans));
-        for line in rest {
+        for line in iter {
             let mut prefix_spans = vec![Span::raw("  ")];
-            prefix_spans.extend(line.spans.clone());
+            prefix_spans.extend(line.spans);
             lines.push(Line::from_spans(prefix_spans));
         }
     }
