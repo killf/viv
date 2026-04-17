@@ -31,10 +31,12 @@ pub fn run() -> crate::Result<()> {
     let mut messages: Vec<Message> = Vec::new();
     let mut scroll: u16 = 0;
 
-    // Welcome message
+    // Minimal welcome (Claude Code style: subtle, single line)
     history_lines.push(Line::from_spans(vec![
+        Span::styled("● ", 33, false),
         Span::styled("viv", 33, true),
-        Span::raw(" \u{2014} AI coding agent (type /exit or Ctrl+D to quit)"),
+        Span::raw("  "),
+        Span::styled("ready", 90, false),
     ]));
     history_lines.push(Line::raw(""));
 
@@ -51,9 +53,9 @@ pub fn run() -> crate::Result<()> {
         // Position cursor at the input widget location
         let area = renderer.area();
         let chunks = main_layout().split(area);
-        let input_block = Block::new().border(BorderStyle::Rounded).title("viv");
+        let input_block = Block::new().border(BorderStyle::Rounded);
         let input_inner = input_block.inner(chunks[1]);
-        let input_widget = InputWidget::new(&editor.buf, editor.cursor, "> ").prompt_fg(32);
+        let input_widget = InputWidget::new(&editor.buf, editor.cursor, "\u{276F} ").prompt_fg(36);
         let (cx, cy) = input_widget.cursor_position(input_inner);
         backend.move_cursor(cy, cx)?;
         backend.show_cursor()?;
@@ -75,17 +77,16 @@ pub fn run() -> crate::Result<()> {
                             // Handle /exit command
                             if line.trim() == "/exit" {
                                 backend.disable_raw_mode()?;
-                                // Clear screen and print farewell
                                 backend.write(b"\x1b[2J\x1b[H")?;
                                 backend.write(b"Bye!\n")?;
                                 backend.flush()?;
                                 return Ok(());
                             }
 
-                            // Add user message to history display
+                            // User message: dimmed '>' prefix
                             history_lines.push(Line::from_spans(vec![
-                                Span::styled("> ", 32, true),
-                                Span::styled(&line, 32, false),
+                                Span::styled("> ", 90, false),
+                                Span::raw(&line),
                             ]));
 
                             // Add to API messages
@@ -105,9 +106,9 @@ pub fn run() -> crate::Result<()> {
                             // Stream LLM response
                             let mut response = String::new();
 
-                            // Add a placeholder line for the streaming response
+                            // Placeholder line with '●' bullet for assistant
                             history_lines.push(Line::from_spans(vec![
-                                Span::styled("claude: ", 35, true),
+                                Span::styled("● ", 33, false),
                             ]));
                             let response_line_idx = history_lines.len() - 1;
 
@@ -115,14 +116,14 @@ pub fn run() -> crate::Result<()> {
                                 client.stream(&messages, ModelTier::Medium, |text| {
                                     response.push_str(text);
 
-                                    // Update the response line with accumulated text
-                                    let spans = vec![
-                                        Span::styled("claude: ", 35, true),
-                                        Span::styled(&response, 35, false),
-                                    ];
-                                    history_lines[response_line_idx] = Line::from_spans(spans);
+                                    // Rebuild response lines: '●' bullet on first line,
+                                    // subsequent lines indented 2 spaces
+                                    rebuild_response_lines(
+                                        &mut history_lines,
+                                        response_line_idx,
+                                        &response,
+                                    );
 
-                                    // Auto-scroll and re-render
                                     scroll = compute_max_scroll(&history_lines, &renderer);
                                     render_frame(
                                         &mut renderer,
@@ -136,12 +137,11 @@ pub fn run() -> crate::Result<()> {
 
                             match stream_result {
                                 Ok(_full) => {
-                                    // Finalize the response line
-                                    let spans = vec![
-                                        Span::styled("claude: ", 35, true),
-                                        Span::styled(&response, 35, false),
-                                    ];
-                                    history_lines[response_line_idx] = Line::from_spans(spans);
+                                    rebuild_response_lines(
+                                        &mut history_lines,
+                                        response_line_idx,
+                                        &response,
+                                    );
 
                                     messages.push(Message {
                                         role: "assistant".into(),
@@ -149,21 +149,21 @@ pub fn run() -> crate::Result<()> {
                                     });
                                 }
                                 Err(e) => {
-                                    // Replace the placeholder with error
-                                    history_lines[response_line_idx] = Line::from_spans(vec![
+                                    // Truncate any streamed continuation lines; replace with error
+                                    history_lines.truncate(response_line_idx);
+                                    history_lines.push(Line::from_spans(vec![
+                                        Span::styled("● ", 31, false),
                                         Span::styled(
                                             format!("error: {}", e),
                                             31,
-                                            true,
+                                            false,
                                         ),
-                                    ]);
+                                    ]));
                                 }
                             }
 
-                            // Add blank line after response
                             history_lines.push(Line::raw(""));
 
-                            // Auto-scroll to bottom
                             scroll = compute_max_scroll(&history_lines, &renderer);
                         }
 
@@ -187,23 +187,49 @@ pub fn run() -> crate::Result<()> {
                 }
                 Event::Resize(new_size) => {
                     renderer.resize(new_size);
-                    // Recalculate scroll after resize
                     scroll = compute_max_scroll(&history_lines, &renderer);
                 }
-                Event::Tick => {
-                    // Nothing to do on tick
-                }
+                Event::Tick => {}
             }
         }
     }
 }
 
-/// Build the main vertical layout: conversation area (Fill) + input box (Fixed 3).
-fn main_layout() -> Layout {
-    Layout::new(Direction::Vertical).constraints(vec![Constraint::Fill, Constraint::Fixed(3)])
+/// Rebuild history lines for a streaming assistant response.
+/// First line gets the '●' bullet; subsequent lines are indented 2 spaces.
+/// Old response lines (from previous chunks) are removed and replaced.
+fn rebuild_response_lines(
+    history_lines: &mut Vec<Line>,
+    start_idx: usize,
+    response: &str,
+) {
+    // Truncate any previously-added continuation lines for this response
+    history_lines.truncate(start_idx);
+
+    let mut parts = response.split('\n');
+    let first = parts.next().unwrap_or("");
+    history_lines.push(Line::from_spans(vec![
+        Span::styled("● ", 33, false),
+        Span::raw(first),
+    ]));
+    for rest in parts {
+        history_lines.push(Line::from_spans(vec![
+            Span::raw("  "),
+            Span::raw(rest),
+        ]));
+    }
 }
 
-/// Render a full frame: conversation history on top, input box on bottom.
+/// Build the main vertical layout: conversation (Fill) + input (Fixed 3) + status (Fixed 1).
+fn main_layout() -> Layout {
+    Layout::new(Direction::Vertical).constraints(vec![
+        Constraint::Fill,
+        Constraint::Fixed(3),
+        Constraint::Fixed(1),
+    ])
+}
+
+/// Render a full frame.
 fn render_frame(
     renderer: &mut Renderer,
     history_lines: &[Line],
@@ -215,18 +241,28 @@ fn render_frame(
 
     let buf = renderer.buffer_mut();
 
-    // Top area: conversation history as a scrollable Paragraph
+    // Conversation history
     let paragraph = Paragraph::new(history_lines.to_vec()).scroll(scroll);
     paragraph.render(chunks[0], buf);
 
-    // Bottom area: input box with border
-    let input_block = Block::new().border(BorderStyle::Rounded).title("viv");
+    // Input box (rounded border, no title)
+    let input_block = Block::new().border(BorderStyle::Rounded);
     let input_inner = input_block.inner(chunks[1]);
     input_block.render(chunks[1], buf);
 
-    // Input widget inside the block's inner area
-    let input_widget = InputWidget::new(&editor.buf, editor.cursor, "> ").prompt_fg(32);
+    // Input widget with ❯ prompt (cyan)
+    let input_widget = InputWidget::new(&editor.buf, editor.cursor, "\u{276F} ").prompt_fg(36);
     input_widget.render(input_inner, buf);
+
+    // Status line (dim, below input)
+    let status = Line::from_spans(vec![
+        Span::styled("\u{23F5}\u{23F5} ", 90, false),
+        Span::styled("ready", 90, false),
+        Span::styled("  \u{00B7}  ", 90, false),
+        Span::styled("ctrl+c clear  \u{00B7}  ctrl+d exit", 90, false),
+    ]);
+    let status_para = Paragraph::new(vec![status]);
+    status_para.render(chunks[2], buf);
 }
 
 /// Compute the maximum scroll offset so the last line of history is visible
