@@ -15,6 +15,8 @@ pub struct AgentContext {
     pub config: AgentConfig,
     pub tool_registry: ToolRegistry,
     pub permission_manager: PermissionManager,
+    pub input_tokens: u64,
+    pub output_tokens: u64,
 }
 
 #[derive(Clone)]
@@ -57,6 +59,8 @@ impl AgentContext {
             config: AgentConfig::default(),
             tool_registry,
             permission_manager: PermissionManager::default(),
+            input_tokens: 0,
+            output_tokens: 0,
         })
     }
 }

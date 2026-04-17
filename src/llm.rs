@@ -312,6 +312,8 @@ pub struct StreamResult {
     pub text_blocks: Vec<crate::agent::message::ContentBlock>,
     pub tool_uses: Vec<crate::agent::message::ContentBlock>,
     pub stop_reason: String,
+    pub input_tokens: u64,
+    pub output_tokens: u64,
 }
 
 impl LLMClient {
@@ -430,10 +432,12 @@ fn parse_agent_stream(
     let mut text_blocks: Vec<ContentBlock> = vec![];
     let mut tool_uses: Vec<ContentBlock> = vec![];
     let mut stop_reason = String::from("end_turn");
+    let mut input_tokens: u64 = 0;
+    let mut output_tokens: u64 = 0;
 
     let hend = match header_end {
         Some(h) => h,
-        None => return Ok(StreamResult { text_blocks, tool_uses, stop_reason }),
+        None => return Ok(StreamResult { text_blocks, tool_uses, stop_reason, input_tokens: 0, output_tokens: 0 }),
     };
     let body_str = String::from_utf8_lossy(&raw[hend..]);
 
@@ -492,6 +496,12 @@ fn parse_agent_stream(
                     tool_uses.push(ContentBlock::ToolUse { id, name, input });
                 }
             }
+            "message_start" => {
+                if let Some(usage) = json.get("message").and_then(|m| m.get("usage")) {
+                    input_tokens += usage.get("input_tokens")
+                        .and_then(|v| v.as_i64()).unwrap_or(0) as u64;
+                }
+            }
             "message_delta" => {
                 if let Some(reason) = json.get("delta")
                     .and_then(|d| d.get("stop_reason"))
@@ -499,12 +509,16 @@ fn parse_agent_stream(
                 {
                     stop_reason = reason.to_string();
                 }
+                if let Some(usage) = json.get("usage") {
+                    output_tokens += usage.get("output_tokens")
+                        .and_then(|v| v.as_i64()).unwrap_or(0) as u64;
+                }
             }
             _ => {}
         }
     }
 
-    Ok(StreamResult { text_blocks, tool_uses, stop_reason })
+    Ok(StreamResult { text_blocks, tool_uses, stop_reason, input_tokens, output_tokens })
 }
 
 /// 仅供测试使用的公开入口

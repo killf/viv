@@ -51,6 +51,9 @@ pub fn run_agent(
             &mut on_text,
         )?;
 
+        ctx.input_tokens += stream_result.input_tokens;
+        ctx.output_tokens += stream_result.output_tokens;
+
         // 6. Collect assistant response blocks
         let mut assistant_blocks: Vec<ContentBlock> = stream_result.text_blocks.clone();
         assistant_blocks.extend(stream_result.tool_uses.clone());
