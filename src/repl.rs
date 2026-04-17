@@ -62,6 +62,7 @@ pub fn run() -> crate::Result<()> {
                 &model_name,
                 agent_ctx.input_tokens,
                 agent_ctx.output_tokens,
+                &header,
             );
             renderer.flush(&mut backend)?;
 
@@ -123,7 +124,7 @@ pub fn run() -> crate::Result<()> {
                             scroll = compute_max_scroll(&history_lines, &renderer, &editor);
 
                             // Render before streaming starts
-                            render_frame(&mut renderer, &history_lines, &editor, scroll, &model_name, agent_ctx.input_tokens, agent_ctx.output_tokens);
+                            render_frame(&mut renderer, &history_lines, &editor, scroll, &model_name, agent_ctx.input_tokens, agent_ctx.output_tokens, &header);
                             renderer.flush(&mut backend)?;
                             backend.flush()?;
 
@@ -151,7 +152,7 @@ pub fn run() -> crate::Result<()> {
                             let response_line_idx = history_lines.len() - 1;
 
                             scroll = compute_max_scroll(&history_lines, &renderer, &editor);
-                            render_frame(&mut renderer, &history_lines, &editor, scroll, &model_name, agent_ctx.input_tokens, agent_ctx.output_tokens);
+                            render_frame(&mut renderer, &history_lines, &editor, scroll, &model_name, agent_ctx.input_tokens, agent_ctx.output_tokens, &header);
                             renderer.flush(&mut backend)?;
                             backend.flush()?;
 
@@ -167,6 +168,7 @@ pub fn run() -> crate::Result<()> {
                             let ctx_ptr = &mut agent_ctx as *mut AgentContext;
 
                             let model_name_clone = model_name.clone();
+                            let header_clone = &header;
                             let mut ask_fn = |tool_name: &str, tool_input: &crate::json::JsonValue| -> bool {
                                 let summary = format_tool_summary(tool_input);
 
@@ -181,7 +183,7 @@ pub fn run() -> crate::Result<()> {
                                 let perm_line_idx = hl.len() - 1;
 
                                 *scr = compute_max_scroll(hl, rend, &editor);
-                                render_frame(rend, hl, &editor, *scr, &model_name_clone, ctx.input_tokens, ctx.output_tokens);
+                                render_frame(rend, hl, &editor, *scr, &model_name_clone, ctx.input_tokens, ctx.output_tokens, header_clone);
                                 let _ = rend.flush(back);
                                 let _ = back.flush();
 
@@ -194,7 +196,7 @@ pub fn run() -> crate::Result<()> {
                                 hl[perm_line_idx] = render_permission_result(tool_name, &summary, allowed);
 
                                 *scr = compute_max_scroll(hl, rend, &editor);
-                                render_frame(rend, hl, &editor, *scr, &model_name_clone, ctx.input_tokens, ctx.output_tokens);
+                                render_frame(rend, hl, &editor, *scr, &model_name_clone, ctx.input_tokens, ctx.output_tokens, header_clone);
                                 let _ = rend.flush(back);
                                 let _ = back.flush();
 
@@ -209,6 +211,7 @@ pub fn run() -> crate::Result<()> {
                                     let back = unsafe { &mut *back_ptr };
                                     let scr = unsafe { &mut *scroll_ptr };
                                     let ctx = unsafe { &mut *ctx_ptr };
+                                    let header_ref = &header;
 
                                     if response.trim().is_empty() {
                                         // Still waiting — animate the spinner
@@ -234,7 +237,7 @@ pub fn run() -> crate::Result<()> {
                                     }
 
                                     *scr = compute_max_scroll(hl, rend, &editor);
-                                    render_frame(rend, hl, &editor, *scr, &model_name_clone, ctx.input_tokens, ctx.output_tokens);
+                                    render_frame(rend, hl, &editor, *scr, &model_name_clone, ctx.input_tokens, ctx.output_tokens, header_ref);
                                     let _ = rend.flush(back);
                                     let _ = back.flush();
                                 });
@@ -250,6 +253,19 @@ pub fn run() -> crate::Result<()> {
                                         .extend(format_error_message(&format!("error: {}", e)));
                                 }
                             }
+
+                            scroll = compute_max_scroll(&history_lines, &renderer, &editor);
+                            render_frame(
+                                &mut renderer,
+                                &history_lines,
+                                &editor,
+                                scroll,
+                                &model_name,
+                                agent_ctx.input_tokens,
+                                agent_ctx.output_tokens,
+                                &header,
+                            );
+                            renderer.flush(&mut backend)?;
 
                             history_lines.push(Line::raw(""));
 
@@ -369,6 +385,7 @@ fn render_frame(
     model: &str,
     input_tokens: u64,
     output_tokens: u64,
+    header: &HeaderWidget,
 ) {
     let area = renderer.area();
     let input_height = (editor.line_count() as u16 + 2).min(8).max(3);
@@ -378,7 +395,6 @@ fn render_frame(
     let buf = renderer.buffer_mut();
 
     // Header bar
-    let header = HeaderWidget::from_env();
     header.render(chunks[0], buf);
 
     // Conversation history
