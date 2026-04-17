@@ -306,6 +306,7 @@ pub fn extract_delta_text(data: &str) -> Option<String> {
 }
 
 // ---- agent stream -----------------------------------------------------------
+use crate::agent::message::ToJson;
 
 /// 一次 LLM 流响应的完整结果
 pub struct StreamResult {

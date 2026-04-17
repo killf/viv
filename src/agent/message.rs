@@ -1,5 +1,9 @@
 use crate::json::JsonValue;
 
+pub trait ToJson {
+    fn to_json(&self) -> String;
+}
+
 // ── ContentBlock ──────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone)]
@@ -9,8 +13,8 @@ pub enum ContentBlock {
     ToolResult { tool_use_id: String, content: Vec<ContentBlock>, is_error: bool },
 }
 
-impl ContentBlock {
-    pub fn to_json(&self) -> String {
+impl ToJson for ContentBlock {
+    fn to_json(&self) -> String {
         match self {
             ContentBlock::Text(t) => {
                 format!("{{\"type\":\"text\",\"text\":{}}}", JsonValue::Str(t.clone()))
@@ -56,8 +60,10 @@ impl Message {
     pub fn blocks(&self) -> &[ContentBlock] {
         match self { Message::User(b) | Message::Assistant(b) => b }
     }
+}
 
-    pub fn to_json(&self) -> String {
+impl ToJson for Message {
+    fn to_json(&self) -> String {
         let blocks_json: Vec<String> = self.blocks().iter().map(|b| b.to_json()).collect();
         format!(
             "{{\"role\":{},\"content\":[{}]}}",
@@ -82,7 +88,10 @@ impl SystemBlock {
     pub fn dynamic(text: impl Into<String>) -> Self {
         SystemBlock { text: text.into(), cached: false }
     }
-    pub fn to_json(&self) -> String {
+}
+
+impl ToJson for SystemBlock {
+    fn to_json(&self) -> String {
         if self.cached {
             format!(
                 "{{\"type\":\"text\",\"text\":{},\"cache_control\":{{\"type\":\"ephemeral\"}}}}",

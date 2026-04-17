@@ -1,5 +1,7 @@
 # viv
 
+[中文](docs/README_cn.md)
+
 A self-evolving AI programming agent. The core idea is "gets smarter the more you use it" — the agent continuously accumulates experience and evolves its capabilities over time.
 
 ## Features
