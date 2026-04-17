@@ -2,6 +2,7 @@ pub mod block;
 pub mod header;
 pub mod input;
 pub mod layout;
+pub mod markdown;
 pub mod message_style;
 pub mod paragraph;
 pub mod permission;

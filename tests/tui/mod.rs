@@ -2,6 +2,7 @@ mod block_test;
 mod header_test;
 mod input_test;
 mod layout_test;
+mod markdown_test;
 mod message_style_test;
 mod paragraph_test;
 mod permission_test;
