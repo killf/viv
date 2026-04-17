@@ -4,7 +4,6 @@ pub mod core;
 pub mod memory;
 pub mod llm;
 pub mod error;
-pub mod repl;
 pub mod tui;
 pub mod permissions;
 pub mod tools;
