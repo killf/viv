@@ -1,29 +1,23 @@
 use std::collections::HashSet;
-use crate::core::json::JsonValue;
-use crate::tools::{Tool, PermissionLevel};
 
-#[derive(Default)]
 pub struct PermissionManager {
     session_allowed: HashSet<String>,
 }
 
+impl Default for PermissionManager {
+    fn default() -> Self {
+        PermissionManager { session_allowed: HashSet::new() }
+    }
+}
+
 impl PermissionManager {
-    pub fn check(
-        &mut self,
-        tool: &dyn Tool,
-        input: &JsonValue,
-        ask_fn: &mut dyn FnMut(&str, &JsonValue) -> bool,
-    ) -> bool {
-        if tool.permission_level() == PermissionLevel::ReadOnly {
-            return true;
-        }
-        if self.session_allowed.contains(tool.name()) {
-            return true;
-        }
-        let granted = ask_fn(tool.name(), input);
-        if granted {
-            self.session_allowed.insert(tool.name().to_string());
-        }
-        granted
+    /// Returns true if the tool has already been granted in this session.
+    pub fn is_allowed(&self, tool_name: &str) -> bool {
+        self.session_allowed.contains(tool_name)
+    }
+
+    /// Marks the tool as allowed for the rest of this session.
+    pub fn grant(&mut self, tool_name: &str) {
+        self.session_allowed.insert(tool_name.to_string());
     }
 }

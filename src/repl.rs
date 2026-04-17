@@ -169,7 +169,7 @@ pub fn run() -> crate::Result<()> {
 
                             let model_name_clone = model_name.clone();
                             let header_clone = &header;
-                            let mut ask_fn = |tool_name: &str, tool_input: &crate::core::json::JsonValue| -> bool {
+                            let _ask_fn = |tool_name: &str, tool_input: &crate::core::json::JsonValue| -> bool {
                                 let summary = format_tool_summary(tool_input);
 
                                 // SAFETY: same invariants as ask_fn above — single-threaded, not called concurrently.
@@ -203,7 +203,7 @@ pub fn run() -> crate::Result<()> {
                                 allowed
                             };
                             let agent_result =
-                                run_agent(line, &mut agent_ctx, &mut ask_fn, |text| {
+                                run_agent(line, &mut agent_ctx, |text| {
                                     response.push_str(text);
 
                                     let hl = unsafe { &mut *hl_ptr };

@@ -1,5 +1,4 @@
 use crate::Result;
-use crate::core::json::JsonValue;
 use crate::agent::context::AgentContext;
 use crate::agent::message::{Message, ContentBlock};
 use crate::agent::prompt::build_system_prompt;
@@ -14,7 +13,6 @@ pub struct AgentOutput {
 pub fn run_agent(
     input: String,
     ctx: &mut AgentContext,
-    ask_fn: &mut dyn FnMut(&str, &JsonValue) -> bool,
     mut on_text: impl FnMut(&str),
 ) -> Result<AgentOutput> {
     // 1. Retrieve relevant memories
@@ -78,10 +76,10 @@ pub fn run_agent(
                     Some(tool) => {
                         // tool borrows ctx.tool_registry (immutably);
                         // ctx.permission_manager is a separate field — Rust NLL allows this split borrow
-                        if ctx.permission_manager.check(tool, input, ask_fn) {
+                        if ctx.permission_manager.is_allowed(tool.name()) {
                             tool.execute(input)
                         } else {
-                            Err(crate::Error::Tool("permission denied by user".into()))
+                            Err(crate::Error::Tool("permission denied".into()))
                         }
                     }
                 };
