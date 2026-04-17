@@ -16,6 +16,8 @@ pub enum Error {
     LLM { status: u16, message: String },
     /// Tool execution errors
     Tool(String),
+    /// MCP protocol errors
+    Mcp { server: String, message: String },
 }
 
 impl fmt::Display for Error {
@@ -28,6 +30,7 @@ impl fmt::Display for Error {
             Error::Http(msg) => write!(f, "HTTP error: {}", msg),
             Error::LLM { status, message } => write!(f, "LLM error {}: {}", status, message),
             Error::Tool(msg) => write!(f, "tool error: {}", msg),
+            Error::Mcp { server, message } => write!(f, "MCP error [{}]: {}", server, message),
         }
     }
 }
