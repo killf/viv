@@ -14,6 +14,7 @@ use crate::tui::layout::{Constraint, Direction, Layout};
 use crate::tui::message_style::{
     format_assistant_message, format_error_message, format_user_message, format_welcome,
 };
+use crate::tui::permission::{render_permission_pending, render_permission_result};
 use crate::tui::paragraph::{Line, Paragraph, Span};
 use crate::tui::renderer::Renderer;
 use crate::tui::spinner::{random_verb, Spinner};
@@ -145,44 +146,63 @@ pub fn run() -> crate::Result<()> {
                             renderer.flush(&mut backend)?;
                             backend.flush()?;
 
+                            // SAFETY: ask_fn and on_text are never called concurrently;
+                            // both run in the same thread during run_agent, and ask_fn
+                            // is only called between tool calls (not during SSE streaming).
+                            // We hoist raw pointers before constructing either closure so
+                            // that the borrow checker sees them as independent borrows.
+                            let hl_ptr = &mut history_lines as *mut Vec<Line>;
+                            let rend_ptr = &mut renderer as *mut Renderer;
+                            let back_ptr = &mut backend as *mut LinuxBackend;
+                            let scroll_ptr = &mut scroll as *mut u16;
+
                             let mut ask_fn = |tool_name: &str, tool_input: &crate::json::JsonValue| -> bool {
-                                use std::io::{Read, Write};
                                 let summary = format_tool_summary(tool_input);
-                                let prompt = format!(
-                                    "\r\n\x1b[33m Allow {}({})? [y/n] \x1b[0m",
-                                    tool_name, summary
-                                );
-                                let _ = std::io::stdout().write_all(prompt.as_bytes());
-                                let _ = std::io::stdout().flush();
-                                let mut buf = [0u8; 1];
-                                loop {
-                                    match std::io::stdin().lock().read(&mut buf) {
-                                        Ok(1) => match buf[0] {
-                                            b'y' | b'Y' => {
-                                                let _ = std::io::stdout().write_all(b"y\r\n");
-                                                let _ = std::io::stdout().flush();
-                                                return true;
-                                            }
-                                            _ => {
-                                                let _ = std::io::stdout().write_all(b"n\r\n");
-                                                let _ = std::io::stdout().flush();
-                                                return false;
-                                            }
-                                        },
-                                        _ => return false,
-                                    }
-                                }
+
+                                let hl = unsafe { &mut *hl_ptr };
+                                let rend = unsafe { &mut *rend_ptr };
+                                let back = unsafe { &mut *back_ptr };
+                                let scr = unsafe { &mut *scroll_ptr };
+
+                                hl.push(render_permission_pending(tool_name, &summary));
+                                let perm_line_idx = hl.len() - 1;
+
+                                *scr = compute_max_scroll(hl, rend);
+                                render_frame(rend, hl, &editor, *scr);
+                                let _ = rend.flush(back);
+                                let _ = back.flush();
+
+                                // Block-read a single byte from stdin.
+                                // The EventLoop set stdin to O_NONBLOCK; we temporarily
+                                // switch back to blocking mode for this read.
+                                let allowed = blocking_read_yn();
+
+                                // Replace pending line with a result line
+                                hl.truncate(perm_line_idx);
+                                hl.push(render_permission_result(tool_name, &summary, allowed));
+
+                                *scr = compute_max_scroll(hl, rend);
+                                render_frame(rend, hl, &editor, *scr);
+                                let _ = rend.flush(back);
+                                let _ = back.flush();
+
+                                allowed
                             };
                             let agent_result =
                                 run_agent(line, &mut agent_ctx, &mut ask_fn, |text| {
                                     response.push_str(text);
 
+                                    let hl = unsafe { &mut *hl_ptr };
+                                    let rend = unsafe { &mut *rend_ptr };
+                                    let back = unsafe { &mut *back_ptr };
+                                    let scr = unsafe { &mut *scroll_ptr };
+
                                     if response.trim().is_empty() {
                                         // Still waiting — animate the spinner
                                         let elapsed =
                                             stream_start.elapsed().as_millis() as u64;
-                                        history_lines.truncate(response_line_idx);
-                                        history_lines.push(Line::from_spans(vec![
+                                        hl.truncate(response_line_idx);
+                                        hl.push(Line::from_spans(vec![
                                             Span::styled(
                                                 format!("{} ", spinner.frame_at(elapsed)),
                                                 theme::CLAUDE,
@@ -196,19 +216,14 @@ pub fn run() -> crate::Result<()> {
                                         ]));
                                     } else {
                                         // First real text: replace spinner with the message
-                                        history_lines.truncate(response_line_idx);
-                                        history_lines.extend(format_assistant_message(&response));
+                                        hl.truncate(response_line_idx);
+                                        hl.extend(format_assistant_message(&response));
                                     }
 
-                                    scroll = compute_max_scroll(&history_lines, &renderer);
-                                    render_frame(
-                                        &mut renderer,
-                                        &history_lines,
-                                        &editor,
-                                        scroll,
-                                    );
-                                    let _ = renderer.flush(&mut backend);
-                                    let _ = backend.flush();
+                                    *scr = compute_max_scroll(hl, rend);
+                                    render_frame(rend, hl, &editor, *scr);
+                                    let _ = rend.flush(back);
+                                    let _ = back.flush();
                                 });
 
                             match agent_result {
@@ -260,6 +275,43 @@ pub fn run() -> crate::Result<()> {
                 Event::Tick => {}
             }
         }
+    }
+}
+
+/// Read a single keypress from stdin in blocking mode, returning true for y/Y.
+///
+/// The EventLoop sets stdin to O_NONBLOCK. We temporarily restore blocking mode,
+/// read one byte, then set non-blocking again. This is safe because ask_fn is
+/// called between tool calls (not during SSE streaming) on the same thread.
+fn blocking_read_yn() -> bool {
+    // FFI: toggle O_NONBLOCK on stdin (fd 0)
+    const F_GETFL: i32 = 3;
+    const F_SETFL: i32 = 4;
+    const O_NONBLOCK: i32 = 0o4000;
+
+    unsafe extern "C" {
+        fn fcntl(fd: i32, cmd: i32, ...) -> i32;
+        fn read(fd: i32, buf: *mut u8, count: usize) -> isize;
+    }
+
+    // Save current flags and clear O_NONBLOCK
+    let flags = unsafe { fcntl(0, F_GETFL) };
+    if flags >= 0 {
+        unsafe { fcntl(0, F_SETFL, flags & !O_NONBLOCK) };
+    }
+
+    let mut buf = [0u8; 1];
+    let n = unsafe { read(0, buf.as_mut_ptr(), 1) };
+
+    // Restore non-blocking mode
+    if flags >= 0 {
+        unsafe { fcntl(0, F_SETFL, flags) };
+    }
+
+    if n == 1 {
+        matches!(buf[0], b'y' | b'Y')
+    } else {
+        false
     }
 }
 

@@ -4,6 +4,7 @@ mod input_test;
 mod layout_test;
 mod message_style_test;
 mod paragraph_test;
+mod permission_test;
 mod renderer_test;
 mod spinner_test;
 mod status_test;
