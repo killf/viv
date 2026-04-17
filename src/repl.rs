@@ -21,10 +21,8 @@ pub fn run() -> crate::Result<()> {
     let client = LLMClient::new(config);
 
     let mut backend = LinuxBackend::new();
+    backend.enter_alt_screen()?;
     backend.enable_raw_mode()?;
-
-    // Clear screen on startup
-    backend.write(b"\x1b[2J\x1b[H")?;
     backend.flush()?;
 
     let size = backend.size()?;
@@ -91,7 +89,7 @@ pub fn run() -> crate::Result<()> {
                             // Handle /exit command
                             if line.trim() == "/exit" {
                                 backend.disable_raw_mode()?;
-                                backend.write(b"\x1b[2J\x1b[H")?;
+                                backend.leave_alt_screen()?;
                                 backend.write(b"Bye!\n")?;
                                 backend.flush()?;
                                 return Ok(());
@@ -204,7 +202,7 @@ pub fn run() -> crate::Result<()> {
 
                         EditAction::Exit => {
                             backend.disable_raw_mode()?;
-                            backend.write(b"\x1b[2J\x1b[H")?;
+                            backend.leave_alt_screen()?;
                             backend.write(b"Bye!\n")?;
                             backend.flush()?;
                             return Ok(());
