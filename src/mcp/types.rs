@@ -5,21 +5,25 @@ use crate::Error;
 // Server capabilities from initialize response
 // ---------------------------------------------------------------------------
 
+#[derive(Clone)]
 pub struct ServerCapabilities {
     pub tools: Option<ToolsCapability>,
     pub resources: Option<ResourcesCapability>,
     pub prompts: Option<PromptsCapability>,
 }
 
+#[derive(Clone)]
 pub struct ToolsCapability {
     pub list_changed: bool,
 }
 
+#[derive(Clone)]
 pub struct ResourcesCapability {
     pub subscribe: bool,
     pub list_changed: bool,
 }
 
+#[derive(Clone)]
 pub struct PromptsCapability {
     pub list_changed: bool,
 }
@@ -84,7 +88,7 @@ impl PromptsCapability {
 // MCP tool definition
 // ---------------------------------------------------------------------------
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct McpTool {
     pub name: String,
     pub description: Option<String>,
