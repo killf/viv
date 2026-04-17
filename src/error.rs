@@ -14,6 +14,8 @@ pub enum Error {
     Http(String),
     /// LLM API errors (status code + message)
     LLM { status: u16, message: String },
+    /// Tool execution errors
+    Tool(String),
 }
 
 impl fmt::Display for Error {
@@ -25,6 +27,7 @@ impl fmt::Display for Error {
             Error::Tls(msg) => write!(f, "TLS error: {}", msg),
             Error::Http(msg) => write!(f, "HTTP error: {}", msg),
             Error::LLM { status, message } => write!(f, "LLM error {}: {}", status, message),
+            Error::Tool(msg) => write!(f, "tool error: {}", msg),
         }
     }
 }
