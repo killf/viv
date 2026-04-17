@@ -14,6 +14,7 @@ const EINTR: i32 = 4;
 pub const EPOLL_CTL_ADD: i32 = 1;
 pub const EPOLL_CTL_DEL: i32 = 2;
 pub const EPOLLIN: u32 = 0x001;
+pub const EPOLLOUT: u32 = 0x004;
 
 #[repr(C, packed)]
 #[derive(Clone, Copy)]
@@ -45,6 +46,18 @@ impl Epoll {
         let ret = unsafe { epoll_ctl(self.fd, EPOLL_CTL_ADD, target_fd, &mut event) };
         if ret < 0 {
             return Err(crate::Error::Terminal("epoll_ctl add failed".to_string()));
+        }
+        Ok(())
+    }
+
+    pub fn add_writable(&self, target_fd: RawFd, token: u64) -> crate::Result<()> {
+        let mut event = EpollEvent {
+            events: EPOLLOUT,
+            data: token,
+        };
+        let ret = unsafe { epoll_ctl(self.fd, EPOLL_CTL_ADD, target_fd, &mut event) };
+        if ret < 0 {
+            return Err(crate::Error::Terminal("epoll_ctl add_writable failed".to_string()));
         }
         Ok(())
     }

@@ -38,6 +38,16 @@ impl Reactor {
         token
     }
 
+    /// 注册 fd 可写事件，返回 token
+    pub fn register_writable(&mut self, fd: RawFd, waker: Waker) -> u64 {
+        let token = self.next_token;
+        self.next_token += 1;
+        self.epoll.add_writable(fd, token).expect("epoll add_writable");
+        self.wakers.insert(token, waker);
+        self.token_to_fd.insert(token, fd);
+        token
+    }
+
     /// 注销 token（fd 不再等待）
     pub fn remove(&mut self, token: u64) {
         if let Some(&fd) = self.token_to_fd.get(&token) {

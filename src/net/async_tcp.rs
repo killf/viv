@@ -108,7 +108,7 @@ impl<'a> Future for WriteFuture<'a> {
                 Ok(n) => this.written += n,
                 Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
                     let fd = this.stream.inner.as_raw_fd();
-                    let token = reactor().lock().unwrap().register_readable(fd, cx.waker().clone());
+                    let token = reactor().lock().unwrap().register_writable(fd, cx.waker().clone());
                     this.token = Some(token);
                     return Poll::Pending;
                 }
