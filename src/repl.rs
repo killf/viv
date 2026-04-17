@@ -144,8 +144,9 @@ pub fn run() -> crate::Result<()> {
                             renderer.flush(&mut backend)?;
                             backend.flush()?;
 
+                            let mut ask_fn_stub = |_name: &str, _input: &crate::json::JsonValue| -> bool { true };
                             let agent_result =
-                                run_agent(line, &mut agent_ctx, "", "", |text| {
+                                run_agent(line, &mut agent_ctx, &mut ask_fn_stub, |text| {
                                     response.push_str(text);
 
                                     if response.trim().is_empty() {

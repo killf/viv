@@ -3,6 +3,8 @@ use crate::llm::{LLMClient, ModelTier};
 use crate::agent::message::{Message, PromptCache};
 use crate::memory::store::MemoryStore;
 use crate::memory::index::MemoryIndex;
+use crate::tools::ToolRegistry;
+use crate::permissions::PermissionManager;
 
 pub struct AgentContext {
     pub messages: Vec<Message>,
@@ -11,6 +13,8 @@ pub struct AgentContext {
     pub store: Arc<MemoryStore>,
     pub index: Arc<Mutex<MemoryIndex>>,
     pub config: AgentConfig,
+    pub tool_registry: ToolRegistry,
+    pub permission_manager: PermissionManager,
 }
 
 #[derive(Clone)]
@@ -43,6 +47,7 @@ impl AgentContext {
     pub fn new(llm: Arc<LLMClient>, base_dir: std::path::PathBuf) -> crate::Result<Self> {
         let store = Arc::new(MemoryStore::new(base_dir)?);
         let index = Arc::new(Mutex::new(MemoryIndex::load(&store)?));
+        let tool_registry = ToolRegistry::default_tools(Arc::clone(&llm));
         Ok(AgentContext {
             messages: vec![],
             prompt_cache: PromptCache::default(),
@@ -50,6 +55,8 @@ impl AgentContext {
             store,
             index,
             config: AgentConfig::default(),
+            tool_registry,
+            permission_manager: PermissionManager::default(),
         })
     }
 }

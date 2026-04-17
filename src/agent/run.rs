@@ -1,4 +1,5 @@
 use crate::Result;
+use crate::json::JsonValue;
 use crate::agent::context::AgentContext;
 use crate::agent::message::{Message, ContentBlock};
 use crate::agent::prompt::build_system_prompt;
@@ -13,8 +14,7 @@ pub struct AgentOutput {
 pub fn run_agent(
     input: String,
     ctx: &mut AgentContext,
-    tool_descriptions: &str,
-    skill_contents: &str,
+    ask_fn: &mut dyn FnMut(&str, &JsonValue) -> bool,
     mut on_text: impl FnMut(&str),
 ) -> Result<AgentOutput> {
     // 1. Retrieve relevant memories
@@ -24,7 +24,7 @@ pub fn run_agent(
     };
 
     // 2. Build system prompt (cache-first)
-    let system = build_system_prompt(tool_descriptions, skill_contents, &memories, &mut ctx.prompt_cache);
+    let system = build_system_prompt("", "", &memories, &mut ctx.prompt_cache);
 
     // 3. Append user message
     ctx.messages.push(Message::user_text(input));
@@ -36,6 +36,8 @@ pub fn run_agent(
     let mut final_text = String::new();
     let mut iterations = 0;
 
+    let tools_json = ctx.tool_registry.to_api_json();
+
     loop {
         if iterations >= ctx.config.max_iterations { break; }
         iterations += 1;
@@ -44,7 +46,7 @@ pub fn run_agent(
         let stream_result = ctx.llm.stream_agent(
             &system.blocks,
             &ctx.messages,
-            "",
+            &tools_json,
             ctx.config.model_tier.clone(),
             &mut on_text,
         )?;
@@ -64,16 +66,33 @@ pub fn run_agent(
             break;
         }
 
-        // 8. Execute tools (stub: returns "tool not yet implemented")
-        let tool_results: Vec<ContentBlock> = stream_result.tool_uses.iter().map(|tu| {
-            if let ContentBlock::ToolUse { id, .. } = tu {
-                ContentBlock::ToolResult {
+        // 8. Execute tools with permission gating
+        let mut tool_results: Vec<ContentBlock> = Vec::new();
+        for tu in &stream_result.tool_uses {
+            if let ContentBlock::ToolUse { id, name, input } = tu {
+                let result = match ctx.tool_registry.get(name) {
+                    None => Err(crate::Error::Tool(format!("unknown tool: {}", name))),
+                    Some(tool) => {
+                        // tool borrows ctx.tool_registry (immutably);
+                        // ctx.permission_manager is a separate field — Rust NLL allows this split borrow
+                        if ctx.permission_manager.check(tool, input, ask_fn) {
+                            tool.execute(input)
+                        } else {
+                            Err(crate::Error::Tool("permission denied by user".into()))
+                        }
+                    }
+                };
+                let (content, is_error) = match result {
+                    Ok(text) => (text, false),
+                    Err(e) => (e.to_string(), true),
+                };
+                tool_results.push(ContentBlock::ToolResult {
                     tool_use_id: id.clone(),
-                    content: vec![ContentBlock::Text("Tool not yet implemented.".into())],
-                    is_error: false,
-                }
-            } else { unreachable!() }
-        }).collect();
+                    content: vec![ContentBlock::Text(content)],
+                    is_error,
+                });
+            }
+        }
 
         // 9. Append tool results as user message (Anthropic API requirement)
         ctx.messages.push(Message::User(tool_results));

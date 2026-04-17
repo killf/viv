@@ -45,8 +45,31 @@ impl ToolRegistry {
     }
 
     pub fn default_tools(llm: std::sync::Arc<crate::llm::LLMClient>) -> Self {
-        let _ = llm; // populated in Task 8
-        ToolRegistry::new()
+        use crate::tools::bash::{BashBackgroundTool, BashTool};
+        use crate::tools::file::edit::{EditTool, MultiEditTool};
+        use crate::tools::file::glob::GlobTool;
+        use crate::tools::file::grep::GrepTool;
+        use crate::tools::file::ls::LsTool;
+        use crate::tools::file::read::ReadTool;
+        use crate::tools::file::write::WriteTool;
+        use crate::tools::todo::{TodoReadTool, TodoWriteTool};
+        use crate::tools::web::WebFetchTool;
+
+        let todo_path = std::path::PathBuf::from(".viv/todo.json");
+        let mut reg = ToolRegistry::new();
+        reg.register(Box::new(BashTool));
+        reg.register(Box::new(BashBackgroundTool));
+        reg.register(Box::new(ReadTool));
+        reg.register(Box::new(WriteTool));
+        reg.register(Box::new(EditTool));
+        reg.register(Box::new(MultiEditTool));
+        reg.register(Box::new(GlobTool));
+        reg.register(Box::new(GrepTool));
+        reg.register(Box::new(LsTool));
+        reg.register(Box::new(TodoWriteTool::new(todo_path.clone())));
+        reg.register(Box::new(TodoReadTool::new(todo_path)));
+        reg.register(Box::new(WebFetchTool::new(llm)));
+        reg
     }
 }
 
