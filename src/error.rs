@@ -12,8 +12,8 @@ pub enum Error {
     Tls(String),
     /// HTTP protocol errors
     Http(String),
-    /// API errors (status code + message)
-    Api { status: u16, message: String },
+    /// LLM API errors (status code + message)
+    Llm { status: u16, message: String },
 }
 
 impl fmt::Display for Error {
@@ -24,7 +24,7 @@ impl fmt::Display for Error {
             Error::Io(err) => write!(f, "IO error: {}", err),
             Error::Tls(msg) => write!(f, "TLS error: {}", msg),
             Error::Http(msg) => write!(f, "HTTP error: {}", msg),
-            Error::Api { status, message } => write!(f, "API error {}: {}", status, message),
+            Error::Llm { status, message } => write!(f, "LLM error {}: {}", status, message),
         }
     }
 }

@@ -90,7 +90,7 @@ impl LlmConfig {
     /// - `VIV_MODEL_SLOW` — optional, falls back to `VIV_MODEL`, then default
     /// - `VIV_MODEL` — optional fallback for all three tiers
     pub fn from_env() -> crate::Result<Self> {
-        let api_key = std::env::var("VIV_API_KEY").map_err(|_| Error::Api {
+        let api_key = std::env::var("VIV_API_KEY").map_err(|_| Error::Llm {
             status: 0,
             message: "VIV_API_KEY not set".into(),
         })?;
@@ -237,7 +237,7 @@ impl LlmClient {
                         }
                         let body_bytes = &raw[pos + 4..];
                         let body_str = String::from_utf8_lossy(body_bytes).into_owned();
-                        return Err(Error::Api { status, message: body_str });
+                        return Err(Error::Llm { status, message: body_str });
                     }
                 }
             }
