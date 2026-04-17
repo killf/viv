@@ -1,3 +1,5 @@
+use std::pin::Pin;
+use std::future::Future;
 use std::io::{Read, Write};
 use std::sync::Arc;
 use crate::core::json::JsonValue;
@@ -30,7 +32,10 @@ impl Tool for WebFetchTool {
         }"#).unwrap()
     }
 
-    fn execute(&self, input: &JsonValue) -> crate::Result<String> {
+    fn execute(&self, input: &JsonValue) -> Pin<Box<dyn Future<Output = crate::Result<String>> + Send + '_>> {
+        let input = input.clone();
+        let llm = Arc::clone(&self.llm);
+        Box::pin(async move {
         let url = input.get("url").and_then(|v| v.as_str())
             .ok_or_else(|| Error::Tool("missing 'url'".into()))?;
         let prompt = input.get("prompt").and_then(|v| v.as_str())
@@ -44,8 +49,9 @@ impl Tool for WebFetchTool {
         let user_msg = format!("Answer this about the page: {}\n\nPage:\n{}", prompt, truncated);
         let messages = vec![Message::user_text(user_msg)];
         let mut response = String::new();
-        self.llm.stream_agent(&system, &messages, "", ModelTier::Fast, |t| response.push_str(t))?;
+        llm.stream_agent(&system, &messages, "", ModelTier::Fast, |t| response.push_str(t))?;
         Ok(response)
+        })
     }
 
     fn permission_level(&self) -> PermissionLevel { PermissionLevel::Execute }

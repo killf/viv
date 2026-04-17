@@ -2,6 +2,7 @@ use std::fs;
 use viv::core::json::JsonValue;
 use viv::tools::Tool;
 use viv::tools::todo::{TodoReadTool, TodoWriteTool};
+use viv::tools::poll_to_completion;
 
 fn tempdir() -> std::path::PathBuf {
     let p = std::env::temp_dir().join(format!("viv_todo_{}", nanos()));
@@ -20,10 +21,10 @@ fn todo_write_then_read_roundtrip() {
     let input = JsonValue::parse(
         r#"{"todos":[{"id":"1","content":"buy milk","status":"pending"}]}"#
     ).unwrap();
-    write.execute(&input).unwrap();
+    poll_to_completion(write.execute(&input)).unwrap();
 
     let read = TodoReadTool::new(path);
-    let result = read.execute(&JsonValue::Object(vec![])).unwrap();
+    let result = poll_to_completion(read.execute(&JsonValue::Object(vec![]))).unwrap();
     assert!(result.contains("buy milk"));
     assert!(result.contains("pending"));
 }
@@ -32,6 +33,6 @@ fn todo_write_then_read_roundtrip() {
 fn todo_read_returns_empty_array_when_no_file() {
     let path = std::path::PathBuf::from("/nonexistent/viv_todo_missing.json");
     let read = TodoReadTool::new(path);
-    let result = read.execute(&JsonValue::Object(vec![])).unwrap();
+    let result = poll_to_completion(read.execute(&JsonValue::Object(vec![]))).unwrap();
     assert_eq!(result, "[]");
 }

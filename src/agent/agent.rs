@@ -202,7 +202,10 @@ impl Agent {
                                     name: name.clone(),
                                     input: format_tool_input(input),
                                 });
-                                tool.execute(input)
+                                // Temporary bridge: poll the async execute future to completion.
+                                // All current tool futures wrap synchronous code, so this works.
+                                // Task 8 will make the Agent fully async and remove this bridge.
+                                crate::tools::poll_to_completion(tool.execute(input))
                             }
                         }
                     } else {

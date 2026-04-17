@@ -1,3 +1,5 @@
+use std::pin::Pin;
+use std::future::Future;
 use crate::error::Error;
 use crate::core::json::JsonValue;
 use crate::tools::{PermissionLevel, Tool};
@@ -22,7 +24,9 @@ impl Tool for WriteTool {
         }"#).unwrap()
     }
 
-    fn execute(&self, input: &JsonValue) -> crate::Result<String> {
+    fn execute(&self, input: &JsonValue) -> Pin<Box<dyn Future<Output = crate::Result<String>> + Send + '_>> {
+        let input = input.clone();
+        Box::pin(async move {
         let path = input.get("file_path").and_then(|v| v.as_str())
             .ok_or_else(|| Error::Tool("missing 'file_path'".into()))?;
         let content = input.get("content").and_then(|v| v.as_str())
@@ -34,6 +38,7 @@ impl Tool for WriteTool {
         std::fs::write(path, content)
             .map_err(|e| Error::Tool(format!("write '{}': {}", path, e)))?;
         Ok(format!("Wrote {} bytes to {}", content.len(), path))
+        })
     }
 
     fn permission_level(&self) -> PermissionLevel { PermissionLevel::Write }

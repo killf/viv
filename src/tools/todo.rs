@@ -1,3 +1,5 @@
+use std::pin::Pin;
+use std::future::Future;
 use std::path::PathBuf;
 use crate::error::Error;
 use crate::core::json::JsonValue;
@@ -38,15 +40,19 @@ impl Tool for TodoWriteTool {
         }"#).unwrap()
     }
 
-    fn execute(&self, input: &JsonValue) -> crate::Result<String> {
+    fn execute(&self, input: &JsonValue) -> Pin<Box<dyn Future<Output = crate::Result<String>> + Send + '_>> {
+        let input = input.clone();
+        let path = self.path.clone();
+        Box::pin(async move {
         let todos = input.get("todos").ok_or_else(|| Error::Tool("missing 'todos'".into()))?;
-        if let Some(parent) = self.path.parent() {
+        if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| Error::Tool(e.to_string()))?;
         }
-        std::fs::write(&self.path, format!("{}", todos))
+        std::fs::write(&path, format!("{}", todos))
             .map_err(|e| Error::Tool(e.to_string()))?;
         let count = todos.as_array().map(|a| a.len()).unwrap_or(0);
         Ok(format!("Wrote {} todo(s)", count))
+        })
     }
 
     fn permission_level(&self) -> PermissionLevel { PermissionLevel::Write }
@@ -68,9 +74,12 @@ impl Tool for TodoReadTool {
         JsonValue::parse(r#"{"type":"object","properties":{}}"#).unwrap()
     }
 
-    fn execute(&self, _input: &JsonValue) -> crate::Result<String> {
-        if !self.path.exists() { return Ok("[]".into()); }
-        std::fs::read_to_string(&self.path).map_err(|e| Error::Tool(e.to_string()))
+    fn execute(&self, _input: &JsonValue) -> Pin<Box<dyn Future<Output = crate::Result<String>> + Send + '_>> {
+        let path = self.path.clone();
+        Box::pin(async move {
+        if !path.exists() { return Ok("[]".into()); }
+        std::fs::read_to_string(&path).map_err(|e| Error::Tool(e.to_string()))
+        })
     }
 
     fn permission_level(&self) -> PermissionLevel { PermissionLevel::ReadOnly }

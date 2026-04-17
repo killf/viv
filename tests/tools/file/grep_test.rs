@@ -2,6 +2,7 @@ use std::fs;
 use viv::core::json::JsonValue;
 use viv::tools::Tool;
 use viv::tools::file::grep::GrepTool;
+use viv::tools::poll_to_completion;
 
 fn tempdir() -> std::path::PathBuf {
     let p = std::env::temp_dir().join(format!("viv_grep_{}", nanos()));
@@ -21,7 +22,7 @@ fn grep_files_with_matches_default_mode() {
     let input = JsonValue::parse(&format!(
         r#"{{"pattern":"world","path":"{}"}}"#, dir.display()
     )).unwrap();
-    let result = GrepTool.execute(&input).unwrap();
+    let result = poll_to_completion(GrepTool.execute(&input)).unwrap();
     assert!(result.contains("a.txt"));
     assert!(result.contains("b.txt"));
     assert!(!result.contains("c.txt"));
@@ -34,7 +35,7 @@ fn grep_content_mode_shows_matching_lines() {
     let input = JsonValue::parse(&format!(
         r#"{{"pattern":"foo","path":"{}","output_mode":"content"}}"#, dir.display()
     )).unwrap();
-    let result = GrepTool.execute(&input).unwrap();
+    let result = poll_to_completion(GrepTool.execute(&input)).unwrap();
     assert!(result.contains("foo bar"));
     assert!(!result.contains("line1"));
 }
@@ -47,7 +48,7 @@ fn grep_glob_filter_limits_files() {
     let input = JsonValue::parse(&format!(
         r#"{{"pattern":"main","path":"{}","glob":"*.rs"}}"#, dir.display()
     )).unwrap();
-    let result = GrepTool.execute(&input).unwrap();
+    let result = poll_to_completion(GrepTool.execute(&input)).unwrap();
     assert!(result.contains("a.rs"));
     assert!(!result.contains("b.txt"));
 }

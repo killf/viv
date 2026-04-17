@@ -1,3 +1,5 @@
+use std::pin::Pin;
+use std::future::Future;
 use crate::error::Error;
 use crate::core::json::JsonValue;
 use crate::tools::{PermissionLevel, Tool};
@@ -23,7 +25,9 @@ impl Tool for GlobTool {
         }"#).unwrap()
     }
 
-    fn execute(&self, input: &JsonValue) -> crate::Result<String> {
+    fn execute(&self, input: &JsonValue) -> Pin<Box<dyn Future<Output = crate::Result<String>> + Send + '_>> {
+        let input = input.clone();
+        Box::pin(async move {
         let pattern = input.get("pattern").and_then(|v| v.as_str())
             .ok_or_else(|| Error::Tool("missing 'pattern'".into()))?;
         let root = input.get("path").and_then(|v| v.as_str()).unwrap_or(".");
@@ -34,6 +38,7 @@ impl Tool for GlobTool {
             .map_err(|e| Error::Tool(format!("glob walk: {}", e)))?;
         matches.sort();
         Ok(matches.iter().map(|p| p.display().to_string()).collect::<Vec<_>>().join("\n"))
+        })
     }
 
     fn permission_level(&self) -> PermissionLevel { PermissionLevel::ReadOnly }

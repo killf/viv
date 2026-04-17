@@ -1,5 +1,7 @@
+use std::pin::Pin;
+use std::future::Future;
 use viv::core::json::JsonValue;
-use viv::tools::{PermissionLevel, Tool, ToolRegistry};
+use viv::tools::{PermissionLevel, Tool, ToolRegistry, poll_to_completion};
 
 struct EchoTool;
 
@@ -9,8 +11,11 @@ impl Tool for EchoTool {
     fn input_schema(&self) -> JsonValue {
         JsonValue::parse(r#"{"type":"object","properties":{"text":{"type":"string"}},"required":["text"]}"#).unwrap()
     }
-    fn execute(&self, input: &JsonValue) -> viv::Result<String> {
-        Ok(input.get("text").and_then(|v| v.as_str()).unwrap_or("").to_string())
+    fn execute(&self, input: &JsonValue) -> Pin<Box<dyn Future<Output = viv::Result<String>> + Send + '_>> {
+        let input = input.clone();
+        Box::pin(async move {
+            Ok(input.get("text").and_then(|v| v.as_str()).unwrap_or("").to_string())
+        })
     }
     fn permission_level(&self) -> PermissionLevel { PermissionLevel::ReadOnly }
 }
@@ -36,5 +41,5 @@ fn registry_to_api_json_has_required_fields() {
 #[test]
 fn tool_execute_returns_input_text() {
     let input = JsonValue::parse(r#"{"text":"hello"}"#).unwrap();
-    assert_eq!(EchoTool.execute(&input).unwrap(), "hello");
+    assert_eq!(poll_to_completion(EchoTool.execute(&input)).unwrap(), "hello");
 }
