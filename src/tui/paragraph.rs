@@ -95,10 +95,8 @@ fn wrap_line(line: &Line, width: usize) -> Vec<Vec<StyledChar>> {
         }
         // Collect trailing spaces
         let mut spaces: Vec<StyledChar> = Vec::new();
-        let mut spaces_width: usize = 0;
         while i < chars.len() && chars[i].ch == ' ' {
             spaces.push(StyledChar { ch: ' ', fg: chars[i].fg, bold: chars[i].bold, width: 1 });
-            spaces_width += 1;
             i += 1;
         }
 
