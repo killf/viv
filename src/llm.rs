@@ -437,7 +437,7 @@ fn parse_agent_stream(
 
     let hend = match header_end {
         Some(h) => h,
-        None => return Ok(StreamResult { text_blocks, tool_uses, stop_reason, input_tokens: 0, output_tokens: 0 }),
+        None => return Ok(StreamResult { text_blocks, tool_uses, stop_reason, input_tokens, output_tokens }),
     };
     let body_str = String::from_utf8_lossy(&raw[hend..]);
 
@@ -499,7 +499,9 @@ fn parse_agent_stream(
             "message_start" => {
                 if let Some(usage) = json.get("message").and_then(|m| m.get("usage")) {
                     input_tokens += usage.get("input_tokens")
-                        .and_then(|v| v.as_i64()).unwrap_or(0) as u64;
+                        .and_then(|v| v.as_i64())
+                        .and_then(|n| u64::try_from(n).ok())
+                        .unwrap_or(0);
                 }
             }
             "message_delta" => {
@@ -511,7 +513,9 @@ fn parse_agent_stream(
                 }
                 if let Some(usage) = json.get("usage") {
                     output_tokens += usage.get("output_tokens")
-                        .and_then(|v| v.as_i64()).unwrap_or(0) as u64;
+                        .and_then(|v| v.as_i64())
+                        .and_then(|n| u64::try_from(n).ok())
+                        .unwrap_or(0);
                 }
             }
             _ => {}
