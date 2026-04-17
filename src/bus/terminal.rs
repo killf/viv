@@ -52,6 +52,12 @@ pub struct TerminalUI {
     current_response: String,
     /// (line_idx, tool_name, input_summary) — stored when PermissionRequest arrives
     pending_permission: Option<(usize, String, String)>,
+    /// Set to true after Ctrl+D sends AgentEvent::Quit. While true, we keep the
+    /// UI running and wait for AgentMessage::Evolved so the user sees the
+    /// "evolving memories" spinner instead of a silent freeze.
+    quitting: bool,
+    quitting_line_idx: Option<usize>,
+    quitting_start: Option<std::time::Instant>,
 }
 
 impl TerminalUI {
@@ -97,6 +103,9 @@ impl TerminalUI {
             response_line_idx: None,
             current_response: String::new(),
             pending_permission: None,
+            quitting: false,
+            quitting_line_idx: None,
+            quitting_start: None,
         })
     }
 
@@ -109,8 +118,15 @@ impl TerminalUI {
             loop {
                 match self.msg_rx.try_recv() {
                     Ok(msg) => {
+                        let is_evolved = matches!(msg, AgentMessage::Evolved);
                         self.handle_agent_message(msg);
                         dirty = true;
+                        if is_evolved {
+                            // Agent finished the pre-shutdown evolve step —
+                            // safe to tear down the TUI and return.
+                            self.cleanup()?;
+                            return Ok(());
+                        }
                     }
                     Err(std::sync::mpsc::TryRecvError::Empty) => break,
                     Err(std::sync::mpsc::TryRecvError::Disconnected) => {
@@ -137,6 +153,31 @@ impl TerminalUI {
                         ),
                         Span::styled(
                             format!("{}\u{2026}", self.spinner_verb),
+                            theme::DIM,
+                            false,
+                        ),
+                    ]));
+                    dirty = true;
+                }
+            }
+
+            // Animate the shutdown spinner while waiting for the agent to
+            // finish `evolve()` after Ctrl+D.
+            if self.quitting {
+                if let (Some(start), Some(idx)) =
+                    (self.quitting_start, self.quitting_line_idx)
+                {
+                    let elapsed = start.elapsed().as_millis() as u64;
+                    self.history_lines.truncate(idx);
+                    self.history_lines.push(Line::from_spans(vec![
+                        Span::styled(
+                            format!("{} ", self.spinner.frame_at(elapsed)),
+                            theme::CLAUDE,
+                            false,
+                        ),
+                        Span::styled(
+                            "\u{8fdb}\u{5316}\u{8bb0}\u{5fc6}\u{4e2d}\u{2026} (Ctrl+C \u{5f3a}\u{5236}\u{9000}\u{51fa})"
+                                .to_string(),
                             theme::DIM,
                             false,
                         ),
@@ -178,12 +219,21 @@ impl TerminalUI {
                 match event {
                     Event::Key(key) => {
                         dirty = true;
+                        if self.quitting {
+                            // Shutdown in progress — only Ctrl+C force-exits;
+                            // every other key is swallowed so the user can't
+                            // fire off new input while the agent is evolving.
+                            if key == KeyEvent::CtrlC {
+                                self.cleanup()?;
+                                return Ok(());
+                            }
+                            continue;
+                        }
                         if let Some(action) = self.handle_key(key) {
                             match action {
                                 UiAction::Quit => {
                                     let _ = self.event_tx.send(AgentEvent::Quit);
-                                    self.cleanup()?;
-                                    return Ok(());
+                                    self.enter_quitting_mode();
                                 }
                             }
                         }
@@ -415,6 +465,17 @@ impl TerminalUI {
         self.backend.write(b"Bye!\n")?;
         self.backend.flush()?;
         Ok(())
+    }
+
+    /// Enter shutdown state after Ctrl+D: record the spinner anchor and keep
+    /// the UI alive so the run loop keeps pumping the message channel until
+    /// the agent signals `Evolved`.
+    fn enter_quitting_mode(&mut self) {
+        self.quitting = true;
+        self.quitting_start = Some(std::time::Instant::now());
+        self.history_lines.push(Line::raw(""));
+        self.quitting_line_idx = Some(self.history_lines.len() - 1);
+        self.scroll = compute_max_scroll(&self.history_lines, &self.renderer, &self.editor);
     }
 }
 
