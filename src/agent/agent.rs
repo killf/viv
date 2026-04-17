@@ -1,18 +1,24 @@
-use std::sync::{Arc, Mutex};
-use std::sync::mpsc::{Receiver, Sender};
 use crate::Result;
-use crate::bus::{AgentEvent, AgentMessage};
-use crate::agent::message::{Message, ContentBlock, PromptCache};
-use crate::agent::prompt::{build_system_prompt, SystemPrompt};
 use crate::agent::evolution::evolve_from_session;
+use crate::agent::message::{ContentBlock, Message, PromptCache};
+use crate::agent::prompt::{SystemPrompt, build_system_prompt};
+use crate::bus::{AgentEvent, AgentMessage};
 use crate::core::json::JsonValue;
 use crate::llm::{LLMClient, LLMConfig, ModelTier};
-use crate::memory::store::MemoryStore;
+use crate::mcp::McpManager;
+use crate::mcp::config::McpConfig;
+use crate::mcp::tools::{
+    GetMcpPromptTool, ListMcpPromptsTool, ListMcpResourcesTool, McpToolProxy, ReadMcpResourceTool,
+};
+use crate::memory::compaction::{compact_if_needed, estimate_tokens};
 use crate::memory::index::MemoryIndex;
 use crate::memory::retrieval::retrieve_relevant;
-use crate::memory::compaction::{compact_if_needed, estimate_tokens};
-use crate::tools::{ToolRegistry, PermissionLevel};
+use crate::memory::store::MemoryStore;
 use crate::permissions::PermissionManager;
+use crate::tools::poll_to_completion;
+use crate::tools::{PermissionLevel, ToolRegistry};
+use std::sync::mpsc::{Receiver, Sender};
+use std::sync::{Arc, Mutex};
 
 // ── PermissionMode ────────────────────────────────────────────────────────────
 
@@ -61,6 +67,7 @@ pub struct Agent {
     output_tokens: u64,
     event_rx: Receiver<AgentEvent>,
     msg_tx: Sender<AgentMessage>,
+    mcp: Arc<Mutex<McpManager>>,
 }
 
 impl Agent {
@@ -74,7 +81,34 @@ impl Agent {
         let llm = Arc::new(LLMClient::new(llm_config));
         let store = Arc::new(MemoryStore::new(config.memory_dir.clone())?);
         let index = Arc::new(Mutex::new(MemoryIndex::load(&store)?));
-        let tools = ToolRegistry::default_tools(Arc::clone(&llm));
+        let mut tools = ToolRegistry::default_tools(Arc::clone(&llm));
+
+        // Load MCP config (if file doesn't exist, returns empty config)
+        let mcp_config = McpConfig::load(".viv/settings.json")?;
+
+        // Connect to MCP servers (uses poll_to_completion since Agent::new is sync)
+        let mcp_manager = poll_to_completion(Box::pin(McpManager::from_config(&mcp_config)));
+        let mcp = Arc::new(Mutex::new(mcp_manager));
+
+        // Register MCP tool proxies
+        {
+            let mgr = mcp.lock().unwrap();
+            for handle in &mgr.servers {
+                for tool in &handle.tools {
+                    tools.register(Box::new(McpToolProxy::new(
+                        &handle.name,
+                        &tool.name,
+                        tool.description.as_deref().unwrap_or(""),
+                        tool.input_schema.clone(),
+                        mcp.clone(),
+                    )));
+                }
+            }
+        }
+        tools.register(Box::new(ListMcpResourcesTool::new(mcp.clone())));
+        tools.register(Box::new(ReadMcpResourceTool::new(mcp.clone())));
+        tools.register(Box::new(ListMcpPromptsTool::new(mcp.clone())));
+        tools.register(Box::new(GetMcpPromptTool::new(mcp.clone())));
 
         let _ = msg_tx.send(AgentMessage::Ready { model: model_name });
 
@@ -91,6 +125,7 @@ impl Agent {
             output_tokens: 0,
             event_rx,
             msg_tx,
+            mcp,
         })
     }
 
@@ -101,6 +136,7 @@ impl Agent {
                 Ok(AgentEvent::Input(text)) => {
                     if text.trim() == "/exit" {
                         self.evolve()?;
+                        poll_to_completion(Box::pin(self.mcp.lock().unwrap().shutdown_all()));
                         let _ = self.msg_tx.send(AgentMessage::Evolved);
                         break;
                     }
@@ -111,6 +147,7 @@ impl Agent {
                 }
                 Ok(AgentEvent::Quit) => {
                     self.evolve()?;
+                    poll_to_completion(Box::pin(self.mcp.lock().unwrap().shutdown_all()));
                     let _ = self.msg_tx.send(AgentMessage::Evolved);
                     break;
                 }
@@ -127,14 +164,18 @@ impl Agent {
         let memories = {
             let idx = self.index.lock().unwrap();
             let results = retrieve_relevant(
-                &text, &idx, &self.store, &self.llm, self.config.top_k_memory,
+                &text,
+                &idx,
+                &self.store,
+                &self.llm,
+                self.config.top_k_memory,
             );
             drop(idx);
             match results {
                 Ok(m) => {
-                    let _ = self.msg_tx.send(AgentMessage::Status(
-                        format!("检索记忆({} 条)…", m.len()),
-                    ));
+                    let _ = self
+                        .msg_tx
+                        .send(AgentMessage::Status(format!("检索记忆({} 条)…", m.len())));
                     m
                 }
                 Err(_) => vec![],
@@ -145,7 +186,13 @@ impl Agent {
         self.messages.push(Message::user_text(text));
 
         let token_estimate = estimate_tokens(&self.messages);
-        compact_if_needed(&mut self.messages, token_estimate, 100_000, 10, self.llm.as_ref())?;
+        compact_if_needed(
+            &mut self.messages,
+            token_estimate,
+            100_000,
+            10,
+            self.llm.as_ref(),
+        )?;
 
         self.agentic_loop(system)?;
 
@@ -248,7 +295,9 @@ impl Agent {
             return Ok(true);
         }
 
-        let is_readonly = self.tools.get(tool_name)
+        let is_readonly = self
+            .tools
+            .get(tool_name)
             .map(|t| t.permission_level() == PermissionLevel::ReadOnly)
             .unwrap_or(false);
 
