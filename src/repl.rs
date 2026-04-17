@@ -9,6 +9,7 @@ use crate::terminal::events::{Event, EventLoop};
 use crate::terminal::input::KeyEvent;
 use crate::terminal::style::theme;
 use crate::tui::block::{Block, BorderSides, BorderStyle};
+use crate::tui::header::HeaderWidget;
 use crate::tui::input::InputWidget;
 use crate::tui::layout::{Constraint, Direction, Layout};
 use crate::tui::message_style::{
@@ -18,11 +19,14 @@ use crate::tui::permission::{render_permission_pending, render_permission_result
 use crate::tui::paragraph::{Line, Paragraph, Span};
 use crate::tui::renderer::Renderer;
 use crate::tui::spinner::{random_verb, Spinner};
+use crate::tui::status::StatusWidget;
 use crate::tui::widget::Widget;
 
 /// Start the REPL: initialize TUI, enter raw mode, and run the event loop.
 pub fn run() -> crate::Result<()> {
     let config = LLMConfig::from_env()?;
+    let model_tier = crate::agent::context::AgentConfig::default().model_tier;
+    let model_name = config.model(model_tier.clone()).to_string();
     let client = LLMClient::new(config);
     let viv_dir = std::path::PathBuf::from(".viv/memory");
     let mut agent_ctx = AgentContext::new(Arc::new(client), viv_dir)?;
@@ -43,7 +47,8 @@ pub fn run() -> crate::Result<()> {
     let mut last_cursor: (u16, u16) = (0, 0);
 
     // Minimal welcome (Claude Code style: subtle, single line)
-    history_lines.push(format_welcome());
+    let header = HeaderWidget::from_env();
+    history_lines.push(format_welcome(&header.cwd, header.branch.as_deref()));
     history_lines.push(Line::raw(""));
 
     loop {
@@ -54,17 +59,21 @@ pub fn run() -> crate::Result<()> {
                 &history_lines,
                 &editor,
                 scroll,
+                &model_name,
+                agent_ctx.input_tokens,
+                agent_ctx.output_tokens,
             );
             renderer.flush(&mut backend)?;
 
             // Position cursor at the input widget location
             let area = renderer.area();
-            let chunks = main_layout().split(area);
+            let input_height = (editor.line_count() as u16 + 2).min(8).max(3);
+            let chunks = main_layout(input_height).split(area);
             let input_block = Block::new()
                 .border(BorderStyle::Rounded)
                 .borders(BorderSides::HORIZONTAL)
                 .border_fg(theme::DIM);
-            let input_inner = input_block.inner(chunks[1]);
+            let input_inner = input_block.inner(chunks[2]);
             let editor_content = editor.content();
             let input_widget = InputWidget::new(&editor_content, editor.cursor_offset(), "\u{276F} ")
                 .prompt_fg(theme::CLAUDE);
@@ -111,10 +120,10 @@ pub fn run() -> crate::Result<()> {
                             history_lines.push(format_user_message(&line));
 
                             // Auto-scroll to bottom before streaming
-                            scroll = compute_max_scroll(&history_lines, &renderer);
+                            scroll = compute_max_scroll(&history_lines, &renderer, &editor);
 
                             // Render before streaming starts
-                            render_frame(&mut renderer, &history_lines, &editor, scroll);
+                            render_frame(&mut renderer, &history_lines, &editor, scroll, &model_name, agent_ctx.input_tokens, agent_ctx.output_tokens);
                             renderer.flush(&mut backend)?;
                             backend.flush()?;
 
@@ -141,8 +150,8 @@ pub fn run() -> crate::Result<()> {
                             ]));
                             let response_line_idx = history_lines.len() - 1;
 
-                            scroll = compute_max_scroll(&history_lines, &renderer);
-                            render_frame(&mut renderer, &history_lines, &editor, scroll);
+                            scroll = compute_max_scroll(&history_lines, &renderer, &editor);
+                            render_frame(&mut renderer, &history_lines, &editor, scroll, &model_name, agent_ctx.input_tokens, agent_ctx.output_tokens);
                             renderer.flush(&mut backend)?;
                             backend.flush()?;
 
@@ -155,7 +164,9 @@ pub fn run() -> crate::Result<()> {
                             let rend_ptr = &mut renderer as *mut Renderer;
                             let back_ptr = &mut backend as *mut LinuxBackend;
                             let scroll_ptr = &mut scroll as *mut u16;
+                            let ctx_ptr = &mut agent_ctx as *mut AgentContext;
 
+                            let model_name_clone = model_name.clone();
                             let mut ask_fn = |tool_name: &str, tool_input: &crate::json::JsonValue| -> bool {
                                 let summary = format_tool_summary(tool_input);
 
@@ -164,12 +175,13 @@ pub fn run() -> crate::Result<()> {
                                 let rend = unsafe { &mut *rend_ptr };
                                 let back = unsafe { &mut *back_ptr };
                                 let scr = unsafe { &mut *scroll_ptr };
+                                let ctx = unsafe { &mut *ctx_ptr };
 
                                 hl.push(render_permission_pending(tool_name, &summary));
                                 let perm_line_idx = hl.len() - 1;
 
-                                *scr = compute_max_scroll(hl, rend);
-                                render_frame(rend, hl, &editor, *scr);
+                                *scr = compute_max_scroll(hl, rend, &editor);
+                                render_frame(rend, hl, &editor, *scr, &model_name_clone, ctx.input_tokens, ctx.output_tokens);
                                 let _ = rend.flush(back);
                                 let _ = back.flush();
 
@@ -181,8 +193,8 @@ pub fn run() -> crate::Result<()> {
                                 // Replace pending line with a result line
                                 hl[perm_line_idx] = render_permission_result(tool_name, &summary, allowed);
 
-                                *scr = compute_max_scroll(hl, rend);
-                                render_frame(rend, hl, &editor, *scr);
+                                *scr = compute_max_scroll(hl, rend, &editor);
+                                render_frame(rend, hl, &editor, *scr, &model_name_clone, ctx.input_tokens, ctx.output_tokens);
                                 let _ = rend.flush(back);
                                 let _ = back.flush();
 
@@ -196,6 +208,7 @@ pub fn run() -> crate::Result<()> {
                                     let rend = unsafe { &mut *rend_ptr };
                                     let back = unsafe { &mut *back_ptr };
                                     let scr = unsafe { &mut *scroll_ptr };
+                                    let ctx = unsafe { &mut *ctx_ptr };
 
                                     if response.trim().is_empty() {
                                         // Still waiting — animate the spinner
@@ -220,8 +233,8 @@ pub fn run() -> crate::Result<()> {
                                         hl.extend(format_assistant_message(&response));
                                     }
 
-                                    *scr = compute_max_scroll(hl, rend);
-                                    render_frame(rend, hl, &editor, *scr);
+                                    *scr = compute_max_scroll(hl, rend, &editor);
+                                    render_frame(rend, hl, &editor, *scr, &model_name_clone, ctx.input_tokens, ctx.output_tokens);
                                     let _ = rend.flush(back);
                                     let _ = back.flush();
                                 });
@@ -240,7 +253,7 @@ pub fn run() -> crate::Result<()> {
 
                             history_lines.push(Line::raw(""));
 
-                            scroll = compute_max_scroll(&history_lines, &renderer);
+                            scroll = compute_max_scroll(&history_lines, &renderer, &editor);
                         }
 
                         EditAction::Exit => {
@@ -269,7 +282,7 @@ pub fn run() -> crate::Result<()> {
                 }
                 Event::Resize(new_size) => {
                     renderer.resize(new_size);
-                    scroll = compute_max_scroll(&history_lines, &renderer);
+                    scroll = compute_max_scroll(&history_lines, &renderer, &editor);
                     dirty = true;
                 }
                 Event::Tick => {}
@@ -335,14 +348,14 @@ fn format_tool_summary(input: &crate::json::JsonValue) -> String {
     }
 }
 
-/// Build the main vertical layout: conversation (Fill) + input (Fixed 3) + footer (Fixed 1).
+/// Build the main vertical layout: header (1) + conversation (Fill) + input (dynamic) + status (1).
 ///
-/// The input box uses only top + bottom borders (Claude Code style), so it
-/// reserves 3 rows: top line, input content, bottom line.
-fn main_layout() -> Layout {
+/// `input_height` = min(editor.line_count() + 2, 8), accounting for top+bottom borders.
+fn main_layout(input_height: u16) -> Layout {
     Layout::new(Direction::Vertical).constraints(vec![
+        Constraint::Fixed(1),
         Constraint::Fill,
-        Constraint::Fixed(3),
+        Constraint::Fixed(input_height),
         Constraint::Fixed(1),
     ])
 }
@@ -353,23 +366,32 @@ fn render_frame(
     history_lines: &[Line],
     editor: &LineEditor,
     scroll: u16,
+    model: &str,
+    input_tokens: u64,
+    output_tokens: u64,
 ) {
     let area = renderer.area();
-    let chunks = main_layout().split(area);
+    let input_height = (editor.line_count() as u16 + 2).min(8).max(3);
+    let chunks = main_layout(input_height).split(area);
+    // chunks: [0]=header, [1]=conversation, [2]=input, [3]=status
 
     let buf = renderer.buffer_mut();
 
+    // Header bar
+    let header = HeaderWidget::from_env();
+    header.render(chunks[0], buf);
+
     // Conversation history
     let paragraph = Paragraph::new(history_lines.to_vec()).scroll(scroll);
-    paragraph.render(chunks[0], buf);
+    paragraph.render(chunks[1], buf);
 
     // Input box: top + bottom rounded borders only, dim gray
     let input_block = Block::new()
         .border(BorderStyle::Rounded)
         .borders(BorderSides::HORIZONTAL)
         .border_fg(theme::DIM);
-    let input_inner = input_block.inner(chunks[1]);
-    input_block.render(chunks[1], buf);
+    let input_inner = input_block.inner(chunks[2]);
+    input_block.render(chunks[2], buf);
 
     // Input widget with ❯ prompt (Claude orange)
     let editor_content = editor.content();
@@ -377,21 +399,23 @@ fn render_frame(
         InputWidget::new(&editor_content, editor.cursor_offset(), "\u{276F} ").prompt_fg(theme::CLAUDE);
     input_widget.render(input_inner, buf);
 
-    // Footer line (dim): keybind hints, Claude Code style
-    let footer = Line::from_spans(vec![
-        Span::styled("  ? for shortcuts", theme::DIM, false),
-    ]);
-    let footer_para = Paragraph::new(vec![footer]);
-    footer_para.render(chunks[2], buf);
+    // Status bar
+    let status = StatusWidget {
+        model: model.to_string(),
+        input_tokens,
+        output_tokens,
+    };
+    status.render(chunks[3], buf);
 }
 
 /// Compute the maximum scroll offset so the last line of history is visible
 /// at the bottom of the conversation area.
-fn compute_max_scroll(history_lines: &[Line], renderer: &Renderer) -> u16 {
+fn compute_max_scroll(history_lines: &[Line], renderer: &Renderer, editor: &LineEditor) -> u16 {
     let area = renderer.area();
-    let chunks = main_layout().split(area);
-    let conv_height = chunks[0].height as usize;
-    let conv_width = chunks[0].width as usize;
+    let input_height = (editor.line_count() as u16 + 2).min(8).max(3);
+    let chunks = main_layout(input_height).split(area);
+    let conv_height = chunks[1].height as usize;
+    let conv_width = chunks[1].width as usize;
 
     if conv_width == 0 || conv_height == 0 {
         return 0;

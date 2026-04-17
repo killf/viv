@@ -44,11 +44,20 @@ pub fn format_error_message(msg: &str) -> Vec<Line> {
 }
 
 /// The single-line startup banner.
-pub fn format_welcome() -> Line {
-    Line::from_spans(vec![
+///
+/// Shows `● viv  <cwd>  ⎇ <branch>  ready` (branch omitted when `None`).
+pub fn format_welcome(cwd: &str, branch: Option<&str>) -> Line {
+    let mut spans = vec![
         Span::styled("● ", theme::CLAUDE, false),
         Span::styled("viv", theme::CLAUDE, true),
         Span::raw("  "),
-        Span::styled("ready", theme::DIM, false),
-    ])
+        Span::styled(cwd.to_string(), theme::DIM, false),
+    ];
+    if let Some(b) = branch {
+        spans.push(Span::styled("  ⎇ ", theme::DIM, false));
+        spans.push(Span::styled(b.to_string(), theme::DIM, false));
+    }
+    spans.push(Span::raw("  "));
+    spans.push(Span::styled("ready", theme::DIM, false));
+    Line::from_spans(spans)
 }

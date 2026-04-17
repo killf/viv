@@ -58,7 +58,7 @@ fn error_message_uses_error_color() {
 
 #[test]
 fn welcome_line_is_single_bullet_plus_ready() {
-    let line = format_welcome();
+    let line = format_welcome("", None);
     assert_eq!(line.spans[0].text, "● ");
     assert_eq!(line.spans[0].fg, Some(theme::CLAUDE));
     assert_eq!(line.spans[1].text, "viv");
