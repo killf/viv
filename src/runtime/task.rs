@@ -26,9 +26,12 @@ pub fn oneshot<T>() -> (OneshotSender<T>, OneshotReceiver<T>) {
 
 impl<T> OneshotSender<T> {
     pub fn send(self, value: T) {
-        let mut inner = self.0.lock().unwrap();
-        inner.value = Some(value);
-        if let Some(waker) = inner.waker.take() {
+        let waker = {
+            let mut inner = self.0.lock().unwrap();
+            inner.value = Some(value);
+            inner.waker.take()
+        }; // lock released here
+        if let Some(waker) = waker {
             waker.wake();
         }
     }
@@ -42,7 +45,12 @@ impl<T: Unpin> Future for OneshotReceiver<T> {
         if let Some(value) = inner.value.take() {
             Poll::Ready(value)
         } else {
-            inner.waker = Some(cx.waker().clone());
+            let needs_update = inner.waker
+                .as_ref()
+                .is_none_or(|w| !w.will_wake(cx.waker()));
+            if needs_update {
+                inner.waker = Some(cx.waker().clone());
+            }
             Poll::Pending
         }
     }
