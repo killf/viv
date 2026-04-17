@@ -3,6 +3,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Arc, mpsc};
 use std::task::{Context, Poll};
+use std::time::Duration;
 use super::task::{Task, TaskId, JoinHandle, oneshot};
 
 pub struct Executor {
@@ -84,8 +85,12 @@ pub fn block_on<T: Unpin + Send + 'static>(
             return v;
         }
         if exec.is_idle() {
-            // 没有任务可 poll，短暂让出 CPU 等待外部唤醒
-            std::thread::yield_now();
+            // 等待 I/O 事件（最多 10ms）
+            if let Ok(mut r) = crate::runtime::reactor::reactor().try_lock() {
+                r.wait(Duration::from_millis(10));
+            } else {
+                std::thread::yield_now();
+            }
         }
     }
 }
