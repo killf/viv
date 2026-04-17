@@ -1,6 +1,5 @@
 use std::net::TcpListener;
 use std::thread;
-use std::time::Duration;
 use viv::runtime::executor::block_on;
 use viv::net::async_tcp::AsyncTcpStream;
 
@@ -22,7 +21,6 @@ fn start_echo_server() -> u16 {
 #[test]
 fn async_tcp_write_and_read() {
     let port = start_echo_server();
-    thread::sleep(Duration::from_millis(10));
 
     block_on(async move {
         let mut stream = AsyncTcpStream::connect("127.0.0.1", port).await.unwrap();

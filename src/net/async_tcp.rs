@@ -82,6 +82,14 @@ impl<'a> Future for ReadFuture<'a> {
     }
 }
 
+impl Drop for ReadFuture<'_> {
+    fn drop(&mut self) {
+        if let Some(t) = self.token.take() {
+            reactor().lock().unwrap().remove(t);
+        }
+    }
+}
+
 // ── WriteFuture ───────────────────────────────────────────────────────────────
 
 pub struct WriteFuture<'a> {
@@ -114,6 +122,14 @@ impl<'a> Future for WriteFuture<'a> {
                 }
                 Err(e) => return Poll::Ready(Err(crate::Error::Io(e))),
             }
+        }
+    }
+}
+
+impl Drop for WriteFuture<'_> {
+    fn drop(&mut self) {
+        if let Some(t) = self.token.take() {
+            reactor().lock().unwrap().remove(t);
         }
     }
 }
