@@ -1,6 +1,6 @@
 //! Message formatting helpers mirroring Claude Code's chat output style.
 //!
-//! - User messages:  dim `>` followed by user text
+//! - User messages:  orange `>` followed by user text
 //! - Assistant:      `● ` Claude-orange bullet, continuation rows indented 2 spaces
 //! - Errors:         `● ` + text, all in error red
 //! - Welcome:        `● viv  ready`
