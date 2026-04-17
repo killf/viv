@@ -2,9 +2,26 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Arc, mpsc};
-use std::task::{Context, Poll};
+use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
 use std::time::Duration;
 use super::task::{Task, TaskId, JoinHandle, oneshot};
+
+/// Create a no-op Waker that does nothing on wake/clone/drop.
+pub fn noop_waker() -> Waker {
+    const VTABLE: RawWakerVTable = RawWakerVTable::new(
+        |p| RawWaker::new(p, &VTABLE),
+        |_| {}, |_| {}, |_| {},
+    );
+    unsafe { Waker::from_raw(RawWaker::new(std::ptr::null(), &VTABLE)) }
+}
+
+fn wait_for_io() {
+    if let Ok(mut r) = crate::core::runtime::reactor::reactor().try_lock() {
+        r.wait(Duration::from_millis(10));
+    } else {
+        std::thread::yield_now();
+    }
+}
 
 pub struct Executor {
     tasks: HashMap<TaskId, Arc<Task>>,
@@ -26,7 +43,6 @@ impl Executor {
         let id = self.next_id;
         self.next_id += 1;
         let (tx, rx) = oneshot::<T>();
-        // 包装 future：完成时把结果发给 JoinHandle
         let wrapped = async move {
             let result = future.await;
             tx.send(result);
@@ -37,7 +53,6 @@ impl Executor {
         JoinHandle(rx)
     }
 
-    /// 排干就绪队列，poll 所有就绪任务一次。返回是否处理了任何任务。
     pub fn run_ready(&mut self) -> bool {
         let mut did_work = false;
         while let Ok(id) = self.ready_rx.try_recv() {
@@ -70,58 +85,35 @@ impl Default for Executor {
     fn default() -> Self { Self::new() }
 }
 
-/// 阻塞当前线程运行 future 至完成（不要求 Send）
+/// Block current thread on a future (no Send required).
 pub fn block_on_local<T>(mut future: impl Future<Output = T> + Unpin) -> T {
-    use std::task::{RawWaker, RawWakerVTable, Waker};
-    const NOOP_VTABLE: RawWakerVTable = RawWakerVTable::new(
-        |p| RawWaker::new(p, &NOOP_VTABLE),
-        |_| {}, |_| {}, |_| {},
-    );
-    let waker = unsafe { Waker::from_raw(RawWaker::new(std::ptr::null(), &NOOP_VTABLE)) };
+    let waker = noop_waker();
     let mut cx = Context::from_waker(&waker);
-
     let mut exec = Executor::new();
     loop {
         exec.run_ready();
         if let Poll::Ready(v) = Pin::new(&mut future).poll(&mut cx) {
             return v;
         }
-        if let Ok(mut r) = crate::core::runtime::reactor::reactor().try_lock() {
-            r.wait(Duration::from_millis(10));
-        } else {
-            std::thread::yield_now();
-        }
+        wait_for_io();
     }
 }
 
-/// 阻塞当前线程运行 future 至完成（要求 Send + 'static）
+/// Block current thread on a future (requires Send + 'static).
 pub fn block_on<T: Unpin + Send + 'static>(
     future: impl Future<Output = T> + Send + 'static,
 ) -> T {
     let mut exec = Executor::new();
     let mut handle = exec.spawn(future);
-
-    // noop waker 用于 poll JoinHandle
-    use std::task::{RawWaker, RawWakerVTable, Waker};
-    const NOOP_VTABLE: RawWakerVTable = RawWakerVTable::new(
-        |p| RawWaker::new(p, &NOOP_VTABLE),
-        |_| {}, |_| {}, |_| {},
-    );
-    let waker = unsafe { Waker::from_raw(RawWaker::new(std::ptr::null(), &NOOP_VTABLE)) };
+    let waker = noop_waker();
     let mut cx = Context::from_waker(&waker);
-
     loop {
         let did_work = exec.run_ready();
         if let Poll::Ready(v) = Pin::new(&mut handle).poll(&mut cx) {
             return v;
         }
-        // 就绪队列为空（无论是否还有挂起的任务），等待 reactor I/O 事件
         if !did_work {
-            if let Ok(mut r) = crate::core::runtime::reactor::reactor().try_lock() {
-                r.wait(Duration::from_millis(10));
-            } else {
-                std::thread::yield_now();
-            }
+            wait_for_io();
         }
     }
 }

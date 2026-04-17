@@ -135,9 +135,7 @@ impl Agent {
             match self.event_rx.recv().await {
                 Ok(AgentEvent::Input(text)) => {
                     if text.trim() == "/exit" {
-                        self.evolve().await?;
-                        self.mcp.lock().unwrap().shutdown_all().await;
-                        let _ = self.msg_tx.send(AgentMessage::Evolved);
+                        self.shutdown().await?;
                         break;
                     }
                     if let Err(e) = self.handle_input(text).await {
@@ -146,15 +144,26 @@ impl Agent {
                     }
                 }
                 Ok(AgentEvent::Quit) => {
-                    self.evolve().await?;
-                    self.mcp.lock().unwrap().shutdown_all().await;
-                    let _ = self.msg_tx.send(AgentMessage::Evolved);
+                    self.shutdown().await?;
                     break;
                 }
                 Ok(AgentEvent::Interrupt) | Ok(AgentEvent::PermissionResponse(_)) => {}
                 Err(_) => break,
             }
         }
+        Ok(())
+    }
+
+    async fn shutdown(&mut self) -> Result<()> {
+        self.evolve().await?;
+        // Take servers out of mutex to avoid holding guard across awaits
+        let mut mgr = self.mcp.lock().unwrap();
+        let servers = std::mem::take(&mut mgr.servers);
+        drop(mgr);
+        for mut handle in servers {
+            let _ = handle.shutdown().await;
+        }
+        let _ = self.msg_tx.send(AgentMessage::Evolved);
         Ok(())
     }
 
@@ -222,15 +231,17 @@ impl Agent {
             self.input_tokens += stream_result.input_tokens;
             self.output_tokens += stream_result.output_tokens;
 
-            let mut assistant_blocks = stream_result.text_blocks.clone();
+            let has_tool_uses = !stream_result.tool_uses.is_empty();
+
+            let mut assistant_blocks = stream_result.text_blocks;
             assistant_blocks.extend(stream_result.tool_uses.clone());
             self.messages.push(Message::Assistant(assistant_blocks));
 
-            if stream_result.tool_uses.is_empty() || stream_result.stop_reason == "end_turn" {
+            if !has_tool_uses || stream_result.stop_reason == "end_turn" {
                 break;
             }
 
-            let tool_uses = stream_result.tool_uses.clone();
+            let tool_uses = stream_result.tool_uses;
             let mut tool_results = Vec::new();
 
             for tu in &tool_uses {

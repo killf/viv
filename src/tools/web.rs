@@ -4,20 +4,10 @@ use std::sync::Arc;
 use crate::core::json::JsonValue;
 use crate::core::net::async_tls::AsyncTlsStream;
 use crate::core::net::http::HttpRequest;
+use crate::core::runtime::AssertSend;
 use crate::error::Error;
 use crate::llm::{LLMClient, ModelTier};
 use crate::tools::{PermissionLevel, Tool};
-
-// AsyncTlsStream holds *mut c_void (OpenSSL), making futures non-Send.
-// Safe because all execution happens single-threaded via block_on_local.
-struct AssertSend<F>(F);
-unsafe impl<F: Future> Send for AssertSend<F> {}
-impl<F: Future> Future for AssertSend<F> {
-    type Output = F::Output;
-    fn poll(self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<Self::Output> {
-        unsafe { self.map_unchecked_mut(|s| &mut s.0).poll(cx) }
-    }
-}
 
 pub struct WebFetchTool { pub llm: Arc<LLMClient> }
 impl WebFetchTool {

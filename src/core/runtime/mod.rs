@@ -4,12 +4,14 @@ pub mod executor;
 pub mod reactor;
 pub mod timer;
 
-pub use executor::{block_on, block_on_local, Executor};
+pub use executor::{block_on, block_on_local, noop_waker, Executor};
 pub use reactor::reactor;
 pub use timer::sleep;
 pub use task::JoinHandle;
 pub use channel::{async_channel, NotifySender, AsyncReceiver};
 
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::mpsc;
 use std::thread;
 
@@ -50,5 +52,20 @@ impl Runtime {
 impl Default for Runtime {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// Wrapper that asserts a Future is Send.
+///
+/// SAFETY: Only safe when the future runs inside `block_on_local` (single-threaded).
+/// The wrapped future is never actually sent between threads.
+pub struct AssertSend<F>(pub F);
+
+unsafe impl<F: Future> Send for AssertSend<F> {}
+
+impl<F: Future> Future for AssertSend<F> {
+    type Output = F::Output;
+    fn poll(self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<Self::Output> {
+        unsafe { self.map_unchecked_mut(|s| &mut s.0).poll(cx) }
     }
 }

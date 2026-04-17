@@ -143,19 +143,21 @@ impl LLMConfig {
 /// Client for the Anthropic Claude API.
 pub struct LLMClient {
     pub config: LLMConfig,
+    url: UrlParts,
 }
 
 impl LLMClient {
     /// Create a new `LLMClient` with the given configuration.
     pub fn new(config: LLMConfig) -> Self {
-        LLMClient { config }
+        let url = parse_base_url(&config.base_url);
+        LLMClient { config, url }
     }
 
     /// Build the HTTP request for a streaming Claude API call.
     pub fn build_request(&self, messages: &[Message], tier: ModelTier) -> HttpRequest {
         let model = self.config.model(tier.clone()).to_string();
         let max_tokens = self.config.max_tokens(tier);
-        let url = parse_base_url(&self.config.base_url);
+        let url = &self.url;
 
         // Build the messages JSON array
         let messages_json: Vec<String> = messages
@@ -180,7 +182,7 @@ impl LLMClient {
             method: "POST".into(),
             path: format!("{}/v1/messages", url.path_prefix),
             headers: vec![
-                ("Host".into(), url.host),
+                ("Host".into(), url.host.clone()),
                 ("Content-Type".into(), "application/json".into()),
                 ("x-api-key".into(), self.config.api_key.clone()),
                 ("anthropic-version".into(), "2023-06-01".into()),
@@ -199,7 +201,7 @@ impl LLMClient {
     ) -> crate::Result<String> {
         let req = self.build_request(messages, tier);
         let bytes = req.to_bytes();
-        let url = parse_base_url(&self.config.base_url);
+        let url = &self.url;
 
         // Connect via TLS
         let mut tls = TlsStream::connect(&url.host, url.port)?;
@@ -329,7 +331,7 @@ impl LLMClient {
     ) -> crate::Result<StreamResult> {
         let req = self.build_agent_request(system_blocks, messages, tools_json, tier);
         let bytes = req.to_bytes();
-        let url = parse_base_url(&self.config.base_url);
+        let url = &self.url;
 
         let mut tls = TlsStream::connect(&url.host, url.port)?;
         tls.write_all(&bytes)?;
@@ -370,8 +372,6 @@ impl LLMClient {
         parse_agent_stream(&raw, header_end, &mut on_text)
     }
 
-    /// Async wrapper around `stream_agent` — runs the blocking TLS I/O on the
-    /// current thread (the Agent thread) but returns a Future so the caller can
     fn build_agent_request(
         &self,
         system_blocks: &[crate::agent::message::SystemBlock],
@@ -381,7 +381,7 @@ impl LLMClient {
     ) -> HttpRequest {
         let model = self.config.model(tier.clone()).to_string();
         let max_tokens = self.config.max_tokens(tier);
-        let url = parse_base_url(&self.config.base_url);
+        let url = &self.url;
 
         let system_json: Vec<String> = system_blocks.iter().map(|b| b.to_json()).collect();
         let messages_json: Vec<String> = messages.iter().map(|m| m.to_json()).collect();
@@ -409,7 +409,7 @@ impl LLMClient {
             method: "POST".into(),
             path: format!("{}/v1/messages", url.path_prefix),
             headers: vec![
-                ("Host".into(), url.host),
+                ("Host".into(), url.host.clone()),
                 ("Content-Type".into(), "application/json".into()),
                 ("x-api-key".into(), self.config.api_key.clone()),
                 ("anthropic-version".into(), "2023-06-01".into()),
@@ -594,7 +594,7 @@ impl LLMClient {
         use crate::core::net::async_tls::AsyncTlsStream;
 
         let req = self.build_agent_request(system_blocks, messages, tools_json, tier);
-        let url = parse_base_url(&self.config.base_url);
+        let url = &self.url;
 
         let mut stream = AsyncTlsStream::connect(&url.host, url.port).await?;
         stream.write_all(&req.to_bytes()).await?;
@@ -603,6 +603,7 @@ impl LLMClient {
         let mut raw: Vec<u8> = Vec::new();
         let mut buf = [0u8; 4096];
 
+        let mut header_end: usize;
         loop {
             let n = stream.read(&mut buf).await?;
             if n == 0 {
@@ -611,11 +612,11 @@ impl LLMClient {
             raw.extend_from_slice(&buf[..n]);
 
             if let Some(pos) = raw.windows(4).position(|w| w == b"\r\n\r\n") {
+                header_end = pos + 4;
                 let header_section = std::str::from_utf8(&raw[..pos])
                     .map_err(|_| Error::Http("invalid UTF-8 in headers".into()))?;
                 let status = parse_status_line(header_section)?;
                 if status != 200 {
-                    // Read remaining error body
                     loop {
                         let n2 = stream.read(&mut buf).await?;
                         if n2 == 0 { break; }
@@ -629,10 +630,9 @@ impl LLMClient {
         }
 
         // SSE streaming loop
-        let header_end = raw.windows(4).position(|w| w == b"\r\n\r\n").unwrap() + 4;
         let mut parser = SseParser::new();
         let mut acc = StreamAccumulator::new();
-        let mut on_text_mut = |s: &str| on_text(s);
+        let mut on_text_mut = &mut on_text;
 
         // Process any SSE data already in the buffer after the header
         {

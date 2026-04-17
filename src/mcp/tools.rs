@@ -5,35 +5,11 @@
 
 use super::McpManager;
 use crate::core::json::JsonValue;
+use crate::core::runtime::AssertSend;
 use crate::tools::{PermissionLevel, Tool};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
-
-// ── AssertSend ───────────────────────────────────────────────────────────────
-
-/// Wrapper that asserts a future is `Send`.
-///
-/// SAFETY: This is only safe when the wrapped future runs inside
-/// block_on_local, which is single-threaded. The MutexGuard held
-/// across await points is never actually sent between threads.
-struct AssertSend<F>(F);
-
-// SAFETY: See above — single-threaded block_on_local guarantees no
-// cross-thread transfer actually occurs.
-unsafe impl<F: Future> Send for AssertSend<F> {}
-
-impl<F: Future> Future for AssertSend<F> {
-    type Output = F::Output;
-
-    fn poll(
-        self: Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Self::Output> {
-        // SAFETY: We never move the inner future after pinning.
-        unsafe { self.map_unchecked_mut(|s| &mut s.0).poll(cx) }
-    }
-}
 
 // ── McpToolProxy ─────────────────────────────────────────────────────────────
 

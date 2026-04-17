@@ -67,6 +67,12 @@ pub struct McpServerHandle {
     client: McpClientKind,
 }
 
+impl McpServerHandle {
+    pub async fn shutdown(&mut self) {
+        let _ = self.client.close().await;
+    }
+}
+
 // ── McpManager ───────────────────────────────────────────────────────────────
 
 pub struct McpManager {

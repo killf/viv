@@ -79,17 +79,10 @@ pub mod file;
 pub mod todo;
 pub mod web;
 
-/// Polls a pinned future to completion synchronously.
-///
-/// All current tool futures wrap synchronous code and resolve on first poll.
-/// This is a temporary bridge until the Agent is fully async (Task 8).
+/// Polls a pinned future to completion synchronously (used in tests).
 pub fn poll_to_completion<T>(mut future: Pin<Box<dyn Future<Output = T> + Send + '_>>) -> T {
-    use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
-    const NOOP_VTABLE: RawWakerVTable = RawWakerVTable::new(
-        |p| RawWaker::new(p, &NOOP_VTABLE),
-        |_| {}, |_| {}, |_| {},
-    );
-    let waker = unsafe { Waker::from_raw(RawWaker::new(std::ptr::null(), &NOOP_VTABLE)) };
+    use std::task::{Context, Poll};
+    let waker = crate::core::runtime::noop_waker();
     let mut cx = Context::from_waker(&waker);
     loop {
         match future.as_mut().poll(&mut cx) {
