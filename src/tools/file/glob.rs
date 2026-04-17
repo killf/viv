@@ -6,18 +6,18 @@ use std::path::{Path, PathBuf};
 pub struct GlobTool;
 
 impl Tool for GlobTool {
-    fn name(&self) -> &str { "glob" }
+    fn name(&self) -> &str { "Glob" }
 
     fn description(&self) -> &str {
-        "Find files matching a glob pattern. Supports * (any chars in one segment), ** (any path depth), ? (one char)."
+        "Fast file pattern matching tool that works with any codebase size.\n\n- Supports glob patterns like \"**/*.js\" or \"src/**/*.ts\"\n- Returns matching file paths sorted by modification time\n- Use this tool when you need to find files by name patterns\n- When you are doing an open ended search that may require multiple rounds of globbing and grepping, use the Agent tool instead"
     }
 
     fn input_schema(&self) -> JsonValue {
         JsonValue::parse(r#"{
             "type":"object",
             "properties":{
-                "pattern":{"type":"string","description":"Glob pattern, e.g. \"**/*.rs\""},
-                "path":{"type":"string","description":"Root directory to search (default: current directory)"}
+                "pattern":{"type":"string","description":"The glob pattern to match files against"},
+                "path":{"type":"string","description":"The directory to search in. If not specified, the current working directory will be used."}
             },
             "required":["pattern"]
         }"#).unwrap()
@@ -47,14 +47,12 @@ fn walk_glob(dir: &Path, parts: &[&str], out: &mut Vec<PathBuf>) -> std::io::Res
     let rest = &parts[1..];
 
     if seg == "**" {
-        // Match zero segments: continue with rest from current dir
         if !rest.is_empty() {
             walk_glob(dir, rest, out)?;
         } else {
             collect_all(dir, out)?;
             return Ok(());
         }
-        // Match one or more: recurse into subdirs keeping ** active
         if dir.is_dir() {
             for entry in std::fs::read_dir(dir)?.flatten() {
                 let p = entry.path();

@@ -5,18 +5,18 @@ use crate::tools::{PermissionLevel, Tool};
 pub struct WriteTool;
 
 impl Tool for WriteTool {
-    fn name(&self) -> &str { "write" }
+    fn name(&self) -> &str { "FileWrite" }
 
     fn description(&self) -> &str {
-        "Write content to a file, overwriting it if it already exists. Creates parent directories automatically."
+        "Writes a file to the local filesystem.\n\n- This tool will overwrite the existing file if there is one at the provided path\n- If this is an existing file, you MUST use the FileRead tool first to read the file's contents\n- NEVER create documentation files (*.md) or README files unless explicitly requested\n- Prefer the FileEdit tool for modifying existing files — only use this tool to create new files or for complete rewrites"
     }
 
     fn input_schema(&self) -> JsonValue {
         JsonValue::parse(r#"{
             "type":"object",
             "properties":{
-                "file_path":{"type":"string","description":"Path to the file to write"},
-                "content":{"type":"string","description":"Content to write"}
+                "file_path":{"type":"string","description":"The absolute path to the file to write (must be absolute, not relative)"},
+                "content":{"type":"string","description":"The content to write to the file"}
             },
             "required":["file_path","content"]
         }"#).unwrap()

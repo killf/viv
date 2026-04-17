@@ -45,7 +45,7 @@ impl ToolRegistry {
     }
 
     pub fn default_tools(llm: std::sync::Arc<crate::llm::LLMClient>) -> Self {
-        use crate::tools::bash::{BashBackgroundTool, BashTool};
+        use crate::tools::bash::BashTool;
         use crate::tools::file::edit::{EditTool, MultiEditTool};
         use crate::tools::file::glob::GlobTool;
         use crate::tools::file::grep::GrepTool;
@@ -58,7 +58,6 @@ impl ToolRegistry {
         let todo_path = std::path::PathBuf::from(".viv/todo.json");
         let mut reg = ToolRegistry::new();
         reg.register(Box::new(BashTool));
-        reg.register(Box::new(BashBackgroundTool));
         reg.register(Box::new(ReadTool));
         reg.register(Box::new(WriteTool));
         reg.register(Box::new(EditTool));

@@ -5,17 +5,17 @@ use crate::tools::{PermissionLevel, Tool};
 pub struct LsTool;
 
 impl Tool for LsTool {
-    fn name(&self) -> &str { "ls" }
+    fn name(&self) -> &str { "LS" }
 
     fn description(&self) -> &str {
-        "List directory contents. Directories shown with trailing slash. Entries sorted alphabetically."
+        "Lists files and directories in a given path. Directories are shown with a trailing slash. Entries are sorted alphabetically.\n\nPrefer Glob for pattern-based file discovery. Use LS when you want to see the full contents of a specific directory."
     }
 
     fn input_schema(&self) -> JsonValue {
         JsonValue::parse(r#"{
             "type":"object",
             "properties":{
-                "path":{"type":"string","description":"Directory to list (default: current directory)"}
+                "path":{"type":"string","description":"The directory path to list. Defaults to the current working directory."}
             }
         }"#).unwrap()
     }

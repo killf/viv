@@ -5,20 +5,20 @@ use crate::tools::{PermissionLevel, Tool};
 pub struct EditTool;
 
 impl Tool for EditTool {
-    fn name(&self) -> &str { "edit" }
+    fn name(&self) -> &str { "FileEdit" }
 
     fn description(&self) -> &str {
-        "Replace an exact string in a file. Fails if old_string is not found or appears more than once (unless replace_all: true)."
+        "Performs exact string replacements in files.\n\n- You must use the FileRead tool at least once before editing a file\n- ALWAYS prefer editing existing files in the codebase. NEVER write new files unless explicitly required\n- The edit will FAIL if `old_string` is not unique in the file. Either provide a larger string with more surrounding context to make it unique or use `replace_all` to change every instance\n- Use `replace_all` for replacing and renaming strings across the file"
     }
 
     fn input_schema(&self) -> JsonValue {
         JsonValue::parse(r#"{
             "type":"object",
             "properties":{
-                "file_path":{"type":"string"},
-                "old_string":{"type":"string","description":"Exact text to replace"},
-                "new_string":{"type":"string","description":"Replacement text"},
-                "replace_all":{"type":"boolean","description":"Replace all occurrences (default: false)"}
+                "file_path":{"type":"string","description":"The absolute path to the file to modify"},
+                "old_string":{"type":"string","description":"The text to replace"},
+                "new_string":{"type":"string","description":"The text to replace it with (must be different from old_string)"},
+                "replace_all":{"type":"boolean","description":"Replace all occurrences of old_string (default false)"}
             },
             "required":["file_path","old_string","new_string"]
         }"#).unwrap()
@@ -58,25 +58,26 @@ impl Tool for EditTool {
 pub struct MultiEditTool;
 
 impl Tool for MultiEditTool {
-    fn name(&self) -> &str { "multi_edit" }
+    fn name(&self) -> &str { "MultiEdit" }
 
     fn description(&self) -> &str {
-        "Apply multiple edits to one file in order. Each edit is {old_string, new_string, replace_all?}. All edits succeed or none are written."
+        "Performs multiple exact string replacements in a single file atomically. All edits succeed or none are written.\n\nEach edit must have a unique `old_string` in the current state of the file (after prior edits in the sequence). Prefer this over multiple FileEdit calls when changing the same file."
     }
 
     fn input_schema(&self) -> JsonValue {
         JsonValue::parse(r#"{
             "type":"object",
             "properties":{
-                "file_path":{"type":"string"},
+                "file_path":{"type":"string","description":"The absolute path to the file to modify"},
                 "edits":{
                     "type":"array",
+                    "description":"Array of edits to apply in sequence",
                     "items":{
                         "type":"object",
                         "properties":{
-                            "old_string":{"type":"string"},
-                            "new_string":{"type":"string"},
-                            "replace_all":{"type":"boolean"}
+                            "old_string":{"type":"string","description":"The text to replace"},
+                            "new_string":{"type":"string","description":"The text to replace it with"},
+                            "replace_all":{"type":"boolean","description":"Replace all occurrences (default false)"}
                         },
                         "required":["old_string","new_string"]
                     }

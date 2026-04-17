@@ -1,6 +1,6 @@
 use viv::json::JsonValue;
 use viv::tools::Tool;
-use viv::tools::bash::{BashBackgroundTool, BashTool};
+use viv::tools::bash::BashTool;
 
 #[test]
 fn bash_captures_stdout() {
@@ -25,13 +25,13 @@ fn bash_nonzero_exit_code_in_output() {
 
 #[test]
 fn bash_timeout_returns_error() {
-    let input = JsonValue::parse(r#"{"command":"sleep 10","timeout_ms":100}"#).unwrap();
+    let input = JsonValue::parse(r#"{"command":"sleep 10","timeout":100}"#).unwrap();
     assert!(BashTool.execute(&input).is_err());
 }
 
 #[test]
-fn bash_background_returns_pid_line() {
-    let input = JsonValue::parse(r#"{"command":"sleep 1","description":"test sleep"}"#).unwrap();
-    let result = BashBackgroundTool.execute(&input).unwrap();
+fn bash_run_in_background_returns_pid() {
+    let input = JsonValue::parse(r#"{"command":"sleep 1","run_in_background":true}"#).unwrap();
+    let result = BashTool.execute(&input).unwrap();
     assert!(result.contains("pid"));
 }

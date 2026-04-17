@@ -9,10 +9,10 @@ impl TodoWriteTool {
 }
 
 impl Tool for TodoWriteTool {
-    fn name(&self) -> &str { "todo_write" }
+    fn name(&self) -> &str { "TodoWrite" }
 
     fn description(&self) -> &str {
-        "Write the task list. Replaces all existing todos. Each todo needs id, content, and status (pending | in_progress | completed)."
+        "Use this tool to create and manage a structured task list for the current coding session. This helps track progress and organize complex tasks.\n\nEach todo requires: id (string), content (description), status (pending | in_progress | completed), and optionally priority (high | medium | low).\n\nWhen status changes, update the list via this tool. Mark tasks in_progress BEFORE beginning work; mark completed immediately after finishing."
     }
 
     fn input_schema(&self) -> JsonValue {
@@ -21,12 +21,14 @@ impl Tool for TodoWriteTool {
             "properties":{
                 "todos":{
                     "type":"array",
+                    "description":"The complete list of todos (replaces existing list)",
                     "items":{
                         "type":"object",
                         "properties":{
-                            "id":{"type":"string"},
-                            "content":{"type":"string"},
-                            "status":{"type":"string"}
+                            "id":{"type":"string","description":"Unique identifier for this todo"},
+                            "content":{"type":"string","description":"Description of the task"},
+                            "status":{"type":"string","description":"pending | in_progress | completed"},
+                            "priority":{"type":"string","description":"high | medium | low"}
                         },
                         "required":["id","content","status"]
                     }
@@ -56,8 +58,12 @@ impl TodoReadTool {
 }
 
 impl Tool for TodoReadTool {
-    fn name(&self) -> &str { "todo_read" }
-    fn description(&self) -> &str { "Read the current task list. Returns a JSON array of todos." }
+    fn name(&self) -> &str { "TodoRead" }
+
+    fn description(&self) -> &str {
+        "Use this tool to read the current to-do list for the session. Returns a JSON array of todos. Call this at the start of each response to stay synchronized with the task list."
+    }
+
     fn input_schema(&self) -> JsonValue {
         JsonValue::parse(r#"{"type":"object","properties":{}}"#).unwrap()
     }

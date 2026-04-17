@@ -13,34 +13,31 @@ impl WebFetchTool {
 }
 
 impl Tool for WebFetchTool {
-    fn name(&self) -> &str { "web_fetch" }
+    fn name(&self) -> &str { "WebFetch" }
 
     fn description(&self) -> &str {
-        "Fetch a URL over HTTPS and return its text content. If prompt is given, an LLM extracts the relevant part."
+        "Fetches content from a specified URL and processes it using an AI model.\n\n- Takes a URL and a prompt as input\n- Fetches the URL content, converts HTML to plain text\n- Processes the content with the prompt using a fast model\n- Returns the model's response about the content\n\nIMPORTANT: Will FAIL for authenticated or private URLs. The URL must be a fully-formed valid URL. HTTP URLs are automatically upgraded to HTTPS."
     }
 
     fn input_schema(&self) -> JsonValue {
         JsonValue::parse(r#"{
             "type":"object",
             "properties":{
-                "url":{"type":"string","description":"HTTPS URL to fetch"},
-                "prompt":{"type":"string","description":"What to extract from the page"}
+                "url":{"type":"string","description":"The URL to fetch content from"},
+                "prompt":{"type":"string","description":"The prompt to run on the fetched content. Describe what information you want to extract from the page."}
             },
-            "required":["url"]
+            "required":["url","prompt"]
         }"#).unwrap()
     }
 
     fn execute(&self, input: &JsonValue) -> crate::Result<String> {
         let url = input.get("url").and_then(|v| v.as_str())
             .ok_or_else(|| Error::Tool("missing 'url'".into()))?;
-        let prompt = input.get("prompt").and_then(|v| v.as_str()).unwrap_or("");
+        let prompt = input.get("prompt").and_then(|v| v.as_str())
+            .ok_or_else(|| Error::Tool("missing 'prompt'".into()))?;
 
         let text = fetch_url(url)?;
         let truncated: String = text.chars().take(8000).collect();
-
-        if prompt.is_empty() {
-            return Ok(truncated);
-        }
 
         use crate::agent::message::{Message, SystemBlock};
         let system = vec![SystemBlock::dynamic("You extract relevant content from web pages.")];
