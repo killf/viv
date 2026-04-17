@@ -10,14 +10,26 @@ fn new_renderer_has_correct_area() {
 }
 
 #[test]
-fn flush_empty_writes_sync_sequences() {
+fn flush_empty_writes_nothing_when_buffer_unchanged() {
+    // Identical buffers → diff is empty → no output (avoids cursor flicker).
     let mut r = Renderer::new(TermSize { cols: 10, rows: 5 });
     let mut backend = TestBackend::new(10, 5);
     r.flush(&mut backend).unwrap();
-    let out = String::from_utf8_lossy(&backend.output);
-    // Should contain sync begin/end and cursor hide/show, but no cell diffs
-    assert!(out.contains("\x1b[?2026h")); // sync begin
-    assert!(out.contains("\x1b[?2026l")); // sync end
+    assert!(
+        backend.output.is_empty(),
+        "first flush of all-blank buffer should write nothing (got {} bytes)",
+        backend.output.len()
+    );
+}
+
+#[test]
+fn flush_empty_keeps_cursor_visible() {
+    let mut r = Renderer::new(TermSize { cols: 10, rows: 5 });
+    let mut backend = TestBackend::new(10, 5);
+    assert!(backend.cursor_visible);
+    r.flush(&mut backend).unwrap();
+    // Cursor should still be visible — we didn't hide/show it since nothing changed.
+    assert!(backend.cursor_visible);
 }
 
 #[test]

@@ -41,35 +41,29 @@ impl Renderer {
 
     /// Flush the current frame to the backend using a diff against the previous frame.
     ///
-    /// Steps:
-    /// 1. Begin synchronized update (`\x1b[?2026h`)
-    /// 2. Hide cursor
-    /// 3. Compute diff between current and previous buffers
-    /// 4. Write diff bytes to backend
-    /// 5. Show cursor
-    /// 6. End synchronized update (`\x1b[?2026l`)
-    /// 7. Flush backend
-    /// 8. Swap current ↔ previous
-    /// 9. Clear the new current buffer (ready for next frame)
+    /// If the diff is empty (no cells changed), this is a complete no-op: we don't
+    /// touch the cursor or emit any bytes. This avoids the hardware cursor flickering
+    /// at the event-loop's frame rate.
     pub fn flush(&mut self, backend: &mut dyn Backend) -> crate::Result<()> {
-        // 1. Begin synchronized update
-        backend.write(b"\x1b[?2026h")?;
-        // 2. Hide cursor
-        backend.hide_cursor()?;
-        // 3. Compute diff
         let diff = self.current.diff(&self.previous);
-        // 4. Write diff
-        backend.write(&diff)?;
-        // 5. Show cursor
-        backend.show_cursor()?;
-        // 6. End synchronized update
-        backend.write(b"\x1b[?2026l")?;
-        // 7. Flush backend
-        backend.flush()?;
-        // 8. Swap buffers
+
+        if !diff.is_empty() {
+            // 1. Begin synchronized update
+            backend.write(b"\x1b[?2026h")?;
+            // 2. Hide cursor during redraw
+            backend.hide_cursor()?;
+            // 3. Write diff bytes
+            backend.write(&diff)?;
+            // 4. Show cursor again
+            backend.show_cursor()?;
+            // 5. End synchronized update
+            backend.write(b"\x1b[?2026l")?;
+            // 6. Flush backend
+            backend.flush()?;
+        }
+
+        // Swap buffers regardless so the buffer bookkeeping stays consistent.
         std::mem::swap(&mut self.current, &mut self.previous);
-        // 9. Clear the new current buffer for the next frame.
-        //    Widgets must fully repaint each frame.
         self.current.clear();
         Ok(())
     }

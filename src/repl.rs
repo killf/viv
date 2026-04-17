@@ -35,40 +35,51 @@ pub fn run() -> crate::Result<()> {
     let mut history_lines: Vec<Line> = Vec::new();
     let mut messages: Vec<Message> = Vec::new();
     let mut scroll: u16 = 0;
+    let mut dirty: bool = true;
+    let mut last_cursor: (u16, u16) = (0, 0);
 
     // Minimal welcome (Claude Code style: subtle, single line)
     history_lines.push(format_welcome());
     history_lines.push(Line::raw(""));
 
     loop {
-        // Render frame
-        render_frame(
-            &mut renderer,
-            &history_lines,
-            &editor,
-            scroll,
-        );
-        renderer.flush(&mut backend)?;
+        if dirty {
+            // Render frame
+            render_frame(
+                &mut renderer,
+                &history_lines,
+                &editor,
+                scroll,
+            );
+            renderer.flush(&mut backend)?;
 
-        // Position cursor at the input widget location
-        let area = renderer.area();
-        let chunks = main_layout().split(area);
-        let input_block = Block::new()
-            .border(BorderStyle::Rounded)
-            .borders(BorderSides::HORIZONTAL)
-            .border_fg(theme::DIM);
-        let input_inner = input_block.inner(chunks[1]);
-        let input_widget = InputWidget::new(&editor.buf, editor.cursor, "\u{276F} ").prompt_fg(theme::CLAUDE);
-        let (cx, cy) = input_widget.cursor_position(input_inner);
-        backend.move_cursor(cy, cx)?;
-        backend.show_cursor()?;
-        backend.flush()?;
+            // Position cursor at the input widget location
+            let area = renderer.area();
+            let chunks = main_layout().split(area);
+            let input_block = Block::new()
+                .border(BorderStyle::Rounded)
+                .borders(BorderSides::HORIZONTAL)
+                .border_fg(theme::DIM);
+            let input_inner = input_block.inner(chunks[1]);
+            let input_widget = InputWidget::new(&editor.buf, editor.cursor, "\u{276F} ")
+                .prompt_fg(theme::CLAUDE);
+            let (cx, cy) = input_widget.cursor_position(input_inner);
+            if (cx, cy) != last_cursor {
+                backend.move_cursor(cy, cx)?;
+                last_cursor = (cx, cy);
+            }
+            backend.show_cursor()?;
+            backend.flush()?;
+
+            dirty = false;
+        }
 
         // Poll events (~60fps)
         let events = event_loop.poll(16)?;
         for event in events {
             match event {
                 Event::Key(key) => {
+                    dirty = true;
                     let action = editor.handle_key(key);
                     match action {
                         EditAction::Submit(line) => {
@@ -212,6 +223,7 @@ pub fn run() -> crate::Result<()> {
                 Event::Resize(new_size) => {
                     renderer.resize(new_size);
                     scroll = compute_max_scroll(&history_lines, &renderer);
+                    dirty = true;
                 }
                 Event::Tick => {}
             }
