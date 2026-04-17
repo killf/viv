@@ -144,9 +144,36 @@ pub fn run() -> crate::Result<()> {
                             renderer.flush(&mut backend)?;
                             backend.flush()?;
 
-                            let mut ask_fn_stub = |_name: &str, _input: &crate::json::JsonValue| -> bool { true };
+                            let mut ask_fn = |tool_name: &str, tool_input: &crate::json::JsonValue| -> bool {
+                                use std::io::{Read, Write};
+                                let summary = format_tool_summary(tool_input);
+                                let prompt = format!(
+                                    "\r\n\x1b[33m Allow {}({})? [y/n] \x1b[0m",
+                                    tool_name, summary
+                                );
+                                let _ = std::io::stdout().write_all(prompt.as_bytes());
+                                let _ = std::io::stdout().flush();
+                                let mut buf = [0u8; 1];
+                                loop {
+                                    match std::io::stdin().lock().read(&mut buf) {
+                                        Ok(1) => match buf[0] {
+                                            b'y' | b'Y' => {
+                                                let _ = std::io::stdout().write_all(b"y\r\n");
+                                                let _ = std::io::stdout().flush();
+                                                return true;
+                                            }
+                                            _ => {
+                                                let _ = std::io::stdout().write_all(b"n\r\n");
+                                                let _ = std::io::stdout().flush();
+                                                return false;
+                                            }
+                                        },
+                                        _ => return false,
+                                    }
+                                }
+                            };
                             let agent_result =
-                                run_agent(line, &mut agent_ctx, &mut ask_fn_stub, |text| {
+                                run_agent(line, &mut agent_ctx, &mut ask_fn, |text| {
                                     response.push_str(text);
 
                                     if response.trim().is_empty() {
@@ -231,6 +258,26 @@ pub fn run() -> crate::Result<()> {
                 Event::Tick => {}
             }
         }
+    }
+}
+
+fn format_tool_summary(input: &crate::json::JsonValue) -> String {
+    match input {
+        crate::json::JsonValue::Object(pairs) => pairs
+            .iter()
+            .take(2)
+            .map(|(k, v)| {
+                let val = match v {
+                    crate::json::JsonValue::Str(s) => {
+                        format!("\"{}\"", s.chars().take(40).collect::<String>())
+                    }
+                    other => format!("{}", other).chars().take(40).collect::<String>(),
+                };
+                format!("{}={}", k, val)
+            })
+            .collect::<Vec<_>>()
+            .join(", "),
+        _ => String::new(),
     }
 }
 
