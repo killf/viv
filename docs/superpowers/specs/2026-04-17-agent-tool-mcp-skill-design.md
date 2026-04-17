@@ -1,4 +1,4 @@
-# viv Agent Loop / Tool / MCP / Skill 设计文档
+# viv Agent Loop / Tool / MCP / Skill / Memory 设计文档
 
 **日期：** 2026-04-17  
 **状态：** 已批准，待实现  
@@ -13,8 +13,9 @@
 1. **Agent 循环**：tool_use → tool_result → 再次请求，直到 end_turn
 2. **Tool 系统**：60+ 内置工具，与 Claude Code 参数/说明严格一致
 3. **MCP 协议栈**：stdio / SSE / HTTP / WebSocket 四种传输
-4. **Skill 系统**：本地 + 插件 + 自动发现 + Hook 触发，完整复刻 Claude Code
+4. **Skill 系统**：本地 + 插件 + 自动发现（Hook 暂不支持）
 5. **权限模型**：default/auto/bypass 三模式 + 规则匹配 + AI 动态分类器
+6. **分层记忆系统**：支持自我进化、经验总结、动态相关记忆注入上下文
 
 **核心约束：** 零外部依赖（edition 2024 单 crate），为裸机 AgentOS 部署准备。
 
@@ -375,13 +376,128 @@ tool.call() 前：
 
 ---
 
-## 八、实现顺序建议
+## 八、分层记忆系统
 
-1. `src/runtime/` — 自制 async executor（基础，其他模块依赖）
-2. `src/agent/` — Agent 循环 + 消息类型
-3. `src/tools/` — Tool trait + 核心工具（Bash、文件、搜索）
-4. `src/permissions/` — 权限规则 + AI 分类器
-5. `src/mcp/` — MCP 协议栈（stdio 优先，再加 SSE/HTTP/WS）
-6. `src/skills/` — Skill 加载 + Hook 系统
-7. 补全剩余 60+ 工具
-8. 集成测试（`--features full_test`）
+**核心目标：** 支持自我进化和经验总结，动态将重要/相关记忆注入当前上下文，让 viv 越用越好用。
+
+### 记忆层级
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  L1: Working Memory（工作记忆）                           │
+│  当前对话消息 + 活跃工具结果。受 LLM context 窗口限制。    │
+├─────────────────────────────────────────────────────────┤
+│  L2: Session Memory（会话记忆）                           │
+│  本次完整会话历史，会话结束时压缩入 Episodic。             │
+│  存储：.viv/sessions/YYYY-MM-DD-HH-MM-SS.jsonl          │
+├─────────────────────────────────────────────────────────┤
+│  L3: Episodic Memory（情节记忆）                          │
+│  过去会话的 LLM 生成摘要 + 关键决策和结果。               │
+│  存储：.viv/memory/episodes/YYYY-MM-DD-*.md             │
+├─────────────────────────────────────────────────────────┤
+│  L4: Semantic Memory（语义记忆）                          │
+│  项目架构事实 / 用户偏好 / 学习到的模式和规律。            │
+│  存储：.viv/memory/knowledge/*.md（分类索引）             │
+├─────────────────────────────────────────────────────────┤
+│  L5: Skill Memory（技能记忆）                             │
+│  Skill 系统（见 § 六），如何应对特定任务类型。             │
+└─────────────────────────────────────────────────────────┘
+```
+
+### 动态上下文注入
+
+每次对话开始时，两阶段检索相关记忆注入 system prompt：
+
+1. **关键词预筛**：快速扫描记忆索引（`.viv/memory/index.json`），匹配当前任务关键词
+2. **LLM 相关性排序**：用 fast tier 模型对候选记忆打分，选 Top-K 注入
+
+注入格式（system prompt 末尾追加）：
+```
+<memory>
+[Episodic] 2026-04-10：重构了 net/ 模块，引入 AsyncTcpStream
+[Knowledge] 用户偏好：不用 String 当 Error，统一 Error 枚举
+[Knowledge] 项目约束：零外部依赖，面向裸机部署
+</memory>
+```
+
+### 自我进化（会话后处理）
+
+会话结束时，用 medium tier 模型分析本次对话，自动提炼：
+
+- **新事实** → 写入 Semantic Memory（如发现了新架构规律）
+- **有效模式** → 强化已有 Knowledge 条目
+- **错误/踩坑** → 写入 Knowledge（避免重蹈覆辙）
+- **会话摘要** → 写入 Episodic Memory
+
+### 上下文压缩
+
+当 Working Memory 接近 LLM 上下文限制时，自动压缩旧消息：
+- 保留最近 N 轮（可配置）
+- 将更早的消息用 fast tier 压缩为摘要块
+- 摘要块替换原始消息，保持对话连贯性
+
+### 记忆索引结构
+
+`.viv/memory/index.json`：
+
+```json
+{
+  "episodes": [
+    { "date": "2026-04-10", "file": "episodes/2026-04-10-refactor-net.md", "tags": ["net", "async", "refactor"] }
+  ],
+  "knowledge": [
+    { "id": "error-type", "file": "knowledge/error-type.md", "tags": ["error", "rust", "convention"] },
+    { "id": "user-prefs", "file": "knowledge/user-prefs.md", "tags": ["preference", "style"] }
+  ]
+}
+```
+
+### 文件结构
+
+```
+src/memory/
+├── mod.rs          # MemorySystem 公开 API
+├── store.rs        # 读写 .viv/memory/ 文件
+├── index.rs        # 索引管理（index.json CRUD）
+├── retrieval.rs    # 两阶段检索：关键词筛选 + LLM 排序
+├── compaction.rs   # 上下文压缩（Working Memory）
+└── evolution.rs    # 会话后自我进化处理
+
+.viv/
+├── sessions/       # L2: 原始会话日志
+├── memory/
+│   ├── index.json  # 全局索引
+│   ├── episodes/   # L3: 情节摘要
+│   └── knowledge/  # L4: 语义知识库
+└── settings.json   # 配置（MCP、权限规则等）
+```
+
+---
+
+## 九、Prompt 拼接逻辑
+
+Agent 每次调用 LLM 前，按以下顺序组装 system prompt：
+
+```
+1. Base System Prompt    # 固定角色定义和核心能力说明
+2. Tool Descriptions     # 当前可用工具列表（来自 Tool registry + MCP）
+3. Active Skills         # 当前激活的 Skill 内容
+4. Memory Injection      # 动态注入的相关记忆（见 § 八）
+5. Context Modifiers     # 运行时上下文（当前目录、项目信息等）
+```
+
+拼接由 `agent::prompt::build_system_prompt(ctx)` 负责，在每次 LLM 调用前执行。
+
+---
+
+## 十、实现顺序建议
+
+1. `src/runtime/` — 自制 async executor（基础，其他模块依赖）✅ Plan 1 已完成
+2. `src/agent/` — Agent 循环 + 消息类型 + Prompt 拼接
+3. `src/memory/` — 分层记忆系统（可与 Agent 循环同步实现）
+4. `src/tools/` — Tool trait + 核心工具（Bash、文件、搜索）
+5. `src/permissions/` — 权限规则 + AI 分类器
+6. `src/mcp/` — MCP 协议栈（stdio 优先，再加 SSE/HTTP/WS）
+7. `src/skills/` — Skill 加载（暂不含 Hook）
+8. 补全剩余 60+ 工具
+9. 集成测试（`--features full_test`）
