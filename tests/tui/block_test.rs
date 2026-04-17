@@ -76,3 +76,56 @@ fn no_border_renders_nothing() {
     b.render(Rect::new(0, 0, 10, 5), &mut buf);
     assert_eq!(buf.get(0, 0).ch, ' ');
 }
+
+// ── Selective border sides (Claude Code style: only top + bottom) ────────────
+
+#[test]
+fn borders_horizontal_only_inner_shrinks_vertically() {
+    // Only top and bottom borders: inner area is full width, height - 2
+    let b = Block::new()
+        .border(BorderStyle::Rounded)
+        .borders(BorderSides::HORIZONTAL);
+    let inner = b.inner(Rect::new(0, 0, 20, 5));
+    assert_eq!(inner, Rect::new(0, 1, 20, 3));
+}
+
+#[test]
+fn horizontal_borders_draw_no_side_walls() {
+    let b = Block::new()
+        .border(BorderStyle::Rounded)
+        .borders(BorderSides::HORIZONTAL);
+    let mut buf = Buffer::empty(Rect::new(0, 0, 10, 5));
+    b.render(Rect::new(0, 0, 10, 5), &mut buf);
+    // Top and bottom rows should have horizontal lines, full width
+    assert_eq!(buf.get(0, 0).ch, '─');
+    assert_eq!(buf.get(5, 0).ch, '─');
+    assert_eq!(buf.get(9, 0).ch, '─');
+    assert_eq!(buf.get(0, 4).ch, '─');
+    assert_eq!(buf.get(9, 4).ch, '─');
+    // Left/right columns on middle rows have NO vertical lines
+    assert_eq!(buf.get(0, 2).ch, ' ');
+    assert_eq!(buf.get(9, 2).ch, ' ');
+}
+
+#[test]
+fn horizontal_borders_title_inline() {
+    let b = Block::new()
+        .border(BorderStyle::Rounded)
+        .borders(BorderSides::HORIZONTAL)
+        .title(" main ");
+    let mut buf = Buffer::empty(Rect::new(0, 0, 30, 3));
+    b.render(Rect::new(0, 0, 30, 3), &mut buf);
+    // Title should be on the top row somewhere
+    let top_row: String = (0..30).map(|x| buf.get(x, 0).ch).collect();
+    assert!(top_row.contains("main"), "top row should contain title: {top_row:?}");
+    // Title should be surrounded by horizontal lines
+    assert_eq!(buf.get(0, 0).ch, '─');
+}
+
+#[test]
+fn default_borders_is_all_sides() {
+    // Default Block::border() (without .borders()) uses ALL sides — backward compatible
+    let b = Block::new().border(BorderStyle::Rounded);
+    let inner = b.inner(Rect::new(0, 0, 20, 10));
+    assert_eq!(inner, Rect::new(1, 1, 18, 8));
+}

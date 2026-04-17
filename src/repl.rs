@@ -4,7 +4,7 @@ use crate::terminal::buffer::char_width;
 use crate::terminal::events::{Event, EventLoop};
 use crate::terminal::input::KeyEvent;
 use crate::terminal::style::theme;
-use crate::tui::block::{Block, BorderStyle};
+use crate::tui::block::{Block, BorderSides, BorderStyle};
 use crate::tui::input::InputWidget;
 use crate::tui::layout::{Constraint, Direction, Layout};
 use crate::tui::message_style::{
@@ -53,7 +53,10 @@ pub fn run() -> crate::Result<()> {
         // Position cursor at the input widget location
         let area = renderer.area();
         let chunks = main_layout().split(area);
-        let input_block = Block::new().border(BorderStyle::Rounded);
+        let input_block = Block::new()
+            .border(BorderStyle::Rounded)
+            .borders(BorderSides::HORIZONTAL)
+            .border_fg(theme::DIM);
         let input_inner = input_block.inner(chunks[1]);
         let input_widget = InputWidget::new(&editor.buf, editor.cursor, "\u{276F} ").prompt_fg(theme::CLAUDE);
         let (cx, cy) = input_widget.cursor_position(input_inner);
@@ -216,7 +219,10 @@ pub fn run() -> crate::Result<()> {
     }
 }
 
-/// Build the main vertical layout: conversation (Fill) + input (Fixed 3) + status (Fixed 1).
+/// Build the main vertical layout: conversation (Fill) + input (Fixed 3) + footer (Fixed 1).
+///
+/// The input box uses only top + bottom borders (Claude Code style), so it
+/// reserves 3 rows: top line, input content, bottom line.
 fn main_layout() -> Layout {
     Layout::new(Direction::Vertical).constraints(vec![
         Constraint::Fill,
@@ -241,24 +247,25 @@ fn render_frame(
     let paragraph = Paragraph::new(history_lines.to_vec()).scroll(scroll);
     paragraph.render(chunks[0], buf);
 
-    // Input box (rounded border, no title)
-    let input_block = Block::new().border(BorderStyle::Rounded);
+    // Input box: top + bottom rounded borders only, dim gray
+    let input_block = Block::new()
+        .border(BorderStyle::Rounded)
+        .borders(BorderSides::HORIZONTAL)
+        .border_fg(theme::DIM);
     let input_inner = input_block.inner(chunks[1]);
     input_block.render(chunks[1], buf);
 
-    // Input widget with ❯ prompt (cyan)
-    let input_widget = InputWidget::new(&editor.buf, editor.cursor, "\u{276F} ").prompt_fg(theme::CLAUDE);
+    // Input widget with ❯ prompt (Claude orange)
+    let input_widget =
+        InputWidget::new(&editor.buf, editor.cursor, "\u{276F} ").prompt_fg(theme::CLAUDE);
     input_widget.render(input_inner, buf);
 
-    // Status line (dim, below input)
-    let status = Line::from_spans(vec![
-        Span::styled("\u{23F5}\u{23F5} ", theme::DIM, false),
-        Span::styled("ready", theme::DIM, false),
-        Span::styled("  \u{00B7}  ", theme::DIM, false),
-        Span::styled("ctrl+c clear  \u{00B7}  ctrl+d exit", theme::DIM, false),
+    // Footer line (dim): keybind hints, Claude Code style
+    let footer = Line::from_spans(vec![
+        Span::styled("  ? for shortcuts", theme::DIM, false),
     ]);
-    let status_para = Paragraph::new(vec![status]);
-    status_para.render(chunks[2], buf);
+    let footer_para = Paragraph::new(vec![footer]);
+    footer_para.render(chunks[2], buf);
 }
 
 /// Compute the maximum scroll offset so the last line of history is visible
