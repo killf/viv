@@ -103,7 +103,6 @@ impl TerminalUI {
     pub fn run(mut self) -> crate::Result<()> {
         let mut event_loop = EventLoop::new()?;
         let mut dirty = true;
-        let mut last_cursor: (u16, u16) = (0, 0);
 
         loop {
             // Drain all pending agent messages
@@ -150,7 +149,9 @@ impl TerminalUI {
                 self.render_frame();
                 self.renderer.flush(&mut self.backend)?;
 
-                // Position cursor in input box
+                // The diff pass above left the physical cursor at an arbitrary
+                // cell. Always reposition it to the input box so the caret stays
+                // pinned to where the user is typing.
                 let area = self.renderer.area();
                 let input_height = (self.editor.line_count() as u16 + 2).min(8).max(3);
                 let chunks = main_layout(input_height).split(area);
@@ -164,10 +165,7 @@ impl TerminalUI {
                     InputWidget::new(&editor_content, self.editor.cursor_offset(), "\u{276F} ")
                         .prompt_fg(theme::CLAUDE);
                 let (cx, cy) = input_widget.cursor_position(input_inner);
-                if (cx, cy) != last_cursor {
-                    self.backend.move_cursor(cy, cx)?;
-                    last_cursor = (cx, cy);
-                }
+                self.backend.move_cursor(cy, cx)?;
                 self.backend.show_cursor()?;
                 self.backend.flush()?;
 

@@ -41,24 +41,19 @@ impl Renderer {
 
     /// Flush the current frame to the backend using a diff against the previous frame.
     ///
-    /// If the diff is empty (no cells changed), this is a complete no-op: we don't
-    /// touch the cursor or emit any bytes. This avoids the hardware cursor flickering
-    /// at the event-loop's frame rate.
+    /// If the diff is empty, this is a complete no-op. When there *is* a diff, the
+    /// cursor is hidden for the duration of the redraw and stays hidden on return —
+    /// writing the diff leaves the physical cursor at an arbitrary cell, so the
+    /// caller must move it to the desired position and call `show_cursor()` before
+    /// the next frame.
     pub fn flush(&mut self, backend: &mut dyn Backend) -> crate::Result<()> {
         let diff = self.current.diff(&self.previous);
 
         if !diff.is_empty() {
-            // 1. Begin synchronized update
             backend.write(b"\x1b[?2026h")?;
-            // 2. Hide cursor during redraw
             backend.hide_cursor()?;
-            // 3. Write diff bytes
             backend.write(&diff)?;
-            // 4. Show cursor again
-            backend.show_cursor()?;
-            // 5. End synchronized update
             backend.write(b"\x1b[?2026l")?;
-            // 6. Flush backend
             backend.flush()?;
         }
 
