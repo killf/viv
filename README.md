@@ -1,138 +1,138 @@
 # viv
 
-一个自我进化的 AI 编程 Agent。核心理念是"越用越好用"——Agent 在使用过程中持续积累经验、进化能力，随时间变得越来越顺手。
+A self-evolving AI programming agent. The core idea is "gets smarter the more you use it" — the agent continuously accumulates experience and evolves its capabilities over time.
 
-## 核心特性
+## Features
 
-- **自我进化** — 每次会话结束后自动提炼经验、更新记忆，下次更聪明
-- **分层记忆** — Working / Session / Episodic / Semantic 四层记忆，动态注入相关上下文
-- **Agent 循环** — tool_use → tool_result → 再次请求，支持 60+ 内置工具
-- **MCP 集成** — 通过 stdio / SSE / HTTP / WebSocket 接入外部工具生态
-- **Skill 系统** — 可扩展的技能库，按需加载注入上下文
-- **零外部依赖** — JSON、TLS、HTTP、SSE、async runtime 全部从零实现，无任何第三方 crate
-- **跨平台** — 支持 Linux、macOS、Windows
+- **Self-evolution** — automatically distills experience and updates memory after each session, becoming smarter over time
+- **Layered memory** — four memory layers (Working / Session / Episodic / Semantic) with dynamic context injection
+- **Agent loop** — tool_use → tool_result → next request, supporting 60+ built-in tools
+- **MCP integration** — connect external tool ecosystems via stdio / SSE / HTTP / WebSocket
+- **Skill system** — extensible skill library with on-demand context injection
+- **Zero external dependencies** — JSON, TLS, HTTP, SSE, async runtime all built from scratch; no third-party crates
+- **Cross-platform** — Linux, macOS, Windows
 
-## 构建
+## Build
 
-需要系统已安装 OpenSSL（用于 TLS FFI 绑定）。
+Requires OpenSSL installed on the system (for TLS FFI bindings).
 
 ```bash
 cargo build
 ```
 
-## 运行
+## Run
 
 ```bash
-VIV_API_KEY=你的密钥 cargo run
+VIV_API_KEY=your_key cargo run
 ```
 
-### 环境变量
+### Environment Variables
 
-| 变量 | 必填 | 说明 |
-|------|------|------|
-| `VIV_API_KEY` | 是 | LLM API 密钥 |
-| `VIV_BASE_URL` | 否 | API base URL（默认 api.anthropic.com） |
-| `VIV_MODEL` | 否 | 所有模型档位的回退值 |
-| `VIV_MODEL_FAST` | 否 | 快速模型（默认 claude-haiku-4-5） |
-| `VIV_MODEL_MEDIUM` | 否 | 中等模型（默认 claude-sonnet-4-6） |
-| `VIV_MODEL_SLOW` | 否 | 慢速模型（默认 claude-opus-4-6） |
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `VIV_API_KEY` | Yes | LLM API key |
+| `VIV_BASE_URL` | No | API base URL (default: api.anthropic.com) |
+| `VIV_MODEL` | No | Fallback model for all tiers |
+| `VIV_MODEL_FAST` | No | Fast model (default: claude-haiku-4-5) |
+| `VIV_MODEL_MEDIUM` | No | Medium model (default: claude-sonnet-4-6) |
+| `VIV_MODEL_SLOW` | No | Slow model (default: claude-opus-4-6) |
 
-## 测试
+## Testing
 
 ```bash
-cargo test                         # 运行所有测试
-cargo test --features full_test    # 包含 e2e 测试（调用真实 API）
+cargo test                         # run all tests
+cargo test --features full_test    # include e2e tests (calls real API)
 ```
 
-## 架构
+## Architecture
 
 ```
 src/
-├── main.rs              # 入口
-├── lib.rs               # 模块导出 + Error/Result
-├── error.rs             # 统一错误类型
-├── json.rs              # JSON 解析器/序列化器
-├── llm.rs               # LLM 客户端（fast/medium/slow 三档）
-├── repl.rs              # REPL 主循环 + 行编辑器
-├── event.rs             # epoll 事件循环
+├── main.rs              # entry point
+├── lib.rs               # module exports + Error/Result
+├── error.rs             # unified error type
+├── json.rs              # JSON parser/serializer
+├── llm.rs               # LLM client (fast/medium/slow tiers)
+├── repl.rs              # REPL main loop + line editor
+├── event.rs             # epoll event loop
 │
-├── runtime/             # 自制 async executor + I/O reactor（零依赖）
-│   ├── executor.rs      # 任务调度 + block_on + spawn
-│   ├── reactor.rs       # epoll fd 注册 + Waker 映射
+├── runtime/             # custom async executor + I/O reactor (zero deps)
+│   ├── executor.rs      # task scheduling + block_on + spawn
+│   ├── reactor.rs       # epoll fd registration + Waker mapping
 │   ├── task.rs          # Task + RawWaker vtable + JoinHandle
 │   └── timer.rs         # timerfd sleep Future
 │
-├── agent/               # Agent 循环 + 进化引擎
-│   ├── loop.rs          # tool_use → tool_result 主循环
-│   ├── message.rs       # Message / ContentBlock 类型
+├── agent/               # agent loop + evolution engine
+│   ├── run.rs           # tool_use → tool_result main loop
+│   ├── message.rs       # Message / ContentBlock types
 │   ├── context.rs       # AgentContext
-│   ├── prompt.rs        # System prompt 拼接逻辑
-│   └── evolution.rs     # 自我进化：经验提炼 + 记忆更新
+│   ├── prompt.rs        # system prompt assembly
+│   └── evolution.rs     # self-evolution: experience extraction + memory update
 │
-├── memory/              # 分层记忆系统
-│   ├── store.rs         # .viv/memory/ 文件读写
-│   ├── index.rs         # 记忆索引管理
-│   ├── retrieval.rs     # 两阶段检索（关键词 + LLM 排序）
-│   └── compaction.rs    # 上下文压缩
+├── memory/              # layered memory system
+│   ├── store.rs         # .viv/memory/ file I/O
+│   ├── index.rs         # memory index management
+│   ├── retrieval.rs     # two-stage retrieval (keyword + LLM ranking)
+│   └── compaction.rs    # context compaction
 │
-├── tools/               # Tool trait + 60+ 内置工具
-│   ├── mod.rs           # Tool trait + 注册表
+├── tools/               # Tool trait + 60+ built-in tools
+│   ├── mod.rs           # Tool trait + registry
 │   ├── bash.rs          # Bash
 │   ├── file/            # Read / Write / Edit / Glob / Grep
 │   └── ...
 │
-├── permissions/         # 权限模型
-│   ├── rules.rs         # allow/deny/ask 规则匹配
-│   └── classifier.rs    # AI 动态分类器
+├── permissions/         # permission model
+│   ├── rules.rs         # allow/deny/ask rule matching
+│   └── classifier.rs    # AI dynamic classifier
 │
-├── mcp/                 # MCP 协议栈
-│   ├── client.rs        # MCP 客户端
+├── mcp/                 # MCP protocol stack
+│   ├── client.rs        # MCP client
 │   └── transport/       # stdio / sse / http / ws
 │
-├── skills/              # Skill 加载 + 发现
+├── skills/              # skill loading + discovery
 │
-├── terminal/            # TUI 组件
+├── terminal/            # TUI components
 │   ├── raw_mode.rs
 │   ├── input.rs
 │   ├── output.rs
 │   └── screen.rs
 │
-└── net/                 # 网络层
+└── net/                 # network layer
     ├── tcp.rs
-    ├── async_tcp.rs     # 异步 TCP（集成 reactor）
+    ├── async_tcp.rs     # async TCP (integrated with reactor)
     ├── tls.rs
     ├── http.rs
     └── sse.rs
 ```
 
-### 记忆层级
+### Memory Layers
 
 ```
-L1 Working Memory    当前对话消息（内存，受 context 窗口限制）
-L2 Session Memory    完整会话历史（.viv/sessions/）
-L3 Episodic Memory   过去会话摘要（.viv/memory/episodes/）
-L4 Semantic Memory   项目事实/用户偏好/学习规律（.viv/memory/knowledge/）
-L5 Skill Memory      技能库（.viv/skills/）
+L1 Working Memory    current conversation messages (in-memory, context window limited)
+L2 Session Memory    full session history (.viv/sessions/)
+L3 Episodic Memory   past session summaries (.viv/memory/episodes/)
+L4 Semantic Memory   project facts / user preferences / learned patterns (.viv/memory/knowledge/)
+L5 Skill Memory      skill library (.viv/skills/)
 ```
 
-## 配置
+## Configuration
 
 ```
 .viv/
-├── settings.json    # MCP 服务器、权限规则配置
-├── sessions/        # 会话历史
-├── memory/          # 记忆库
+├── settings.json    # MCP servers, permission rules
+├── sessions/        # session history
+├── memory/          # memory store
 │   ├── index.json
 │   ├── episodes/
 │   └── knowledge/
-└── skills/          # 项目级 Skill
+└── skills/          # project-level skills
 ```
 
-## 许可证
+## License
 
 [Apache License 2.0](LICENSE)
 
-## 参考项目
+## References
 
 - https://github.com/openai/codex
 - https://github.com/anthropics/claude-code
