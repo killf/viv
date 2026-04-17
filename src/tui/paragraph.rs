@@ -1,11 +1,12 @@
 use crate::terminal::buffer::{char_width, Buffer, Rect};
+use crate::terminal::style::Color;
 use crate::tui::widget::Widget;
 
 /// A styled text segment within a line.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Span {
     pub text: String,
-    pub fg: Option<u8>,
+    pub fg: Option<Color>,
     pub bold: bool,
 }
 
@@ -14,7 +15,7 @@ impl Span {
         Span { text: text.into(), fg: None, bold: false }
     }
 
-    pub fn styled(text: impl Into<String>, fg: u8, bold: bool) -> Self {
+    pub fn styled(text: impl Into<String>, fg: Color, bold: bool) -> Self {
         Span { text: text.into(), fg: Some(fg), bold }
     }
 }
@@ -55,7 +56,7 @@ impl Paragraph {
 /// A single rendered character with its styling.
 struct StyledChar {
     ch: char,
-    fg: Option<u8>,
+    fg: Option<Color>,
     bold: bool,
     width: u16,
 }

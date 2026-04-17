@@ -7,3 +7,4 @@ mod screen_test;
 mod signal_test;
 mod size_test;
 mod backend_test;
+mod style_test;

@@ -7,3 +7,4 @@ pub mod raw_mode;
 pub mod screen;
 pub mod signal;
 pub mod size;
+pub mod style;

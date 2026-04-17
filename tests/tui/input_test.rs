@@ -40,10 +40,10 @@ fn cursor_position_with_area_offset() {
 
 #[test]
 fn prompt_color() {
-    let w = InputWidget::new("hi", 0, "> ").prompt_fg(32);
+    let w = InputWidget::new("hi", 0, "> ").prompt_fg(viv::terminal::style::Color::Ansi(32));
     let mut buf = Buffer::empty(Rect::new(0, 0, 20, 1));
     w.render(Rect::new(0, 0, 20, 1), &mut buf);
-    assert_eq!(buf.get(0, 0).fg, Some(32));
+    assert_eq!(buf.get(0, 0).fg, Some(viv::terminal::style::Color::Ansi(32)));
     assert_eq!(buf.get(2, 0).fg, None); // content has no color
 }
 

@@ -1,13 +1,18 @@
 use crate::llm::{LlmClient, LlmConfig, Message, ModelTier};
 use crate::terminal::backend::{Backend, LinuxBackend};
+use crate::terminal::buffer::char_width;
 use crate::terminal::events::{Event, EventLoop};
 use crate::terminal::input::KeyEvent;
+use crate::terminal::style::theme;
 use crate::tui::block::{Block, BorderStyle};
 use crate::tui::input::InputWidget;
 use crate::tui::layout::{Constraint, Direction, Layout};
+use crate::tui::message_style::{
+    format_assistant_message, format_error_message, format_user_message, format_welcome,
+};
 use crate::tui::paragraph::{Line, Paragraph, Span};
 use crate::tui::renderer::Renderer;
-use crate::terminal::buffer::char_width;
+use crate::tui::spinner::{random_verb, Spinner};
 use crate::tui::widget::Widget;
 
 /// Start the REPL: initialize TUI, enter raw mode, and run the event loop.
@@ -32,12 +37,7 @@ pub fn run() -> crate::Result<()> {
     let mut scroll: u16 = 0;
 
     // Minimal welcome (Claude Code style: subtle, single line)
-    history_lines.push(Line::from_spans(vec![
-        Span::styled("● ", 33, false),
-        Span::styled("viv", 33, true),
-        Span::raw("  "),
-        Span::styled("ready", 90, false),
-    ]));
+    history_lines.push(format_welcome());
     history_lines.push(Line::raw(""));
 
     loop {
@@ -55,7 +55,7 @@ pub fn run() -> crate::Result<()> {
         let chunks = main_layout().split(area);
         let input_block = Block::new().border(BorderStyle::Rounded);
         let input_inner = input_block.inner(chunks[1]);
-        let input_widget = InputWidget::new(&editor.buf, editor.cursor, "\u{276F} ").prompt_fg(36);
+        let input_widget = InputWidget::new(&editor.buf, editor.cursor, "\u{276F} ").prompt_fg(theme::CLAUDE);
         let (cx, cy) = input_widget.cursor_position(input_inner);
         backend.move_cursor(cy, cx)?;
         backend.show_cursor()?;
@@ -83,11 +83,8 @@ pub fn run() -> crate::Result<()> {
                                 return Ok(());
                             }
 
-                            // User message: dimmed '>' prefix
-                            history_lines.push(Line::from_spans(vec![
-                                Span::styled("> ", 90, false),
-                                Span::raw(&line),
-                            ]));
+                            // User message
+                            history_lines.push(format_user_message(&line));
 
                             // Add to API messages
                             messages.push(Message {
@@ -106,23 +103,57 @@ pub fn run() -> crate::Result<()> {
                             // Stream LLM response
                             let mut response = String::new();
 
-                            // Placeholder line with '●' bullet for assistant
+                            // Spinner placeholder shown until first chunk arrives
+                            let spinner = Spinner::new();
+                            let verb = random_verb(
+                                std::time::SystemTime::now()
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .map(|d| d.as_millis() as u64)
+                                    .unwrap_or(0),
+                            );
+                            let stream_start = std::time::Instant::now();
+
                             history_lines.push(Line::from_spans(vec![
-                                Span::styled("● ", 33, false),
+                                Span::styled(
+                                    format!("{} ", spinner.frame_at(0)),
+                                    theme::CLAUDE,
+                                    false,
+                                ),
+                                Span::styled(format!("{}\u{2026}", verb), theme::DIM, false),
                             ]));
                             let response_line_idx = history_lines.len() - 1;
+
+                            scroll = compute_max_scroll(&history_lines, &renderer);
+                            render_frame(&mut renderer, &history_lines, &editor, scroll);
+                            renderer.flush(&mut backend)?;
+                            backend.flush()?;
 
                             let stream_result =
                                 client.stream(&messages, ModelTier::Medium, |text| {
                                     response.push_str(text);
 
-                                    // Rebuild response lines: '●' bullet on first line,
-                                    // subsequent lines indented 2 spaces
-                                    rebuild_response_lines(
-                                        &mut history_lines,
-                                        response_line_idx,
-                                        &response,
-                                    );
+                                    if response.trim().is_empty() {
+                                        // Still waiting — animate the spinner
+                                        let elapsed =
+                                            stream_start.elapsed().as_millis() as u64;
+                                        history_lines.truncate(response_line_idx);
+                                        history_lines.push(Line::from_spans(vec![
+                                            Span::styled(
+                                                format!("{} ", spinner.frame_at(elapsed)),
+                                                theme::CLAUDE,
+                                                false,
+                                            ),
+                                            Span::styled(
+                                                format!("{}\u{2026}", verb),
+                                                theme::DIM,
+                                                false,
+                                            ),
+                                        ]));
+                                    } else {
+                                        // First real text: replace spinner with the message
+                                        history_lines.truncate(response_line_idx);
+                                        history_lines.extend(format_assistant_message(&response));
+                                    }
 
                                     scroll = compute_max_scroll(&history_lines, &renderer);
                                     render_frame(
@@ -137,11 +168,8 @@ pub fn run() -> crate::Result<()> {
 
                             match stream_result {
                                 Ok(_full) => {
-                                    rebuild_response_lines(
-                                        &mut history_lines,
-                                        response_line_idx,
-                                        &response,
-                                    );
+                                    history_lines.truncate(response_line_idx);
+                                    history_lines.extend(format_assistant_message(&response));
 
                                     messages.push(Message {
                                         role: "assistant".into(),
@@ -149,16 +177,9 @@ pub fn run() -> crate::Result<()> {
                                     });
                                 }
                                 Err(e) => {
-                                    // Truncate any streamed continuation lines; replace with error
                                     history_lines.truncate(response_line_idx);
-                                    history_lines.push(Line::from_spans(vec![
-                                        Span::styled("● ", 31, false),
-                                        Span::styled(
-                                            format!("error: {}", e),
-                                            31,
-                                            false,
-                                        ),
-                                    ]));
+                                    history_lines
+                                        .extend(format_error_message(&format!("error: {}", e)));
                                 }
                             }
 
@@ -195,31 +216,6 @@ pub fn run() -> crate::Result<()> {
     }
 }
 
-/// Rebuild history lines for a streaming assistant response.
-/// First line gets the '●' bullet; subsequent lines are indented 2 spaces.
-/// Old response lines (from previous chunks) are removed and replaced.
-fn rebuild_response_lines(
-    history_lines: &mut Vec<Line>,
-    start_idx: usize,
-    response: &str,
-) {
-    // Truncate any previously-added continuation lines for this response
-    history_lines.truncate(start_idx);
-
-    let mut parts = response.split('\n');
-    let first = parts.next().unwrap_or("");
-    history_lines.push(Line::from_spans(vec![
-        Span::styled("● ", 33, false),
-        Span::raw(first),
-    ]));
-    for rest in parts {
-        history_lines.push(Line::from_spans(vec![
-            Span::raw("  "),
-            Span::raw(rest),
-        ]));
-    }
-}
-
 /// Build the main vertical layout: conversation (Fill) + input (Fixed 3) + status (Fixed 1).
 fn main_layout() -> Layout {
     Layout::new(Direction::Vertical).constraints(vec![
@@ -251,15 +247,15 @@ fn render_frame(
     input_block.render(chunks[1], buf);
 
     // Input widget with ❯ prompt (cyan)
-    let input_widget = InputWidget::new(&editor.buf, editor.cursor, "\u{276F} ").prompt_fg(36);
+    let input_widget = InputWidget::new(&editor.buf, editor.cursor, "\u{276F} ").prompt_fg(theme::CLAUDE);
     input_widget.render(input_inner, buf);
 
     // Status line (dim, below input)
     let status = Line::from_spans(vec![
-        Span::styled("\u{23F5}\u{23F5} ", 90, false),
-        Span::styled("ready", 90, false),
-        Span::styled("  \u{00B7}  ", 90, false),
-        Span::styled("ctrl+c clear  \u{00B7}  ctrl+d exit", 90, false),
+        Span::styled("\u{23F5}\u{23F5} ", theme::DIM, false),
+        Span::styled("ready", theme::DIM, false),
+        Span::styled("  \u{00B7}  ", theme::DIM, false),
+        Span::styled("ctrl+c clear  \u{00B7}  ctrl+d exit", theme::DIM, false),
     ]);
     let status_para = Paragraph::new(vec![status]);
     status_para.render(chunks[2], buf);

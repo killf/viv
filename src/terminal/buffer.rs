@@ -1,4 +1,5 @@
 use crate::terminal::output::AnsiWriter;
+use crate::terminal::style::Color;
 
 /// Returns the display width of a character in terminal columns.
 /// CJK and fullwidth characters take 2 columns; most others take 1.
@@ -93,8 +94,8 @@ impl Rect {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Cell {
     pub ch: char,
-    pub fg: Option<u8>,
-    pub bg: Option<u8>,
+    pub fg: Option<Color>,
+    pub bg: Option<Color>,
     pub bold: bool,
 }
 
@@ -144,7 +145,7 @@ impl Buffer {
 
     /// Write a string starting at (x, y), clipping at the right edge of the buffer.
     /// Wide characters (CJK) occupy 2 cells; a placeholder '\0' is placed in the second cell.
-    pub fn set_str(&mut self, x: u16, y: u16, s: &str, fg: Option<u8>, bold: bool) {
+    pub fn set_str(&mut self, x: u16, y: u16, s: &str, fg: Option<Color>, bold: bool) {
         let max_x = self.area.x + self.area.width;
         let mut cur_x = x;
         for ch in s.chars() {
@@ -196,14 +197,12 @@ impl Buffer {
 
             // Apply background color if present
             if let Some(bg) = cell.bg {
-                let seq = format!("\x1b[{}m", bg + 10);
-                writer.write_bytes(seq.as_bytes());
+                writer.write_bytes(bg.bg_seq().as_bytes());
             }
 
             // Apply foreground color if present
             if let Some(fg) = cell.fg {
-                let seq = format!("\x1b[{}m", fg);
-                writer.write_bytes(seq.as_bytes());
+                writer.write_bytes(fg.fg_seq().as_bytes());
             }
 
             // Apply bold if set

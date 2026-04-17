@@ -1,4 +1,5 @@
 use viv::terminal::buffer::*;
+use viv::terminal::style::Color;
 
 #[test]
 fn rect_new_and_accessors() {
@@ -55,7 +56,7 @@ fn buffer_empty_all_default() {
 #[test]
 fn buffer_set_get() {
     let mut buf = Buffer::empty(Rect::new(0, 0, 10, 5));
-    let cell = Cell { ch: 'X', fg: Some(31), bg: None, bold: true };
+    let cell = Cell { ch: 'X', fg: Some(Color::Ansi(31)), bg: None, bold: true };
     buf.set(3, 2, cell);
     assert_eq!(*buf.get(3, 2), cell);
 }
@@ -63,11 +64,31 @@ fn buffer_set_get() {
 #[test]
 fn buffer_set_str() {
     let mut buf = Buffer::empty(Rect::new(0, 0, 20, 5));
-    buf.set_str(2, 1, "Hello", Some(32), false);
+    buf.set_str(2, 1, "Hello", Some(Color::Ansi(32)), false);
     assert_eq!(buf.get(2, 1).ch, 'H');
     assert_eq!(buf.get(3, 1).ch, 'e');
     assert_eq!(buf.get(6, 1).ch, 'o');
-    assert_eq!(buf.get(2, 1).fg, Some(32));
+    assert_eq!(buf.get(2, 1).fg, Some(Color::Ansi(32)));
+}
+
+#[test]
+fn buffer_set_str_rgb_color() {
+    let mut buf = Buffer::empty(Rect::new(0, 0, 20, 5));
+    let claude = Color::Rgb(215, 119, 87);
+    buf.set_str(0, 0, "hi", Some(claude), false);
+    assert_eq!(buf.get(0, 0).fg, Some(claude));
+    assert_eq!(buf.get(1, 0).fg, Some(claude));
+}
+
+#[test]
+fn buffer_diff_emits_rgb_sequence() {
+    let mut current = Buffer::empty(Rect::new(0, 0, 5, 1));
+    let previous = Buffer::empty(Rect::new(0, 0, 5, 1));
+    current.set_str(0, 0, "X", Some(Color::Rgb(215, 119, 87)), false);
+    let diff = current.diff(&previous);
+    let s = String::from_utf8_lossy(&diff);
+    assert!(s.contains("\x1b[38;2;215;119;87m"));
+    assert!(s.contains('X'));
 }
 
 #[test]

@@ -1,4 +1,5 @@
 use crate::terminal::buffer::{char_width, Buffer, Rect};
+use crate::terminal::style::Color;
 use crate::tui::widget::Widget;
 
 /// A single-line text input widget with a prompt, cursor, and horizontal scrolling.
@@ -6,7 +7,7 @@ pub struct InputWidget<'a> {
     pub content: &'a str,
     pub cursor: usize,
     pub prompt: &'a str,
-    pub prompt_fg: Option<u8>,
+    pub prompt_fg: Option<Color>,
 }
 
 impl<'a> InputWidget<'a> {
@@ -15,7 +16,7 @@ impl<'a> InputWidget<'a> {
     }
 
     /// Builder: set prompt foreground color.
-    pub fn prompt_fg(mut self, fg: u8) -> Self {
+    pub fn prompt_fg(mut self, fg: Color) -> Self {
         self.prompt_fg = Some(fg);
         self
     }
