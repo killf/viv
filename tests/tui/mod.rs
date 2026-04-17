@@ -6,4 +6,5 @@ mod message_style_test;
 mod paragraph_test;
 mod renderer_test;
 mod spinner_test;
+mod status_test;
 mod widget_test;
