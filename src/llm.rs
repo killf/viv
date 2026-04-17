@@ -589,7 +589,7 @@ impl LLMClient {
         messages: &[crate::agent::message::Message],
         tools_json: &str,
         tier: ModelTier,
-        on_text: impl Fn(&str),
+        mut on_text: impl FnMut(&str),
     ) -> crate::Result<StreamResult> {
         use crate::core::net::async_tls::AsyncTlsStream;
 

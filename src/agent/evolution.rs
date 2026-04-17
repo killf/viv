@@ -22,7 +22,7 @@ Conversation to analyze:"#;
 
 /// Extract learnings from a session and write them to memory.
 /// Returns the number of new knowledge entries written.
-pub fn evolve_from_session(
+pub async fn evolve_from_session(
     messages: &[Message],
     store: &MemoryStore,
     index: &mut MemoryIndex,
@@ -38,7 +38,7 @@ pub fn evolve_from_session(
     let system = vec![SystemBlock::dynamic("You are an AI learning extractor.")];
     let req_msgs = vec![Message::user_text(prompt)];
     let mut response = String::new();
-    llm.stream_agent(&system, &req_msgs, "", ModelTier::Medium, |t| response.push_str(t))?;
+    llm.stream_agent_async(&system, &req_msgs, "", ModelTier::Medium, |t| response.push_str(t)).await?;
 
     let learnings = parse_learnings(&response);
     let count = learnings.len();
@@ -62,7 +62,7 @@ pub fn evolve_from_session(
     }
     index.save(store)?;
 
-    save_episode(messages, store, index, llm)?;
+    save_episode(messages, store, index, llm).await?;
 
     Ok(count)
 }
@@ -94,7 +94,7 @@ fn parse_learnings(response: &str) -> Vec<Learning> {
     }).collect()
 }
 
-fn save_episode(
+async fn save_episode(
     messages: &[Message],
     store: &MemoryStore,
     index: &mut MemoryIndex,
@@ -107,7 +107,7 @@ fn save_episode(
     let system = vec![SystemBlock::dynamic("You are a conversation summarizer.")];
     let req_msgs = vec![Message::user_text(summary_prompt)];
     let mut summary = String::new();
-    llm.stream_agent(&system, &req_msgs, "", ModelTier::Fast, |t| summary.push_str(t))?;
+    llm.stream_agent_async(&system, &req_msgs, "", ModelTier::Fast, |t| summary.push_str(t)).await?;
     let summary = summary.trim().to_string();
 
     let ts = std::time::SystemTime::now()

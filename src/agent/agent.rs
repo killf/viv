@@ -135,7 +135,7 @@ impl Agent {
             match self.event_rx.recv().await {
                 Ok(AgentEvent::Input(text)) => {
                     if text.trim() == "/exit" {
-                        self.evolve()?;
+                        self.evolve().await?;
                         self.mcp.lock().unwrap().shutdown_all().await;
                         let _ = self.msg_tx.send(AgentMessage::Evolved);
                         break;
@@ -146,7 +146,7 @@ impl Agent {
                     }
                 }
                 Ok(AgentEvent::Quit) => {
-                    self.evolve()?;
+                    self.evolve().await?;
                     self.mcp.lock().unwrap().shutdown_all().await;
                     let _ = self.msg_tx.send(AgentMessage::Evolved);
                     break;
@@ -169,7 +169,7 @@ impl Agent {
                 &self.store,
                 &self.llm,
                 self.config.top_k_memory,
-            );
+            ).await;
             drop(idx);
             match results {
                 Ok(m) => {
@@ -192,7 +192,7 @@ impl Agent {
             100_000,
             10,
             self.llm.as_ref(),
-        )?;
+        ).await?;
 
         self.agentic_loop(system).await?;
 
@@ -327,9 +327,9 @@ impl Agent {
         }
     }
 
-    fn evolve(&mut self) -> Result<()> {
+    async fn evolve(&mut self) -> Result<()> {
         let mut idx = self.index.lock().unwrap();
-        evolve_from_session(&self.messages, &self.store, &mut idx, &self.llm)?;
+        evolve_from_session(&self.messages, &self.store, &mut idx, &self.llm).await?;
         Ok(())
     }
 }

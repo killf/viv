@@ -1,13 +1,23 @@
 use std::pin::Pin;
 use std::future::Future;
-use std::io::{Read, Write};
 use std::sync::Arc;
 use crate::core::json::JsonValue;
+use crate::core::net::async_tls::AsyncTlsStream;
 use crate::core::net::http::HttpRequest;
-use crate::core::net::tls::TlsStream;
 use crate::error::Error;
 use crate::llm::{LLMClient, ModelTier};
 use crate::tools::{PermissionLevel, Tool};
+
+// AsyncTlsStream holds *mut c_void (OpenSSL), making futures non-Send.
+// Safe because all execution happens single-threaded via block_on_local.
+struct AssertSend<F>(F);
+unsafe impl<F: Future> Send for AssertSend<F> {}
+impl<F: Future> Future for AssertSend<F> {
+    type Output = F::Output;
+    fn poll(self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<Self::Output> {
+        unsafe { self.map_unchecked_mut(|s| &mut s.0).poll(cx) }
+    }
+}
 
 pub struct WebFetchTool { pub llm: Arc<LLMClient> }
 impl WebFetchTool {
@@ -35,29 +45,29 @@ impl Tool for WebFetchTool {
     fn execute(&self, input: &JsonValue) -> Pin<Box<dyn Future<Output = crate::Result<String>> + Send + '_>> {
         let input = input.clone();
         let llm = Arc::clone(&self.llm);
-        Box::pin(async move {
-        let url = input.get("url").and_then(|v| v.as_str())
-            .ok_or_else(|| Error::Tool("missing 'url'".into()))?;
-        let prompt = input.get("prompt").and_then(|v| v.as_str())
-            .ok_or_else(|| Error::Tool("missing 'prompt'".into()))?;
+        Box::pin(AssertSend(async move {
+            let url = input.get("url").and_then(|v| v.as_str())
+                .ok_or_else(|| Error::Tool("missing 'url'".into()))?;
+            let prompt = input.get("prompt").and_then(|v| v.as_str())
+                .ok_or_else(|| Error::Tool("missing 'prompt'".into()))?;
 
-        let text = fetch_url(url)?;
-        let truncated: String = text.chars().take(8000).collect();
+            let text = fetch_url_async(url).await?;
+            let truncated: String = text.chars().take(8000).collect();
 
-        use crate::agent::message::{Message, SystemBlock};
-        let system = vec![SystemBlock::dynamic("You extract relevant content from web pages.")];
-        let user_msg = format!("Answer this about the page: {}\n\nPage:\n{}", prompt, truncated);
-        let messages = vec![Message::user_text(user_msg)];
-        let mut response = String::new();
-        llm.stream_agent(&system, &messages, "", ModelTier::Fast, |t| response.push_str(t))?;
-        Ok(response)
-        })
+            use crate::agent::message::{Message, SystemBlock};
+            let system = vec![SystemBlock::dynamic("You extract relevant content from web pages.")];
+            let user_msg = format!("Answer this about the page: {}\n\nPage:\n{}", prompt, truncated);
+            let messages = vec![Message::user_text(user_msg)];
+            let mut response = String::new();
+            llm.stream_agent_async(&system, &messages, "", ModelTier::Fast, |t| response.push_str(t)).await?;
+            Ok(response)
+        }))
     }
 
     fn permission_level(&self) -> PermissionLevel { PermissionLevel::Execute }
 }
 
-fn fetch_url(url: &str) -> crate::Result<String> {
+async fn fetch_url_async(url: &str) -> crate::Result<String> {
     let rest = url.strip_prefix("https://").or_else(|| url.strip_prefix("http://")).unwrap_or(url);
     let (host_port, path) = match rest.find('/') {
         Some(i) => (&rest[..i], &rest[i..]),
@@ -83,13 +93,13 @@ fn fetch_url(url: &str) -> crate::Result<String> {
         body: None,
     };
 
-    let mut tls = TlsStream::connect(host, port)?;
-    tls.write_all(&req.to_bytes())?;
+    let mut tls = AsyncTlsStream::connect(host, port).await?;
+    tls.write_all(&req.to_bytes()).await?;
 
     let mut raw: Vec<u8> = Vec::new();
     let mut tmp = [0u8; 4096];
     loop {
-        let n = tls.read(&mut tmp)?;
+        let n = tls.read(&mut tmp).await?;
         if n == 0 || raw.len() > 1_000_000 { break; }
         raw.extend_from_slice(&tmp[..n]);
     }

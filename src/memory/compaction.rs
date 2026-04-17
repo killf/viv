@@ -4,7 +4,7 @@ use crate::Result;
 
 /// Compact old messages into a summary when approaching token limit.
 /// Keeps the most recent `keep_recent` turn pairs, summarizes the rest.
-pub fn compact_if_needed(
+pub async fn compact_if_needed(
     messages: &mut Vec<Message>,
     token_estimate: usize,
     token_limit: usize,
@@ -28,7 +28,7 @@ pub fn compact_if_needed(
     let system = vec![SystemBlock::dynamic("You are a conversation summarizer.")];
     let req_msgs = vec![Message::user_text(summary_prompt)];
     let mut summary = String::new();
-    llm.stream_agent(&system, &req_msgs, "", ModelTier::Fast, |t| summary.push_str(t))?;
+    llm.stream_agent_async(&system, &req_msgs, "", ModelTier::Fast, |t| summary.push_str(t)).await?;
 
     let recent = messages.split_off(split_at);
     messages.clear();

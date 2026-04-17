@@ -9,7 +9,7 @@ pub struct RetrievalResult {
 }
 
 /// Two-stage retrieval: keyword pre-filter → LLM relevance ranking → Top-K
-pub fn retrieve_relevant(
+pub async fn retrieve_relevant(
     query: &str,
     index: &MemoryIndex,
     store: &MemoryStore,
@@ -28,7 +28,7 @@ pub fn retrieve_relevant(
     let selected = if candidates.len() <= top_k {
         candidates
     } else {
-        llm_rank(query, candidates, llm, top_k)?
+        llm_rank(query, candidates, llm, top_k).await?
     };
 
     // Read file contents
@@ -41,7 +41,7 @@ pub fn retrieve_relevant(
     Ok(results)
 }
 
-fn llm_rank<'a>(
+async fn llm_rank<'a>(
     query: &str,
     candidates: Vec<&'a MemoryEntry>,
     llm: &LLMClient,
@@ -64,7 +64,7 @@ fn llm_rank<'a>(
     let system = vec![SystemBlock::dynamic("You are a memory retrieval assistant.")];
     let messages = vec![Message::user_text(prompt)];
     let mut response = String::new();
-    llm.stream_agent(&system, &messages, "", ModelTier::Fast, |t| response.push_str(t))?;
+    llm.stream_agent_async(&system, &messages, "", ModelTier::Fast, |t| response.push_str(t)).await?;
 
     let indices = parse_index_array(&response);
     Ok(indices.into_iter()
