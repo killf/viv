@@ -1,4 +1,5 @@
-use viv::agent::message::{ContentBlock, Message, SystemBlock, ToJson, hash_str};
+use viv::agent::message::{ContentBlock, Message, SystemBlock, hash_str};
+use viv::json::ToJson;
 
 #[test]
 fn text_block_serializes_correctly() {
