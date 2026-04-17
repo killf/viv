@@ -2,6 +2,11 @@
 name = "viv"
 version = "0.1.0"
 edition = "2024"
+description = "A self-evolving AI programming agent — gets smarter with every session"
+license = "Apache-2.0"
+repository = "https://github.com/killf/viv"
+keywords = ["ai", "agent", "llm", "cli", "repl"]
+categories = ["command-line-utilities", "development-tools"]
 
 [dependencies]
 
