@@ -16,6 +16,10 @@ pub enum Error {
     LLM { status: u16, message: String },
     /// Tool execution errors
     Tool(String),
+    /// JSON-RPC protocol errors
+    JsonRpc { code: i64, message: String },
+    /// MCP runtime errors
+    Mcp { server: String, message: String },
 }
 
 impl fmt::Display for Error {
@@ -28,6 +32,8 @@ impl fmt::Display for Error {
             Error::Http(msg) => write!(f, "HTTP error: {}", msg),
             Error::LLM { status, message } => write!(f, "LLM error {}: {}", status, message),
             Error::Tool(msg) => write!(f, "tool error: {}", msg),
+            Error::JsonRpc { code, message } => write!(f, "JSON-RPC error {}: {}", code, message),
+            Error::Mcp { server, message } => write!(f, "MCP error [{}]: {}", server, message),
         }
     }
 }
