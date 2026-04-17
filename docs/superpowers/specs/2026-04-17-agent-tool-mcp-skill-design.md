@@ -474,19 +474,63 @@ src/memory/
 
 ---
 
-## 九、Prompt 拼接逻辑
+## 九、Prompt 拼接逻辑（缓存优先）
 
-Agent 每次调用 LLM 前，按以下顺序组装 system prompt：
+**核心原则：** 稳定内容靠前，动态内容靠后。Anthropic 缓存按前缀匹配，前缀越稳定，命中率越高。API 最多支持 4 个 cache breakpoint。
+
+### 拼接顺序
 
 ```
-1. Base System Prompt    # 固定角色定义和核心能力说明
-2. Tool Descriptions     # 当前可用工具列表（来自 Tool registry + MCP）
-3. Active Skills         # 当前激活的 Skill 内容
-4. Memory Injection      # 动态注入的相关记忆（见 § 八）
-5. Context Modifiers     # 运行时上下文（当前目录、项目信息等）
+┌─────────────────────────────────────────────────────────┐
+│ Block 1: Base System Prompt           【cache_control】  │
+│          角色定义、核心能力、输出格式                      │
+│          极少变化 → 缓存命中率最高                         │
+├─────────────────────────────────────────────────────────┤
+│ Block 2: Tool Descriptions            【cache_control】  │
+│          当前可用工具列表（内置 + MCP 动态注册）            │
+│          工具集变化时失效（MCP 服务器重连等）               │
+├─────────────────────────────────────────────────────────┤
+│ Block 3: Active Skills                【cache_control】  │
+│          当前激活的 Skill 内容                            │
+│          Skill 集合变化时失效                             │
+├─────────────────────────────────────────────────────────┤
+│ Block 4: Memory Injection             【不缓存】          │
+│          动态检索的相关记忆（每次对话不同）                  │
+│          Context Modifiers（当前目录、项目信息）            │
+└─────────────────────────────────────────────────────────┘
 ```
 
-拼接由 `agent::prompt::build_system_prompt(ctx)` 负责，在每次 LLM 调用前执行。
+### 缓存 key 设计
+
+每个 Block 计算内容 hash，只有 hash 变化时才更新对应 Block。Block 1-3 的 hash 在进程内缓存，避免重复序列化：
+
+```rust
+struct PromptCache {
+    base_hash: u64,
+    base_text: String,
+    tools_hash: u64,
+    tools_text: String,
+    skills_hash: u64,
+    skills_text: String,
+}
+```
+
+### API 请求格式
+
+```json
+{
+  "system": [
+    { "type": "text", "text": "<base>...",   "cache_control": { "type": "ephemeral" } },
+    { "type": "text", "text": "<tools>...",  "cache_control": { "type": "ephemeral" } },
+    { "type": "text", "text": "<skills>...", "cache_control": { "type": "ephemeral" } },
+    { "type": "text", "text": "<memory + context>..." }
+  ]
+}
+```
+
+### 实现位置
+
+`agent/prompt.rs` — `build_system_prompt(ctx, cache: &mut PromptCache) -> Vec<SystemBlock>`
 
 ---
 
