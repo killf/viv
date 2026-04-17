@@ -24,6 +24,84 @@ const O_NONBLOCK: i32 = 0o4000;
 const EAGAIN: i32 = 11;
 const EWOULDBLOCK: i32 = 11; // same as EAGAIN on Linux
 
+// ── Framing ──────────────────────────────────────────────────────────────────
+
+/// Wire-framing strategy for `StdioTransport`.
+///
+/// - `Newline` — newline-delimited JSON (standard MCP over stdio).
+/// - `ContentLength` — LSP-style `Content-Length: N\r\n\r\n{body}` framing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Framing {
+    /// Each message is a single line terminated by `\n`.
+    Newline,
+    /// Each message is preceded by a `Content-Length: <n>\r\n\r\n` header.
+    ContentLength,
+}
+
+impl Framing {
+    /// Encode `body` into a frame ready for transmission.
+    pub fn encode(&self, body: &str) -> String {
+        match self {
+            Framing::Newline => format!("{}\n", body),
+            Framing::ContentLength => {
+                format!("Content-Length: {}\r\n\r\n{}", body.len(), body)
+            }
+        }
+    }
+
+    /// Try to extract one complete message from `buf`.
+    ///
+    /// Returns `Some(message)` and drains the consumed bytes from `buf` when a
+    /// complete frame is available. Returns `None` (leaving `buf` intact) when
+    /// more data is needed.
+    pub fn try_decode(&self, buf: &mut Vec<u8>) -> Option<String> {
+        match self {
+            Framing::Newline => {
+                let newline_pos = buf.iter().position(|&b| b == b'\n')?;
+                let line: Vec<u8> = buf.drain(..=newline_pos).collect();
+                // Trim the trailing `\n` (and any `\r` for robustness)
+                let end = if line.len() >= 2 && line[line.len() - 2] == b'\r' {
+                    line.len() - 2
+                } else {
+                    line.len() - 1
+                };
+                String::from_utf8(line[..end].to_vec()).ok()
+            }
+            Framing::ContentLength => {
+                // Locate the header separator \r\n\r\n
+                let sep = b"\r\n\r\n";
+                let header_end = buf.windows(sep.len()).position(|w| w == sep)?;
+                let header = std::str::from_utf8(&buf[..header_end]).ok()?;
+
+                // Parse `Content-Length: <n>` from the header block
+                let content_length = header
+                    .lines()
+                    .find_map(|line| {
+                        let lower = line.to_ascii_lowercase();
+                        lower.strip_prefix("content-length:").map(|v| {
+                            v.trim().parse::<usize>().ok()
+                        })
+                    })
+                    .flatten()?;
+
+                let body_start = header_end + sep.len();
+
+                // Not enough body bytes yet — return without mutating buf
+                if buf.len() < body_start + content_length {
+                    return None;
+                }
+
+                let frame_end = body_start + content_length;
+                let body_bytes: Vec<u8> = buf.drain(..frame_end).collect();
+                let body_str = String::from_utf8(body_bytes[body_start..].to_vec()).ok()?;
+                Some(body_str)
+            }
+        }
+    }
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
 /// Set a file descriptor to non-blocking mode.
 fn set_nonblocking(fd: RawFd) -> crate::Result<()> {
     unsafe {
@@ -39,7 +117,7 @@ fn set_nonblocking(fd: RawFd) -> crate::Result<()> {
     Ok(())
 }
 
-/// Get the raw fd from a ChildStdin/ChildStdout via the AsRawFd trait.
+/// Get the raw fd from a ChildStdin via the AsRawFd trait.
 fn stdin_fd(child: &Child) -> Option<RawFd> {
     use std::os::unix::io::AsRawFd;
     child.stdin.as_ref().map(|s| s.as_raw_fd())
@@ -87,26 +165,45 @@ fn wait_readable(fd: RawFd) -> WaitReadable {
 
 /// MCP transport over child process stdin/stdout.
 ///
-/// Spawns a child process and communicates using newline-delimited JSON
-/// over the child's stdin (send) and stdout (recv). The child's stdout
-/// is set to non-blocking and registered with the reactor for async reads.
+/// Spawns a child process and communicates using the specified [`Framing`]
+/// strategy over the child's stdin (send) and stdout (recv).  The child's
+/// stdout is set to non-blocking and registered with the reactor for async
+/// reads.
+///
+/// Use [`StdioTransport::spawn`] for standard newline-delimited MCP servers,
+/// or [`StdioTransport::spawn_with_framing`] when a different framing is
+/// required (e.g. LSP servers that use `Content-Length` headers).
 pub struct StdioTransport {
     child: Child,
     stdin_fd: RawFd,
     stdout_fd: RawFd,
     read_buf: Vec<u8>,
+    framing: Framing,
 }
 
 impl StdioTransport {
-    /// Spawn a child process for MCP communication.
+    /// Spawn a child process for MCP communication using [`Framing::Newline`].
     ///
     /// `command` — the executable to run (e.g. "npx", "python3")
-    /// `args` — command line arguments
-    /// `env` — additional environment variables
+    /// `args`    — command line arguments
+    /// `env`     — additional environment variables
     pub fn spawn(
         command: &str,
         args: &[&str],
         env: &HashMap<String, String>,
+    ) -> crate::Result<Self> {
+        Self::spawn_with_framing(command, args, env, Framing::Newline)
+    }
+
+    /// Spawn a child process with an explicit framing strategy.
+    ///
+    /// Use this when connecting to an LSP server that requires
+    /// [`Framing::ContentLength`] framing.
+    pub fn spawn_with_framing(
+        command: &str,
+        args: &[&str],
+        env: &HashMap<String, String>,
+        framing: Framing,
     ) -> crate::Result<Self> {
         let mut cmd = Command::new(command);
         cmd.args(args)
@@ -135,6 +232,7 @@ impl StdioTransport {
             stdin_fd: stdin_raw,
             stdout_fd: stdout_raw,
             read_buf: Vec::with_capacity(4096),
+            framing,
         })
     }
 }
@@ -142,8 +240,7 @@ impl StdioTransport {
 impl Transport for StdioTransport {
     fn send(&mut self, msg: JsonValue) -> Pin<Box<dyn Future<Output = crate::Result<()>> + Send + '_>> {
         Box::pin(async move {
-            // Serialize JSON + newline
-            let data = format!("{}\n", msg);
+            let data = self.framing.encode(&msg.to_string());
             let bytes = data.as_bytes();
             let mut written = 0;
 
@@ -155,7 +252,6 @@ impl Transport for StdioTransport {
                     let errno = unsafe { *__errno_location() };
                     if errno == EAGAIN || errno == EWOULDBLOCK {
                         // stdin is full — unlikely for pipes but handle gracefully
-                        // For now, yield and retry
                         std::thread::yield_now();
                         continue;
                     }
@@ -171,22 +267,16 @@ impl Transport for StdioTransport {
     fn recv(&mut self) -> Pin<Box<dyn Future<Output = crate::Result<JsonValue>> + Send + '_>> {
         Box::pin(async move {
             loop {
-                // Check if we already have a complete line in the buffer
-                if let Some(newline_pos) = self.read_buf.iter().position(|&b| b == b'\n') {
-                    let line: Vec<u8> = self.read_buf.drain(..=newline_pos).collect();
-                    // Trim the trailing newline
-                    let json_str = std::str::from_utf8(&line[..line.len() - 1])
-                        .map_err(|e| crate::Error::Json(format!("invalid UTF-8: {}", e)))?;
-
-                    if json_str.is_empty() {
-                        // Skip empty lines
+                // Check if we already have a complete frame in the buffer
+                if let Some(msg) = self.framing.try_decode(&mut self.read_buf) {
+                    if msg.is_empty() {
+                        // Skip empty messages (can happen with newline framing)
                         continue;
                     }
-
-                    return JsonValue::parse(json_str);
+                    return JsonValue::parse(&msg);
                 }
 
-                // No complete line yet — wait for the fd to be readable
+                // No complete frame yet — wait for the fd to be readable
                 wait_readable(self.stdout_fd).await?;
 
                 // Non-blocking read
