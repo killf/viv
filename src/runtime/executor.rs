@@ -37,11 +37,14 @@ impl Executor {
         JoinHandle(rx)
     }
 
-    /// 排干就绪队列，poll 所有就绪任务一次
-    pub fn run_ready(&mut self) {
+    /// 排干就绪队列，poll 所有就绪任务一次。返回是否处理了任何任务。
+    pub fn run_ready(&mut self) -> bool {
+        let mut did_work = false;
         while let Ok(id) = self.ready_rx.try_recv() {
             self.poll_task(id);
+            did_work = true;
         }
+        did_work
     }
 
     fn poll_task(&mut self, id: TaskId) {
@@ -80,12 +83,12 @@ pub fn block_on<T: Unpin + Send + 'static>(
     let mut cx = Context::from_waker(&waker);
 
     loop {
-        exec.run_ready();
+        let did_work = exec.run_ready();
         if let Poll::Ready(v) = Pin::new(&mut handle).poll(&mut cx) {
             return v;
         }
-        if exec.is_idle() {
-            // 等待 I/O 事件（最多 10ms）
+        // 就绪队列为空（无论是否还有挂起的任务），等待 reactor I/O 事件
+        if !did_work {
             if let Ok(mut r) = crate::runtime::reactor::reactor().try_lock() {
                 r.wait(Duration::from_millis(10));
             } else {
