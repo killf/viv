@@ -146,12 +146,12 @@ impl TerminalUI {
             }
 
             if dirty {
-                self.render_frame();
-                self.renderer.flush(&mut self.backend)?;
-
-                // The diff pass above left the physical cursor at an arbitrary
-                // cell. Always reposition it to the input box so the caret stays
-                // pinned to where the user is typing.
+                // Compute the cursor position before painting, then hand it to
+                // the renderer so the final cursor placement is committed in
+                // the same synchronized-update block as the diff. This keeps
+                // the caret pinned to the input box without toggling cursor
+                // visibility, which would otherwise reset the terminal's
+                // blink phase on every frame.
                 let area = self.renderer.area();
                 let input_height = (self.editor.line_count() as u16 + 2).min(8).max(3);
                 let chunks = main_layout(input_height).split(area);
@@ -164,10 +164,10 @@ impl TerminalUI {
                 let input_widget =
                     InputWidget::new(&editor_content, self.editor.cursor_offset(), "\u{276F} ")
                         .prompt_fg(theme::CLAUDE);
-                let (cx, cy) = input_widget.cursor_position(input_inner);
-                self.backend.move_cursor(cy, cx)?;
-                self.backend.show_cursor()?;
-                self.backend.flush()?;
+                let cursor = input_widget.cursor_position(input_inner);
+
+                self.render_frame();
+                self.renderer.flush(&mut self.backend, Some(cursor))?;
 
                 dirty = false;
             }

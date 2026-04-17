@@ -8,6 +8,7 @@ pub struct Renderer {
     current: Buffer,
     previous: Buffer,
     size: TermSize,
+    last_cursor: Option<(u16, u16)>,
 }
 
 impl Renderer {
@@ -18,6 +19,7 @@ impl Renderer {
             current: Buffer::empty(area),
             previous: Buffer::empty(area),
             size,
+            last_cursor: None,
         }
     }
 
@@ -27,6 +29,7 @@ impl Renderer {
         self.current = Buffer::empty(area);
         self.previous = Buffer::empty(area);
         self.size = size;
+        self.last_cursor = None;
     }
 
     /// Returns the current buffer for widgets to render into.
@@ -41,20 +44,39 @@ impl Renderer {
 
     /// Flush the current frame to the backend using a diff against the previous frame.
     ///
-    /// If the diff is empty, this is a complete no-op. When there *is* a diff, the
-    /// cursor is hidden for the duration of the redraw and stays hidden on return —
-    /// writing the diff leaves the physical cursor at an arbitrary cell, so the
-    /// caller must move it to the desired position and call `show_cursor()` before
-    /// the next frame.
-    pub fn flush(&mut self, backend: &mut dyn Backend) -> crate::Result<()> {
+    /// When there is a diff, we wrap it in a DEC synchronized update
+    /// (`\x1b[?2026h/l`) and move the cursor to `cursor` inside the same block,
+    /// so the terminal commits cells + final cursor position atomically. We do
+    /// *not* emit `hide_cursor` / `show_cursor` — sending `\x1b[?25h` every
+    /// frame resets the terminal's blink phase, which made the caret appear to
+    /// blink at irregular rates during streaming or spinner animation.
+    ///
+    /// When the buffer is unchanged but `cursor` moved (e.g. the user pressed
+    /// an arrow key inside the input), we emit just the move.
+    ///
+    /// Pass `cursor: None` to leave the cursor alone (used by tests).
+    pub fn flush(
+        &mut self,
+        backend: &mut dyn Backend,
+        cursor: Option<(u16, u16)>,
+    ) -> crate::Result<()> {
         let diff = self.current.diff(&self.previous);
 
         if !diff.is_empty() {
             backend.write(b"\x1b[?2026h")?;
-            backend.hide_cursor()?;
             backend.write(&diff)?;
+            if let Some((col, row)) = cursor {
+                backend.move_cursor(row, col)?;
+                self.last_cursor = Some((col, row));
+            }
             backend.write(b"\x1b[?2026l")?;
             backend.flush()?;
+        } else if let Some((col, row)) = cursor {
+            if self.last_cursor != Some((col, row)) {
+                backend.move_cursor(row, col)?;
+                backend.flush()?;
+                self.last_cursor = Some((col, row));
+            }
         }
 
         // Swap buffers regardless so the buffer bookkeeping stays consistent.
