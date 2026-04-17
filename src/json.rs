@@ -38,7 +38,7 @@ impl fmt::Display for Number {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum JsonValue {
     Null,
     Bool(bool),
