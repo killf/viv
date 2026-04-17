@@ -1,1 +1,116 @@
-// stub — implemented in Task 6
+use std::io::{Read, Write};
+use std::sync::Arc;
+use crate::error::Error;
+use crate::json::JsonValue;
+use crate::llm::{LLMClient, ModelTier};
+use crate::net::http::HttpRequest;
+use crate::net::tls::TlsStream;
+use crate::tools::{PermissionLevel, Tool};
+
+pub struct WebFetchTool { pub llm: Arc<LLMClient> }
+impl WebFetchTool {
+    pub fn new(llm: Arc<LLMClient>) -> Self { WebFetchTool { llm } }
+}
+
+impl Tool for WebFetchTool {
+    fn name(&self) -> &str { "web_fetch" }
+
+    fn description(&self) -> &str {
+        "Fetch a URL over HTTPS and return its text content. If prompt is given, an LLM extracts the relevant part."
+    }
+
+    fn input_schema(&self) -> JsonValue {
+        JsonValue::parse(r#"{
+            "type":"object",
+            "properties":{
+                "url":{"type":"string","description":"HTTPS URL to fetch"},
+                "prompt":{"type":"string","description":"What to extract from the page"}
+            },
+            "required":["url"]
+        }"#).unwrap()
+    }
+
+    fn execute(&self, input: &JsonValue) -> crate::Result<String> {
+        let url = input.get("url").and_then(|v| v.as_str())
+            .ok_or_else(|| Error::Tool("missing 'url'".into()))?;
+        let prompt = input.get("prompt").and_then(|v| v.as_str()).unwrap_or("");
+
+        let text = fetch_url(url)?;
+        let truncated: String = text.chars().take(8000).collect();
+
+        if prompt.is_empty() {
+            return Ok(truncated);
+        }
+
+        use crate::agent::message::{Message, SystemBlock};
+        let system = vec![SystemBlock::dynamic("You extract relevant content from web pages.")];
+        let user_msg = format!("Answer this about the page: {}\n\nPage:\n{}", prompt, truncated);
+        let messages = vec![Message::user_text(user_msg)];
+        let mut response = String::new();
+        self.llm.stream_agent(&system, &messages, ModelTier::Fast, |t| response.push_str(t))?;
+        Ok(response)
+    }
+
+    fn permission_level(&self) -> PermissionLevel { PermissionLevel::Execute }
+}
+
+fn fetch_url(url: &str) -> crate::Result<String> {
+    let rest = url.strip_prefix("https://").or_else(|| url.strip_prefix("http://")).unwrap_or(url);
+    let (host_port, path) = match rest.find('/') {
+        Some(i) => (&rest[..i], &rest[i..]),
+        None => (rest, "/"),
+    };
+    let (host, port) = match host_port.rfind(':') {
+        Some(i) => (
+            &host_port[..i],
+            host_port[i + 1..].parse::<u16>().unwrap_or(443),
+        ),
+        None => (host_port, 443),
+    };
+
+    let req = HttpRequest {
+        method: "GET".into(),
+        path: path.to_string(),
+        headers: vec![
+            ("Host".into(), host.to_string()),
+            ("User-Agent".into(), "viv/0.1".into()),
+            ("Accept".into(), "text/html,text/plain".into()),
+            ("Connection".into(), "close".into()),
+        ],
+        body: None,
+    };
+
+    let mut tls = TlsStream::connect(host, port)?;
+    tls.write_all(&req.to_bytes())?;
+
+    let mut raw: Vec<u8> = Vec::new();
+    let mut tmp = [0u8; 4096];
+    loop {
+        let n = tls.read(&mut tmp)?;
+        if n == 0 || raw.len() > 1_000_000 { break; }
+        raw.extend_from_slice(&tmp[..n]);
+    }
+
+    let body = raw.windows(4).position(|w| w == b"\r\n\r\n")
+        .map(|i| &raw[i + 4..])
+        .unwrap_or(&raw);
+
+    Ok(strip_html(&String::from_utf8_lossy(body)))
+}
+
+fn strip_html(html: &str) -> String {
+    let mut out = String::new();
+    let mut in_tag = false;
+    let mut last_space = false;
+    for ch in html.chars() {
+        match ch {
+            '<' => in_tag = true,
+            '>' => in_tag = false,
+            _ if in_tag => {}
+            ' ' | '\t' => { if !last_space { out.push(' '); last_space = true; } }
+            '\n' | '\r' => { out.push('\n'); last_space = false; }
+            _ => { out.push(ch); last_space = false; }
+        }
+    }
+    out
+}
