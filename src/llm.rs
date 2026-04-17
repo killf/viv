@@ -26,7 +26,7 @@ pub enum ModelTier {
 
 /// Configuration for the Anthropic Claude API.
 #[derive(Debug, Clone)]
-pub struct LlmConfig {
+pub struct LLMConfig {
     pub api_key: String,
     pub base_url: String,
     pub model_fast: String,
@@ -80,8 +80,8 @@ fn parse_base_url(base_url: &str) -> UrlParts {
     UrlParts { host, port, path_prefix }
 }
 
-impl LlmConfig {
-    /// Build an `LlmConfig` from environment variables.
+impl LLMConfig {
+    /// Build an `LLMConfig` from environment variables.
     ///
     /// - `VIV_API_KEY` — required
     /// - `VIV_BASE_URL` — optional (default: "api.anthropic.com")
@@ -90,7 +90,7 @@ impl LlmConfig {
     /// - `VIV_MODEL_SLOW` — optional, falls back to `VIV_MODEL`, then default
     /// - `VIV_MODEL` — optional fallback for all three tiers
     pub fn from_env() -> crate::Result<Self> {
-        let api_key = std::env::var("VIV_API_KEY").map_err(|_| Error::Llm {
+        let api_key = std::env::var("VIV_API_KEY").map_err(|_| Error::LLM {
             status: 0,
             message: "VIV_API_KEY not set".into(),
         })?;
@@ -112,7 +112,7 @@ impl LlmConfig {
             .or_else(|_| fallback_model.ok_or(std::env::VarError::NotPresent))
             .unwrap_or_else(|_| "claude-opus-4-6".into());
 
-        Ok(LlmConfig {
+        Ok(LLMConfig {
             api_key,
             base_url,
             model_fast,
@@ -141,14 +141,14 @@ impl LlmConfig {
 }
 
 /// Client for the Anthropic Claude API.
-pub struct LlmClient {
-    pub config: LlmConfig,
+pub struct LLMClient {
+    pub config: LLMConfig,
 }
 
-impl LlmClient {
-    /// Create a new `LlmClient` with the given configuration.
-    pub fn new(config: LlmConfig) -> Self {
-        LlmClient { config }
+impl LLMClient {
+    /// Create a new `LLMClient` with the given configuration.
+    pub fn new(config: LLMConfig) -> Self {
+        LLMClient { config }
     }
 
     /// Build the HTTP request for a streaming Claude API call.
@@ -237,7 +237,7 @@ impl LlmClient {
                         }
                         let body_bytes = &raw[pos + 4..];
                         let body_str = String::from_utf8_lossy(body_bytes).into_owned();
-                        return Err(Error::Llm { status, message: body_str });
+                        return Err(Error::LLM { status, message: body_str });
                     }
                 }
             }

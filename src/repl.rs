@@ -1,4 +1,4 @@
-use crate::llm::{LlmClient, LlmConfig, Message, ModelTier};
+use crate::llm::{LLMClient, LLMConfig, Message, ModelTier};
 use crate::terminal::backend::{Backend, LinuxBackend};
 use crate::terminal::buffer::char_width;
 use crate::terminal::events::{Event, EventLoop};
@@ -17,8 +17,8 @@ use crate::tui::widget::Widget;
 
 /// Start the REPL: initialize TUI, enter raw mode, and run the event loop.
 pub fn run() -> crate::Result<()> {
-    let config = LlmConfig::from_env()?;
-    let client = LlmClient::new(config);
+    let config = LLMConfig::from_env()?;
+    let client = LLMClient::new(config);
 
     let mut backend = LinuxBackend::new();
     backend.enable_raw_mode()?;

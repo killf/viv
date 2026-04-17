@@ -3,14 +3,14 @@ use viv::json::JsonValue;
 
 #[test]
 fn build_api_request_with_tier() {
-    let config = LlmConfig {
+    let config = LLMConfig {
         api_key: "test-key".into(),
         base_url: "api.anthropic.com".into(),
         model_fast: "claude-haiku-4-5".into(),
         model_medium: "claude-sonnet-4-6".into(),
         model_slow: "claude-opus-4-6".into(),
     };
-    let client = LlmClient::new(config);
+    let client = LLMClient::new(config);
     let messages = vec![Message { role: "user".into(), content: "Hello".into() }];
     let req = client.build_request(&messages, ModelTier::Slow);
     assert_eq!(req.method, "POST");
@@ -26,14 +26,14 @@ fn build_api_request_with_tier() {
 
 #[test]
 fn build_request_fast_tier() {
-    let config = LlmConfig {
+    let config = LLMConfig {
         api_key: "k".into(),
         base_url: "api.anthropic.com".into(),
         model_fast: "claude-haiku-4-5".into(),
         model_medium: "claude-sonnet-4-6".into(),
         model_slow: "claude-opus-4-6".into(),
     };
-    let client = LlmClient::new(config);
+    let client = LLMClient::new(config);
     let req = client.build_request(&[Message { role: "user".into(), content: "hi".into() }], ModelTier::Fast);
     let json = JsonValue::parse(req.body.as_ref().unwrap()).unwrap();
     assert_eq!(json.get("model").and_then(|v| v.as_str()), Some("claude-haiku-4-5"));
@@ -59,7 +59,7 @@ fn extract_text_from_thinking_delta() {
 
 #[test]
 fn model_tier_selection() {
-    let config = LlmConfig {
+    let config = LLMConfig {
         api_key: "k".into(), base_url: "x".into(),
         model_fast: "fast".into(), model_medium: "med".into(), model_slow: "slow".into(),
     };
@@ -70,7 +70,7 @@ fn model_tier_selection() {
 
 #[test]
 fn max_tokens_per_tier() {
-    let config = LlmConfig {
+    let config = LLMConfig {
         api_key: "k".into(), base_url: "x".into(),
         model_fast: "f".into(), model_medium: "m".into(), model_slow: "s".into(),
     };
@@ -100,7 +100,7 @@ fn config_env_vars() {
         std::env::remove_var("VIV_MODEL_MEDIUM");
         std::env::remove_var("VIV_MODEL_SLOW");
     }
-    let config = LlmConfig::from_env().unwrap();
+    let config = LLMConfig::from_env().unwrap();
     assert_eq!(config.api_key, "test-viv-key");
     assert_eq!(config.base_url, "custom.api.com");
     // Defaults when no VIV_MODEL* set
@@ -110,7 +110,7 @@ fn config_env_vars() {
 
     // --- Test 2: config_missing_api_key ---
     unsafe { std::env::remove_var("VIV_API_KEY"); }
-    assert!(LlmConfig::from_env().is_err());
+    assert!(LLMConfig::from_env().is_err());
 
     // --- Test 3: VIV_MODEL fallback ---
     unsafe {
@@ -120,14 +120,14 @@ fn config_env_vars() {
         std::env::remove_var("VIV_MODEL_MEDIUM");
         std::env::remove_var("VIV_MODEL_SLOW");
     }
-    let config = LlmConfig::from_env().unwrap();
+    let config = LLMConfig::from_env().unwrap();
     assert_eq!(config.model_fast, "my-custom-model");
     assert_eq!(config.model_medium, "my-custom-model");
     assert_eq!(config.model_slow, "my-custom-model");
 
     // --- Test 4: Tier-specific overrides VIV_MODEL ---
     unsafe { std::env::set_var("VIV_MODEL_FAST", "override-fast"); }
-    let config2 = LlmConfig::from_env().unwrap();
+    let config2 = LLMConfig::from_env().unwrap();
     assert_eq!(config2.model_fast, "override-fast");
     assert_eq!(config2.model_medium, "my-custom-model");
     assert_eq!(config2.model_slow, "my-custom-model");
@@ -149,9 +149,9 @@ fn config_env_vars() {
 #[cfg(feature = "full_test")]
 #[test]
 fn e2e_stream_real_api() {
-    let config = LlmConfig::from_env()
+    let config = LLMConfig::from_env()
         .expect("VIV_API_KEY must be set when running with --features full_test");
-    let client = LlmClient::new(config);
+    let client = LLMClient::new(config);
     let messages = vec![Message {
         role: "user".into(),
         content: "Reply with exactly one word: hello".into(),

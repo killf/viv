@@ -13,7 +13,7 @@ pub enum Error {
     /// HTTP protocol errors
     Http(String),
     /// LLM API errors (status code + message)
-    Llm { status: u16, message: String },
+    LLM { status: u16, message: String },
 }
 
 impl fmt::Display for Error {
@@ -24,7 +24,7 @@ impl fmt::Display for Error {
             Error::Io(err) => write!(f, "IO error: {}", err),
             Error::Tls(msg) => write!(f, "TLS error: {}", msg),
             Error::Http(msg) => write!(f, "HTTP error: {}", msg),
-            Error::Llm { status, message } => write!(f, "LLM error {}: {}", status, message),
+            Error::LLM { status, message } => write!(f, "LLM error {}: {}", status, message),
         }
     }
 }
