@@ -1,6 +1,6 @@
 // MutexGuard is intentionally held across await points in this module.
-// All futures here are driven by poll_to_completion (single-threaded noop-waker loop),
-// so the MutexGuard is never actually sent between threads.
+// All futures here run inside block_on_local (single-threaded), so the
+// MutexGuard is never actually sent between threads.
 #![allow(clippy::await_holding_lock)]
 
 use super::McpManager;
@@ -14,14 +14,12 @@ use std::sync::{Arc, Mutex};
 
 /// Wrapper that asserts a future is `Send`.
 ///
-/// SAFETY: This is only safe when the wrapped future is driven by
-/// `poll_to_completion`, which runs on a single thread with a noop waker.
-/// The MutexGuard held across await points is never actually sent between
-/// threads — poll_to_completion drives the entire future to completion
-/// on the calling thread.
+/// SAFETY: This is only safe when the wrapped future runs inside
+/// block_on_local, which is single-threaded. The MutexGuard held
+/// across await points is never actually sent between threads.
 struct AssertSend<F>(F);
 
-// SAFETY: See above — single-threaded poll_to_completion guarantees no
+// SAFETY: See above — single-threaded block_on_local guarantees no
 // cross-thread transfer actually occurs.
 unsafe impl<F: Future> Send for AssertSend<F> {}
 

@@ -19,11 +19,13 @@ fn run() -> viv::Result<()> {
 
     let config = AgentConfig::default();
 
-    // Create Agent inside the thread to avoid Send requirement
-    // (Agent holds raw pointers from OpenSSL FFI)
+    // Agent 完全在 async 上下文中创建和运行
+    // 在独立线程中避免 Send 约束（Agent 持有 OpenSSL raw pointer）
     let handle = thread::spawn(move || {
-        let agent = Agent::new(config, event_rx, msg_tx).unwrap();
-        block_on_local(Box::pin(agent.run()))
+        block_on_local(Box::pin(async move {
+            let agent = Agent::new(config, event_rx, msg_tx).await?;
+            agent.run().await
+        }))
     });
 
     TerminalUI::new(event_tx, msg_rx)?.run()?;

@@ -18,7 +18,6 @@ use crate::memory::index::MemoryIndex;
 use crate::memory::retrieval::retrieve_relevant;
 use crate::memory::store::MemoryStore;
 use crate::permissions::PermissionManager;
-use crate::tools::poll_to_completion;
 use crate::tools::{PermissionLevel, ToolRegistry};
 
 // ── PermissionMode ────────────────────────────────────────────────────────────
@@ -72,7 +71,7 @@ pub struct Agent {
 }
 
 impl Agent {
-    pub fn new(
+    pub async fn new(
         config: AgentConfig,
         event_rx: AsyncReceiver<AgentEvent>,
         msg_tx: Sender<AgentMessage>,
@@ -87,8 +86,8 @@ impl Agent {
         // Load MCP config (if file doesn't exist, returns empty config)
         let mcp_config = McpConfig::load(".viv/settings.json")?;
 
-        // Connect to MCP servers (uses poll_to_completion since Agent::new is sync)
-        let mcp_manager = poll_to_completion(Box::pin(McpManager::from_config(&mcp_config)));
+        // Connect to MCP servers
+        let mcp_manager = McpManager::from_config(&mcp_config).await;
         let mcp = Arc::new(Mutex::new(mcp_manager));
 
         // Register MCP tool proxies
@@ -137,7 +136,7 @@ impl Agent {
                 Ok(AgentEvent::Input(text)) => {
                     if text.trim() == "/exit" {
                         self.evolve()?;
-                        poll_to_completion(Box::pin(self.mcp.lock().unwrap().shutdown_all()));
+                        self.mcp.lock().unwrap().shutdown_all().await;
                         let _ = self.msg_tx.send(AgentMessage::Evolved);
                         break;
                     }
@@ -148,7 +147,7 @@ impl Agent {
                 }
                 Ok(AgentEvent::Quit) => {
                     self.evolve()?;
-                    poll_to_completion(Box::pin(self.mcp.lock().unwrap().shutdown_all()));
+                    self.mcp.lock().unwrap().shutdown_all().await;
                     let _ = self.msg_tx.send(AgentMessage::Evolved);
                     break;
                 }
@@ -246,10 +245,7 @@ impl Agent {
                                     name: name.clone(),
                                     input: format_tool_input(input),
                                 });
-                                // Temporary bridge: poll the async execute future to completion.
-                                // All current tool futures wrap synchronous code, so this works.
-                                // Task 8 will make the Agent fully async and remove this bridge.
-                                crate::tools::poll_to_completion(tool.execute(input))
+                                tool.execute(input).await
                             }
                         }
                     } else {
