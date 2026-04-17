@@ -1,1 +1,119 @@
-// stub
+use crate::error::Error;
+use crate::json::JsonValue;
+use crate::tools::{PermissionLevel, Tool};
+use std::path::{Path, PathBuf};
+
+pub struct GlobTool;
+
+impl Tool for GlobTool {
+    fn name(&self) -> &str { "glob" }
+
+    fn description(&self) -> &str {
+        "Find files matching a glob pattern. Supports * (any chars in one segment), ** (any path depth), ? (one char)."
+    }
+
+    fn input_schema(&self) -> JsonValue {
+        JsonValue::parse(r#"{
+            "type":"object",
+            "properties":{
+                "pattern":{"type":"string","description":"Glob pattern, e.g. \"**/*.rs\""},
+                "path":{"type":"string","description":"Root directory to search (default: current directory)"}
+            },
+            "required":["pattern"]
+        }"#).unwrap()
+    }
+
+    fn execute(&self, input: &JsonValue) -> crate::Result<String> {
+        let pattern = input.get("pattern").and_then(|v| v.as_str())
+            .ok_or_else(|| Error::Tool("missing 'pattern'".into()))?;
+        let root = input.get("path").and_then(|v| v.as_str()).unwrap_or(".");
+
+        let mut matches: Vec<PathBuf> = vec![];
+        let parts: Vec<&str> = pattern.split('/').collect();
+        walk_glob(Path::new(root), &parts, &mut matches)
+            .map_err(|e| Error::Tool(format!("glob walk: {}", e)))?;
+        matches.sort();
+        Ok(matches.iter().map(|p| p.display().to_string()).collect::<Vec<_>>().join("\n"))
+    }
+
+    fn permission_level(&self) -> PermissionLevel { PermissionLevel::ReadOnly }
+}
+
+fn walk_glob(dir: &Path, parts: &[&str], out: &mut Vec<PathBuf>) -> std::io::Result<()> {
+    if parts.is_empty() {
+        return Ok(());
+    }
+    let seg = parts[0];
+    let rest = &parts[1..];
+
+    if seg == "**" {
+        // Match zero segments: continue with rest from current dir
+        if !rest.is_empty() {
+            walk_glob(dir, rest, out)?;
+        } else {
+            collect_all(dir, out)?;
+            return Ok(());
+        }
+        // Match one or more: recurse into subdirs keeping ** active
+        if dir.is_dir() {
+            for entry in std::fs::read_dir(dir)?.flatten() {
+                let p = entry.path();
+                if p.is_dir() {
+                    walk_glob(&p, parts, out)?;
+                }
+            }
+        }
+        return Ok(());
+    }
+
+    if dir.is_dir() {
+        for entry in std::fs::read_dir(dir)?.flatten() {
+            let p = entry.path();
+            let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            if segment_match(seg, name) {
+                if rest.is_empty() {
+                    out.push(p);
+                } else if p.is_dir() {
+                    walk_glob(&p, rest, out)?;
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn collect_all(dir: &Path, out: &mut Vec<PathBuf>) -> std::io::Result<()> {
+    if dir.is_dir() {
+        for entry in std::fs::read_dir(dir)?.flatten() {
+            let p = entry.path();
+            out.push(p.clone());
+            if p.is_dir() {
+                collect_all(&p, out)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn segment_match(pattern: &str, text: &str) -> bool {
+    let p: Vec<char> = pattern.chars().collect();
+    let t: Vec<char> = text.chars().collect();
+    let (m, n) = (p.len(), t.len());
+    let mut dp = vec![vec![false; n + 1]; m + 1];
+    dp[0][0] = true;
+    for i in 1..=m {
+        if p[i - 1] == '*' { dp[i][0] = dp[i - 1][0]; }
+    }
+    for i in 1..=m {
+        for j in 1..=n {
+            dp[i][j] = if p[i - 1] == '*' {
+                dp[i - 1][j] || dp[i][j - 1]
+            } else if p[i - 1] == '?' || p[i - 1] == t[j - 1] {
+                dp[i - 1][j - 1]
+            } else {
+                false
+            };
+        }
+    }
+    dp[m][n]
+}
