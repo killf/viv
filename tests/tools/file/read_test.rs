@@ -2,6 +2,7 @@ use std::fs;
 use viv::core::json::JsonValue;
 use viv::tools::Tool;
 use viv::tools::file::read::ReadTool;
+use viv::tools::poll_to_completion;
 
 fn tempdir() -> std::path::PathBuf {
     let p = std::env::temp_dir().join(format!("viv_read_{}", nanos()));
@@ -18,7 +19,7 @@ fn read_returns_content_with_line_numbers() {
     let path = dir.join("f.txt");
     fs::write(&path, "alpha\nbeta\ngamma\n").unwrap();
     let input = JsonValue::parse(&format!(r#"{{"file_path":"{}"}}"#, path.display())).unwrap();
-    let result = ReadTool.execute(&input).unwrap();
+    let result = poll_to_completion(ReadTool.execute(&input)).unwrap();
     assert!(result.contains("alpha"));
     assert!(result.contains("beta"));
     assert!(result.contains('1'));  // line number
@@ -30,7 +31,7 @@ fn read_with_offset_skips_lines() {
     let path = dir.join("f.txt");
     fs::write(&path, "a\nb\nc\n").unwrap();
     let input = JsonValue::parse(&format!(r#"{{"file_path":"{}","offset":2,"limit":1}}"#, path.display())).unwrap();
-    let result = ReadTool.execute(&input).unwrap();
+    let result = poll_to_completion(ReadTool.execute(&input)).unwrap();
     assert!(result.contains('b'));
     assert!(!result.contains('a'));
     assert!(!result.contains('c'));
@@ -39,5 +40,5 @@ fn read_with_offset_skips_lines() {
 #[test]
 fn read_missing_file_is_error() {
     let input = JsonValue::parse(r#"{"file_path":"/nonexistent/no.txt"}"#).unwrap();
-    assert!(ReadTool.execute(&input).is_err());
+    assert!(poll_to_completion(ReadTool.execute(&input)).is_err());
 }

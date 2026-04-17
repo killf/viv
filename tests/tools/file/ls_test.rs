@@ -2,6 +2,7 @@ use std::fs;
 use viv::core::json::JsonValue;
 use viv::tools::Tool;
 use viv::tools::file::ls::LsTool;
+use viv::tools::poll_to_completion;
 
 fn tempdir() -> std::path::PathBuf {
     let p = std::env::temp_dir().join(format!("viv_ls_{}", nanos()));
@@ -18,7 +19,7 @@ fn ls_shows_files_in_directory() {
     fs::write(dir.join("a.txt"), "").unwrap();
     fs::write(dir.join("b.txt"), "").unwrap();
     let input = JsonValue::parse(&format!(r#"{{"path":"{}"}}"#, dir.display())).unwrap();
-    let result = LsTool.execute(&input).unwrap();
+    let result = poll_to_completion(LsTool.execute(&input)).unwrap();
     assert!(result.contains("a.txt"));
     assert!(result.contains("b.txt"));
 }
@@ -28,12 +29,12 @@ fn ls_directories_have_trailing_slash() {
     let dir = tempdir();
     fs::create_dir(dir.join("subdir")).unwrap();
     let input = JsonValue::parse(&format!(r#"{{"path":"{}"}}"#, dir.display())).unwrap();
-    let result = LsTool.execute(&input).unwrap();
+    let result = poll_to_completion(LsTool.execute(&input)).unwrap();
     assert!(result.contains("subdir/"));
 }
 
 #[test]
 fn ls_no_path_uses_current_dir() {
-    let result = LsTool.execute(&JsonValue::Object(vec![])).unwrap();
+    let result = poll_to_completion(LsTool.execute(&JsonValue::Object(vec![]))).unwrap();
     assert!(!result.is_empty());
 }

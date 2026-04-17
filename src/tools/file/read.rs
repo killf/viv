@@ -1,3 +1,5 @@
+use std::pin::Pin;
+use std::future::Future;
 use crate::error::Error;
 use crate::core::json::JsonValue;
 use crate::tools::{PermissionLevel, Tool};
@@ -24,7 +26,9 @@ impl Tool for ReadTool {
         }"#).unwrap()
     }
 
-    fn execute(&self, input: &JsonValue) -> crate::Result<String> {
+    fn execute(&self, input: &JsonValue) -> Pin<Box<dyn Future<Output = crate::Result<String>> + Send + '_>> {
+        let input = input.clone();
+        Box::pin(async move {
         let path = input.get("file_path").and_then(|v| v.as_str())
             .ok_or_else(|| Error::Tool("missing 'file_path'".into()))?;
 
@@ -45,6 +49,7 @@ impl Tool for ReadTool {
             out.push_str(&format!("{}\t{}\n", start + i + 1, line));
         }
         Ok(out)
+        })
     }
 
     fn permission_level(&self) -> PermissionLevel { PermissionLevel::ReadOnly }

@@ -2,6 +2,7 @@ use std::fs;
 use viv::core::json::JsonValue;
 use viv::tools::Tool;
 use viv::tools::file::write::WriteTool;
+use viv::tools::poll_to_completion;
 
 fn tempdir() -> std::path::PathBuf {
     let p = std::env::temp_dir().join(format!("viv_write_{}", nanos()));
@@ -19,7 +20,7 @@ fn write_creates_file_with_content() {
     let input = JsonValue::parse(&format!(
         r#"{{"file_path":"{}","content":"hello world"}}"#, path.display()
     )).unwrap();
-    WriteTool.execute(&input).unwrap();
+    poll_to_completion(WriteTool.execute(&input)).unwrap();
     assert_eq!(fs::read_to_string(&path).unwrap(), "hello world");
 }
 
@@ -30,7 +31,7 @@ fn write_creates_parent_directories() {
     let input = JsonValue::parse(&format!(
         r#"{{"file_path":"{}","content":"hi"}}"#, path.display()
     )).unwrap();
-    WriteTool.execute(&input).unwrap();
+    poll_to_completion(WriteTool.execute(&input)).unwrap();
     assert!(path.exists());
 }
 
@@ -42,6 +43,6 @@ fn write_overwrites_existing_file() {
     let input = JsonValue::parse(&format!(
         r#"{{"file_path":"{}","content":"new"}}"#, path.display()
     )).unwrap();
-    WriteTool.execute(&input).unwrap();
+    poll_to_completion(WriteTool.execute(&input)).unwrap();
     assert_eq!(fs::read_to_string(&path).unwrap(), "new");
 }

@@ -1,3 +1,5 @@
+use std::pin::Pin;
+use std::future::Future;
 use crate::error::Error;
 use crate::core::json::JsonValue;
 use crate::tools::{PermissionLevel, Tool};
@@ -27,7 +29,9 @@ impl Tool for BashTool {
         }"#).unwrap()
     }
 
-    fn execute(&self, input: &JsonValue) -> crate::Result<String> {
+    fn execute(&self, input: &JsonValue) -> Pin<Box<dyn Future<Output = crate::Result<String>> + Send + '_>> {
+        let input = input.clone();
+        Box::pin(async move {
         let command = input.get("command").and_then(|v| v.as_str())
             .ok_or_else(|| Error::Tool("missing 'command'".into()))?;
         let timeout_ms = input.get("timeout").and_then(|v| v.as_i64())
@@ -76,6 +80,7 @@ impl Tool for BashTool {
             result.push_str(&format!("Exit code: {}", code));
         }
         Ok(result)
+        })
     }
 
     fn permission_level(&self) -> PermissionLevel { PermissionLevel::Execute }

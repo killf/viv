@@ -1,3 +1,5 @@
+use std::pin::Pin;
+use std::future::Future;
 use crate::error::Error;
 use crate::core::json::JsonValue;
 use crate::tools::{PermissionLevel, Tool};
@@ -34,7 +36,9 @@ impl Tool for GrepTool {
         }"#).unwrap()
     }
 
-    fn execute(&self, input: &JsonValue) -> crate::Result<String> {
+    fn execute(&self, input: &JsonValue) -> Pin<Box<dyn Future<Output = crate::Result<String>> + Send + '_>> {
+        let input = input.clone();
+        Box::pin(async move {
         let pattern = input.get("pattern").and_then(|v| v.as_str())
             .ok_or_else(|| Error::Tool("missing 'pattern'".into()))?;
         let path = input.get("path").and_then(|v| v.as_str()).unwrap_or(".");
@@ -111,6 +115,7 @@ impl Tool for GrepTool {
         let end = if head_limit == 0 { lines.len() } else { (start + head_limit).min(lines.len()) };
 
         Ok(lines[start..end].join("\n"))
+        })
     }
 
     fn permission_level(&self) -> PermissionLevel { PermissionLevel::ReadOnly }

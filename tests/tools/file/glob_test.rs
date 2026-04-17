@@ -2,6 +2,7 @@ use std::fs;
 use viv::core::json::JsonValue;
 use viv::tools::Tool;
 use viv::tools::file::glob::GlobTool;
+use viv::tools::poll_to_completion;
 
 fn tempdir() -> std::path::PathBuf {
     let p = std::env::temp_dir().join(format!("viv_glob_{}", nanos()));
@@ -19,7 +20,7 @@ fn glob_star_matches_extension() {
     fs::write(dir.join("b.rs"), "").unwrap();
     fs::write(dir.join("c.txt"), "").unwrap();
     let input = JsonValue::parse(&format!(r#"{{"pattern":"*.rs","path":"{}"}}"#, dir.display())).unwrap();
-    let result = GlobTool.execute(&input).unwrap();
+    let result = poll_to_completion(GlobTool.execute(&input)).unwrap();
     assert!(result.contains("a.rs"));
     assert!(result.contains("b.rs"));
     assert!(!result.contains("c.txt"));
@@ -33,7 +34,7 @@ fn glob_double_star_recurses() {
     fs::write(sub.join("deep.rs"), "").unwrap();
     fs::write(dir.join("top.rs"), "").unwrap();
     let input = JsonValue::parse(&format!(r#"{{"pattern":"**/*.rs","path":"{}"}}"#, dir.display())).unwrap();
-    let result = GlobTool.execute(&input).unwrap();
+    let result = poll_to_completion(GlobTool.execute(&input)).unwrap();
     assert!(result.contains("deep.rs"));
     assert!(result.contains("top.rs"));
 }

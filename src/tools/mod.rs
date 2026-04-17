@@ -1,10 +1,12 @@
+use std::pin::Pin;
+use std::future::Future;
 use crate::core::json::JsonValue;
 
 pub trait Tool: Send + Sync {
     fn name(&self) -> &str;
     fn description(&self) -> &str;
     fn input_schema(&self) -> JsonValue;
-    fn execute(&self, input: &JsonValue) -> crate::Result<String>;
+    fn execute(&self, input: &JsonValue) -> Pin<Box<dyn Future<Output = crate::Result<String>> + Send + '_>>;
     fn permission_level(&self) -> PermissionLevel;
 }
 
@@ -76,3 +78,23 @@ pub mod bash;
 pub mod file;
 pub mod todo;
 pub mod web;
+
+/// Polls a pinned future to completion synchronously.
+///
+/// All current tool futures wrap synchronous code and resolve on first poll.
+/// This is a temporary bridge until the Agent is fully async (Task 8).
+pub fn poll_to_completion<T>(mut future: Pin<Box<dyn Future<Output = T> + Send + '_>>) -> T {
+    use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
+    const NOOP_VTABLE: RawWakerVTable = RawWakerVTable::new(
+        |p| RawWaker::new(p, &NOOP_VTABLE),
+        |_| {}, |_| {}, |_| {},
+    );
+    let waker = unsafe { Waker::from_raw(RawWaker::new(std::ptr::null(), &NOOP_VTABLE)) };
+    let mut cx = Context::from_waker(&waker);
+    loop {
+        match future.as_mut().poll(&mut cx) {
+            Poll::Ready(val) => return val,
+            Poll::Pending => std::thread::yield_now(),
+        }
+    }
+}
