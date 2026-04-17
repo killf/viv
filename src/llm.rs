@@ -2,7 +2,7 @@ use std::io::{Read, Write};
 
 use crate::core::json::{JsonValue, ToJson};
 use crate::core::net::http::HttpRequest;
-use crate::core::net::sse::SseParser;
+use crate::core::net::sse::{SseEvent, SseParser};
 use crate::core::net::tls::TlsStream;
 use crate::error::Error;
 
@@ -418,37 +418,45 @@ impl LLMClient {
     }
 }
 
-fn parse_agent_stream(
-    raw: &[u8],
-    header_end: Option<usize>,
-    on_text: &mut impl FnMut(&str),
-) -> crate::Result<StreamResult> {
-    use crate::agent::message::ContentBlock;
+// ---- stream accumulator (shared by sync & async) ----------------------------
 
-    let mut text_acc: std::collections::HashMap<usize, String> = std::collections::HashMap::new();
-    let mut tool_acc: std::collections::HashMap<usize, (String, String, String)> =
-        std::collections::HashMap::new();
+/// Accumulates SSE events into a `StreamResult`.
+///
+/// Used by both `parse_agent_stream` (sync) and `stream_agent_async` to avoid
+/// duplicating the event-processing logic.
+struct StreamAccumulator {
+    text_acc: std::collections::HashMap<usize, String>,
+    tool_acc: std::collections::HashMap<usize, (String, String, String)>,
+    text_blocks: Vec<crate::agent::message::ContentBlock>,
+    tool_uses: Vec<crate::agent::message::ContentBlock>,
+    stop_reason: String,
+    input_tokens: u64,
+    output_tokens: u64,
+}
 
-    let mut text_blocks: Vec<ContentBlock> = vec![];
-    let mut tool_uses: Vec<ContentBlock> = vec![];
-    let mut stop_reason = String::from("end_turn");
-    let mut input_tokens: u64 = 0;
-    let mut output_tokens: u64 = 0;
+impl StreamAccumulator {
+    fn new() -> Self {
+        StreamAccumulator {
+            text_acc: std::collections::HashMap::new(),
+            tool_acc: std::collections::HashMap::new(),
+            text_blocks: vec![],
+            tool_uses: vec![],
+            stop_reason: String::from("end_turn"),
+            input_tokens: 0,
+            output_tokens: 0,
+        }
+    }
 
-    let hend = match header_end {
-        Some(h) => h,
-        None => return Ok(StreamResult { text_blocks, tool_uses, stop_reason, input_tokens, output_tokens }),
-    };
-    let body_str = String::from_utf8_lossy(&raw[hend..]);
+    /// Process a single SSE event. Calls `on_text` for text deltas.
+    fn process_event(&mut self, event: &SseEvent, on_text: &mut impl FnMut(&str)) {
+        use crate::agent::message::ContentBlock;
 
-    let mut parser = SseParser::new();
-    parser.feed(&body_str);
-    let events = parser.drain();
-
-    for event in events {
         let data = &event.data;
-        let json = match JsonValue::parse(data) { Ok(j) => j, Err(_) => continue };
-        let ev_type = match json.get("type").and_then(|v| v.as_str()) { Some(t) => t, None => continue };
+        let json = match JsonValue::parse(data) { Ok(j) => j, Err(_) => return };
+        let ev_type = match json.get("type").and_then(|v| v.as_str()) {
+            Some(t) => t,
+            None => return,
+        };
 
         match ev_type {
             "content_block_start" => {
@@ -456,11 +464,11 @@ fn parse_agent_stream(
                 let block = json.get("content_block").unwrap_or(&JsonValue::Null);
                 let block_type = block.get("type").and_then(|v| v.as_str()).unwrap_or("");
                 match block_type {
-                    "text" => { text_acc.insert(idx, String::new()); }
+                    "text" => { self.text_acc.insert(idx, String::new()); }
                     "tool_use" => {
                         let id = block.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
                         let name = block.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                        tool_acc.insert(idx, (id, name, String::new()));
+                        self.tool_acc.insert(idx, (id, name, String::new()));
                     }
                     _ => {}
                 }
@@ -473,12 +481,12 @@ fn parse_agent_stream(
                     "text_delta" => {
                         if let Some(text) = delta.get("text").and_then(|v| v.as_str()) {
                             on_text(text);
-                            if let Some(acc) = text_acc.get_mut(&idx) { acc.push_str(text); }
+                            if let Some(acc) = self.text_acc.get_mut(&idx) { acc.push_str(text); }
                         }
                     }
                     "input_json_delta" => {
                         if let Some(partial) = delta.get("partial_json").and_then(|v| v.as_str()) {
-                            if let Some(entry) = tool_acc.get_mut(&idx) {
+                            if let Some(entry) = self.tool_acc.get_mut(&idx) {
                                 entry.2.push_str(partial);
                             }
                         }
@@ -488,17 +496,17 @@ fn parse_agent_stream(
             }
             "content_block_stop" => {
                 let idx = json.get("index").and_then(|v| v.as_i64()).unwrap_or(0) as usize;
-                if let Some(text) = text_acc.remove(&idx) {
-                    text_blocks.push(ContentBlock::Text(text));
+                if let Some(text) = self.text_acc.remove(&idx) {
+                    self.text_blocks.push(ContentBlock::Text(text));
                 }
-                if let Some((id, name, json_str)) = tool_acc.remove(&idx) {
+                if let Some((id, name, json_str)) = self.tool_acc.remove(&idx) {
                     let input = JsonValue::parse(&json_str).unwrap_or(JsonValue::Object(vec![]));
-                    tool_uses.push(ContentBlock::ToolUse { id, name, input });
+                    self.tool_uses.push(ContentBlock::ToolUse { id, name, input });
                 }
             }
             "message_start" => {
                 if let Some(usage) = json.get("message").and_then(|m| m.get("usage")) {
-                    input_tokens += usage.get("input_tokens")
+                    self.input_tokens += usage.get("input_tokens")
                         .and_then(|v| v.as_i64())
                         .and_then(|n| u64::try_from(n).ok())
                         .unwrap_or(0);
@@ -509,10 +517,10 @@ fn parse_agent_stream(
                     .and_then(|d| d.get("stop_reason"))
                     .and_then(|v| v.as_str())
                 {
-                    stop_reason = reason.to_string();
+                    self.stop_reason = reason.to_string();
                 }
                 if let Some(usage) = json.get("usage") {
-                    output_tokens += usage.get("output_tokens")
+                    self.output_tokens += usage.get("output_tokens")
                         .and_then(|v| v.as_i64())
                         .and_then(|n| u64::try_from(n).ok())
                         .unwrap_or(0);
@@ -522,7 +530,42 @@ fn parse_agent_stream(
         }
     }
 
-    Ok(StreamResult { text_blocks, tool_uses, stop_reason, input_tokens, output_tokens })
+    fn into_result(self) -> StreamResult {
+        StreamResult {
+            text_blocks: self.text_blocks,
+            tool_uses: self.tool_uses,
+            stop_reason: self.stop_reason,
+            input_tokens: self.input_tokens,
+            output_tokens: self.output_tokens,
+        }
+    }
+}
+
+fn parse_agent_stream(
+    raw: &[u8],
+    header_end: Option<usize>,
+    on_text: &mut impl FnMut(&str),
+) -> crate::Result<StreamResult> {
+    let hend = match header_end {
+        Some(h) => h,
+        None => return Ok(StreamResult {
+            text_blocks: vec![], tool_uses: vec![],
+            stop_reason: String::from("end_turn"),
+            input_tokens: 0, output_tokens: 0,
+        }),
+    };
+    let body_str = String::from_utf8_lossy(&raw[hend..]);
+
+    let mut parser = SseParser::new();
+    parser.feed(&body_str);
+    let events = parser.drain();
+
+    let mut acc = StreamAccumulator::new();
+    for event in &events {
+        acc.process_event(event, on_text);
+    }
+
+    Ok(acc.into_result())
 }
 
 /// 仅供测试使用的公开入口
@@ -532,6 +575,97 @@ pub fn parse_agent_stream_pub(
     on_text: &mut impl FnMut(&str),
 ) -> crate::Result<StreamResult> {
     parse_agent_stream(raw, header_end, on_text)
+}
+
+// ---- async agent stream -----------------------------------------------------
+
+impl LLMClient {
+    /// Async version of `stream_agent()` — uses `AsyncTlsStream` for non-blocking I/O.
+    pub async fn stream_agent_async(
+        &self,
+        system_blocks: &[crate::agent::message::SystemBlock],
+        messages: &[crate::agent::message::Message],
+        tools_json: &str,
+        tier: ModelTier,
+        on_text: impl Fn(&str),
+    ) -> crate::Result<StreamResult> {
+        use crate::core::net::async_tls::AsyncTlsStream;
+
+        let req = self.build_agent_request(system_blocks, messages, tools_json, tier);
+        let url = parse_base_url(&self.config.base_url);
+
+        let mut stream = AsyncTlsStream::connect(&url.host, url.port).await?;
+        stream.write_all(&req.to_bytes()).await?;
+
+        // Read HTTP response header (until \r\n\r\n)
+        let mut raw: Vec<u8> = Vec::new();
+        let mut buf = [0u8; 4096];
+
+        loop {
+            let n = stream.read(&mut buf).await?;
+            if n == 0 {
+                return Err(Error::Http("connection closed before headers".into()));
+            }
+            raw.extend_from_slice(&buf[..n]);
+
+            if let Some(pos) = raw.windows(4).position(|w| w == b"\r\n\r\n") {
+                let header_section = std::str::from_utf8(&raw[..pos])
+                    .map_err(|_| Error::Http("invalid UTF-8 in headers".into()))?;
+                let status = parse_status_line(header_section)?;
+                if status != 200 {
+                    // Read remaining error body
+                    loop {
+                        let n2 = stream.read(&mut buf).await?;
+                        if n2 == 0 { break; }
+                        raw.extend_from_slice(&buf[..n2]);
+                    }
+                    let body = String::from_utf8_lossy(&raw[pos + 4..]).into_owned();
+                    return Err(Error::LLM { status, message: body });
+                }
+                break;
+            }
+        }
+
+        // SSE streaming loop
+        let header_end = raw.windows(4).position(|w| w == b"\r\n\r\n").unwrap() + 4;
+        let mut parser = SseParser::new();
+        let mut acc = StreamAccumulator::new();
+        let mut on_text_mut = |s: &str| on_text(s);
+
+        // Process any SSE data already in the buffer after the header
+        {
+            let initial_body = std::str::from_utf8(&raw[header_end..])
+                .map_err(|_| Error::Http("invalid UTF-8 in body".into()))?;
+            if !initial_body.is_empty() {
+                parser.feed(initial_body);
+                for event in parser.drain() {
+                    acc.process_event(&event, &mut on_text_mut);
+                }
+            }
+            if initial_body.contains("message_stop") {
+                return Ok(acc.into_result());
+            }
+        }
+
+        loop {
+            let n = stream.read(&mut buf).await?;
+            if n == 0 { break; }
+
+            let chunk = std::str::from_utf8(&buf[..n])
+                .map_err(|_| Error::Http("invalid UTF-8 in SSE chunk".into()))?;
+            parser.feed(chunk);
+            let mut saw_stop = false;
+            for event in parser.drain() {
+                acc.process_event(&event, &mut on_text_mut);
+                if event.data.contains("\"message_stop\"") {
+                    saw_stop = true;
+                }
+            }
+            if saw_stop { break; }
+        }
+
+        Ok(acc.into_result())
+    }
 }
 
 // ---- helpers ----------------------------------------------------------------
