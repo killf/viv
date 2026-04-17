@@ -393,15 +393,15 @@ impl TerminalUI {
             return None;
         }
 
-        // ── Mode 2: Busy (no permission pending) ────────────────────────────
-        if self.busy {
-            if key == KeyEvent::CtrlC {
-                let _ = self.event_tx.send(AgentEvent::Interrupt);
-            }
+        // ── Mode 2: Busy — Ctrl+C interrupts the agent; every other key
+        // falls through to the editor so the user can type (and even queue
+        // a submission) while the AI is still streaming its response.
+        if self.busy && key == KeyEvent::CtrlC {
+            let _ = self.event_tx.send(AgentEvent::Interrupt);
             return None;
         }
 
-        // ── Mode 3: Idle — normal editing ───────────────────────────────────
+        // ── Mode 3: Normal editing (busy or idle) ───────────────────────────
         let action = self.editor.handle_key(key);
         match action {
             EditAction::Submit(line) => {
