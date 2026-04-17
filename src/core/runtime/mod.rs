@@ -1,10 +1,10 @@
+pub mod channel;
 pub mod task;
 pub mod executor;
 pub mod reactor;
 pub mod timer;
-pub mod channel;
 
-pub use executor::{block_on, Executor};
+pub use executor::{block_on, block_on_local, Executor};
 pub use reactor::reactor;
 pub use timer::sleep;
 pub use task::JoinHandle;

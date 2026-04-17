@@ -1,9 +1,12 @@
+use std::sync::{Arc, Mutex};
+use std::sync::mpsc::Sender;
 use crate::Result;
 use crate::agent::evolution::evolve_from_session;
 use crate::agent::message::{ContentBlock, Message, PromptCache};
 use crate::agent::prompt::{SystemPrompt, build_system_prompt};
 use crate::bus::{AgentEvent, AgentMessage};
 use crate::core::json::JsonValue;
+use crate::core::runtime::channel::AsyncReceiver;
 use crate::llm::{LLMClient, LLMConfig, ModelTier};
 use crate::mcp::McpManager;
 use crate::mcp::config::McpConfig;
@@ -17,8 +20,6 @@ use crate::memory::store::MemoryStore;
 use crate::permissions::PermissionManager;
 use crate::tools::poll_to_completion;
 use crate::tools::{PermissionLevel, ToolRegistry};
-use std::sync::mpsc::{Receiver, Sender};
-use std::sync::{Arc, Mutex};
 
 // ── PermissionMode ────────────────────────────────────────────────────────────
 
@@ -65,7 +66,7 @@ pub struct Agent {
     config: AgentConfig,
     input_tokens: u64,
     output_tokens: u64,
-    event_rx: Receiver<AgentEvent>,
+    event_rx: AsyncReceiver<AgentEvent>,
     msg_tx: Sender<AgentMessage>,
     mcp: Arc<Mutex<McpManager>>,
 }
@@ -73,7 +74,7 @@ pub struct Agent {
 impl Agent {
     pub fn new(
         config: AgentConfig,
-        event_rx: Receiver<AgentEvent>,
+        event_rx: AsyncReceiver<AgentEvent>,
         msg_tx: Sender<AgentMessage>,
     ) -> Result<Self> {
         let llm_config = LLMConfig::from_env()?;
@@ -130,9 +131,9 @@ impl Agent {
     }
 
     /// Infinite loop: reads from event_rx until Quit or channel close.
-    pub fn run(mut self) -> Result<()> {
+    pub async fn run(mut self) -> Result<()> {
         loop {
-            match self.event_rx.recv() {
+            match self.event_rx.recv().await {
                 Ok(AgentEvent::Input(text)) => {
                     if text.trim() == "/exit" {
                         self.evolve()?;
@@ -140,7 +141,7 @@ impl Agent {
                         let _ = self.msg_tx.send(AgentMessage::Evolved);
                         break;
                     }
-                    if let Err(e) = self.handle_input(text) {
+                    if let Err(e) = self.handle_input(text).await {
                         let _ = self.msg_tx.send(AgentMessage::Error(e.to_string()));
                         let _ = self.msg_tx.send(AgentMessage::Done);
                     }
@@ -158,7 +159,7 @@ impl Agent {
         Ok(())
     }
 
-    fn handle_input(&mut self, text: String) -> Result<()> {
+    async fn handle_input(&mut self, text: String) -> Result<()> {
         let _ = self.msg_tx.send(AgentMessage::Thinking);
 
         let memories = {
@@ -194,7 +195,7 @@ impl Agent {
             self.llm.as_ref(),
         )?;
 
-        self.agentic_loop(system)?;
+        self.agentic_loop(system).await?;
 
         let _ = self.msg_tx.send(AgentMessage::Tokens {
             input: self.input_tokens,
@@ -204,16 +205,12 @@ impl Agent {
         Ok(())
     }
 
-    fn agentic_loop(&mut self, system: SystemPrompt) -> Result<()> {
+    async fn agentic_loop(&mut self, system: SystemPrompt) -> Result<()> {
         let tools_json = self.tools.to_api_json();
 
         for _ in 0..self.config.max_iterations {
-            if let Ok(AgentEvent::Interrupt) = self.event_rx.try_recv() {
-                return Ok(());
-            }
-
             let msg_tx = self.msg_tx.clone();
-            let stream_result = self.llm.stream_agent(
+            let stream_result = self.llm.stream_agent_async(
                 &system.blocks,
                 &self.messages,
                 &tools_json,
@@ -221,7 +218,7 @@ impl Agent {
                 move |chunk| {
                     let _ = msg_tx.send(AgentMessage::TextChunk(chunk.to_string()));
                 },
-            )?;
+            ).await?;
 
             self.input_tokens += stream_result.input_tokens;
             self.output_tokens += stream_result.output_tokens;
@@ -239,7 +236,7 @@ impl Agent {
 
             for tu in &tool_uses {
                 if let ContentBlock::ToolUse { id, name, input } = tu {
-                    let allowed = self.check_permission(name, input)?;
+                    let allowed = self.check_permission(name, input).await?;
 
                     let result = if allowed {
                         match self.tools.get(name) {
@@ -290,7 +287,7 @@ impl Agent {
         Ok(())
     }
 
-    fn check_permission(&mut self, tool_name: &str, input: &JsonValue) -> Result<bool> {
+    async fn check_permission(&mut self, tool_name: &str, input: &JsonValue) -> Result<bool> {
         if self.config.permission_mode == PermissionMode::Bypass {
             return Ok(true);
         }
@@ -320,7 +317,7 @@ impl Agent {
         });
 
         loop {
-            match self.event_rx.recv() {
+            match self.event_rx.recv().await {
                 Ok(AgentEvent::PermissionResponse(allowed)) => {
                     if allowed {
                         self.permissions.grant(tool_name);

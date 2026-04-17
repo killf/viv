@@ -370,6 +370,8 @@ impl LLMClient {
         parse_agent_stream(&raw, header_end, &mut on_text)
     }
 
+    /// Async wrapper around `stream_agent` — runs the blocking TLS I/O on the
+    /// current thread (the Agent thread) but returns a Future so the caller can
     fn build_agent_request(
         &self,
         system_blocks: &[crate::agent::message::SystemBlock],
