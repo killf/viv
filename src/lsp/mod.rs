@@ -143,16 +143,21 @@ impl LspManager {
         client.did_open(&uri, &lang, &content).await?;
 
         // Record the open document with version=1.
-        let server_name = self.server_name_for_file(file).unwrap().to_string();
+        let server_name = self
+            .server_name_for_file(file)
+            .expect("file has a configured LSP server")
+            .to_string();
         self.open_documents.insert(uri, OpenDocument { server_name, version: 1 });
         Ok(())
     }
 
     /// Gracefully shut down all started servers.
     pub async fn shutdown_all(&mut self) {
-        for (_name, slot) in self.servers.iter_mut() {
+        for (name, slot) in self.servers.iter_mut() {
             if let Some(client) = slot.as_mut() {
-                let _ = client.shutdown().await;
+                if let Err(e) = client.shutdown().await {
+                    tracing::warn!("[lsp] failed to shutdown server '{}': {}", name, e);
+                }
             }
             *slot = None;
         }
@@ -167,16 +172,7 @@ impl LspManager {
     pub async fn notify_did_change(&mut self, file: &str) -> Result<()> {
         let uri = path_to_uri(file);
 
-        // Increment version while we have exclusive access to the map.
-        let version = {
-            let entry = match self.open_documents.get_mut(&uri) {
-                Some(e) => e,
-                None => return Ok(()), // file not open, nothing to do
-            };
-            entry.version + 1
-        }; // borrow ends here; self is available for get_or_start
-
-        // Read updated content from disk.
+        // Read updated content from disk before taking any mutable borrows.
         let content = match std::fs::read_to_string(file) {
             Ok(c) => c,
             Err(e) => {
@@ -185,16 +181,22 @@ impl LspManager {
             }
         };
 
-        // Update version in the map.  Done before get_or_start so the borrow
-        // of self is released before we take the &mut self borrow for client.
-        if let Some(entry) = self.open_documents.get_mut(&uri) {
-            entry.version = version;
-        }
+        // Increment version and extract all values we need while holding the
+        // single mutable borrow of open_documents.  This avoids the borrow
+        // checker conflict between get_mut and get_or_start (both need &mut self).
+        let (version, uri_clone) = {
+            let entry = match self.open_documents.get_mut(&uri) {
+                Some(e) => e,
+                None => return Ok(()), // file not open, nothing to do
+            };
+            entry.version += 1;
+            (entry.version, uri.clone())
+        }; // borrow ends here; self is available for get_or_start
 
         // Get or start the server.
         let client = self.get_or_start(file).await?;
 
-        client.notify_did_change(&uri, &content, version).await?;
+        client.notify_did_change(&uri_clone, &content, version).await?;
         Ok(())
     }
 }
