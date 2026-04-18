@@ -1,10 +1,12 @@
 pub mod channel;
+pub mod combinator;
 pub mod executor;
 pub mod reactor;
 pub mod task;
 pub mod timer;
 
 pub use channel::{AsyncReceiver, NotifySender, async_channel};
+pub use combinator::{join, join_all};
 pub use executor::{Executor, block_on, block_on_local, noop_waker};
 pub use reactor::reactor;
 pub use task::JoinHandle;
