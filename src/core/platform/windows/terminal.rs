@@ -15,6 +15,23 @@ impl WinTerminal {
         let input_handle = unsafe { ffi::GetStdHandle(ffi::STD_INPUT_HANDLE) };
         let output_handle = unsafe { ffi::GetStdHandle(ffi::STD_OUTPUT_HANDLE) };
 
+        // Detect non-interactive environments (pipe, CI, redirected stdin).
+        // GetStdHandle returns a valid HANDLE even for pipes, but
+        // GetConsoleMode fails with ERROR_INVALID_HANDLE (6) on non-console handles.
+        let input_console_err;
+        unsafe {
+            let mut m = 0u32;
+            ffi::GetConsoleMode(input_handle, &mut m);
+            input_console_err = ffi::GetLastError();
+        }
+        if input_console_err == 6 {
+            return Err(crate::Error::Terminal(
+                "viv requires an interactive terminal. \
+                stdin is not connected to a console (running in CI/non-interactive mode?). \
+                If you want to run viv, please use a proper terminal/shell environment.".into(),
+            ));
+        }
+
         let mut input_mode = 0u32;
         let mut output_mode = 0u32;
         unsafe {

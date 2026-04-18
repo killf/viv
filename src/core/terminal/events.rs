@@ -211,14 +211,19 @@ impl EventLoop {
         if self.terminal.owns_input() {
             // Owned fd is non-blocking — safe to drain until EAGAIN/0.
             loop {
-                let n = self.terminal.read_input(&mut buf)?;
-                if n > 0 {
-                    self.input.feed(&buf[..n]);
-                } else {
-                    break; // EOF or would-block
-                }
-                if n < buf.len() {
-                    break;
+                match self.terminal.read_input(&mut buf) {
+                    Ok(n) => {
+                        if n > 0 {
+                            self.input.feed(&buf[..n]);
+                        }
+                        if n == 0 || n < buf.len() {
+                            break; // EOF or flushed buffer
+                        }
+                    }
+                    Err(crate::Error::Io(e)) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                        break; // no more input right now
+                    }
+                    Err(e) => return Err(e),
                 }
             }
         } else {
