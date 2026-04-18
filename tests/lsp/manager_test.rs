@@ -111,3 +111,19 @@ fn server_for_file_absolute_path() {
 
     assert_eq!(manager.server_name_for_file("/workspace/src/lib.rs"), Some("rust"));
 }
+
+// ---------------------------------------------------------------------------
+// notify_did_change
+// ---------------------------------------------------------------------------
+
+/// notify_did_change returns Ok for a file that was never opened (no-op).
+#[test]
+fn notify_did_change_noop_for_unopened_file() {
+    let config = LspConfig::parse("{}").unwrap();
+    let mut manager = LspManager::new(config);
+
+    let result = viv::core::runtime::block_on(
+        manager.notify_did_change("/tmp/does_not_exist.rs")
+    );
+    assert!(result.is_ok());
+}

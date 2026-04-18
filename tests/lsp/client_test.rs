@@ -345,3 +345,33 @@ fn shutdown_sequence() {
     assert_eq!(transport.sent[1].get("method").unwrap().as_str().unwrap(), "exit");
     assert!(transport.sent[1].get("id").is_none());
 }
+
+/// `notify_did_change` sends a notification (no id) with correct params.
+#[test]
+fn did_change_notification() {
+    let transport = MockTransport::new(vec![]);
+    let mut client = LspClient::new(transport, "rust-analyzer");
+
+    let client = block_on(async move {
+        client
+            .notify_did_change("file:///src/main.rs", "fn updated() {}", 2)
+            .await
+            .unwrap();
+        client
+    });
+
+    let transport = client.into_transport();
+    assert_eq!(transport.sent.len(), 1);
+    let msg = &transport.sent[0];
+    assert_eq!(msg.get("method").unwrap().as_str().unwrap(), "textDocument/didChange");
+    assert!(msg.get("id").is_none(), "didChange must NOT have an id");
+
+    let params = msg.get("params").unwrap();
+    let doc = params.get("textDocument").unwrap();
+    assert_eq!(doc.get("uri").unwrap().as_str().unwrap(), "file:///src/main.rs");
+    assert_eq!(doc.get("version").unwrap().as_i64().unwrap(), 2);
+
+    let changes = params.get("contentChanges").unwrap().as_array().unwrap();
+    assert_eq!(changes.len(), 1);
+    assert_eq!(changes[0].get("text").unwrap().as_str().unwrap(), "fn updated() {}");
+}
