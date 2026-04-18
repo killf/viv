@@ -142,3 +142,4 @@ L5 Skill Memory      skill library (.viv/skills/)
 - https://github.com/crossterm-rs/crossterm
 - https://github.com/ratatui/ratatui
 - https://github.com/rustls/rustls
+- https://github.com/rust-native-tls/rust-native-tls — reference for native TLS FFI integration
