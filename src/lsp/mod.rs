@@ -3,19 +3,28 @@ pub mod config;
 pub mod tools;
 pub mod types;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::Path;
 
 use crate::mcp::transport::stdio::{Framing, StdioTransport};
 use crate::{Error, Result};
 use client::LspClient;
 use config::LspConfig;
+use tracing;
 
 type LspStdioClient = LspClient<StdioTransport>;
 
 // ---------------------------------------------------------------------------
 // LspManager
 // ---------------------------------------------------------------------------
+
+/// Tracks an open document's version and the LSP client that owns it.
+struct OpenDocument {
+    /// Server name this document is open in.
+    server_name: String,
+    /// Monotonically increasing version. Starts at 1 on `didOpen`, incremented on each `didChange`.
+    version: i32,
+}
 
 /// Manages LSP server lifecycle with lazy loading.
 ///
@@ -25,7 +34,7 @@ pub struct LspManager {
     config: LspConfig,
     /// `None` = not yet started, `Some(client)` = running.
     servers: HashMap<String, Option<LspStdioClient>>,
-    opened_files: HashSet<String>,
+    open_documents: HashMap<String, OpenDocument>,
 }
 
 impl LspManager {
@@ -35,7 +44,7 @@ impl LspManager {
         for (name, _) in &config.servers {
             servers.insert(name.clone(), None);
         }
-        LspManager { config, servers, opened_files: HashSet::new() }
+        LspManager { config, servers, open_documents: HashMap::new() }
     }
 
     /// Returns `true` if no servers are configured.
@@ -122,18 +131,20 @@ impl LspManager {
     /// Reads the file from disk, sends `textDocument/didOpen`, and records it
     /// so subsequent calls are no-ops.
     pub async fn ensure_file_open(&mut self, file: &str) -> Result<()> {
-        if self.opened_files.contains(file) {
+        let uri = path_to_uri(file);
+        if self.open_documents.contains_key(&uri) {
             return Ok(());
         }
 
         let content = std::fs::read_to_string(file).map_err(Error::Io)?;
-        let uri = path_to_uri(file);
         let lang = language_id_from_path(file).to_string();
 
         let client = self.get_or_start(file).await?;
         client.did_open(&uri, &lang, &content).await?;
 
-        self.opened_files.insert(file.to_string());
+        // Record the open document with version=1.
+        let server_name = self.server_name_for_file(file).unwrap().to_string();
+        self.open_documents.insert(uri, OpenDocument { server_name, version: 1 });
         Ok(())
     }
 
@@ -145,7 +156,46 @@ impl LspManager {
             }
             *slot = None;
         }
-        self.opened_files.clear();
+        self.open_documents.clear();
+    }
+
+    /// Notify the appropriate LSP server that a file has changed.
+    ///
+    /// Reads the current file content from disk, increments the version, and sends
+    /// `textDocument/didChange`. If the file has not been opened via `ensure_file_open`
+    /// this is a no-op.
+    pub async fn notify_did_change(&mut self, file: &str) -> Result<()> {
+        let uri = path_to_uri(file);
+
+        // Increment version while we have exclusive access to the map.
+        let version = {
+            let entry = match self.open_documents.get_mut(&uri) {
+                Some(e) => e,
+                None => return Ok(()), // file not open, nothing to do
+            };
+            entry.version + 1
+        }; // borrow ends here; self is available for get_or_start
+
+        // Read updated content from disk.
+        let content = match std::fs::read_to_string(file) {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::warn!("[lsp] failed to read changed file '{}': {}", file, e);
+                return Ok(());
+            }
+        };
+
+        // Update version in the map.  Done before get_or_start so the borrow
+        // of self is released before we take the &mut self borrow for client.
+        if let Some(entry) = self.open_documents.get_mut(&uri) {
+            entry.version = version;
+        }
+
+        // Get or start the server.
+        let client = self.get_or_start(file).await?;
+
+        client.notify_did_change(&uri, &content, version).await?;
+        Ok(())
     }
 }
 
