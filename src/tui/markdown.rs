@@ -23,10 +23,21 @@ pub fn render_markdown(text: &str) -> Vec<Line> {
             spans.push(Span::styled(rest, theme::TEXT, true));
             lines.push(Line::from_spans(spans));
         } else if let Some(rest) = trimmed.strip_prefix("## ") {
-            lines.push(Line::from_spans(vec![Span::styled(rest, theme::TEXT, true)]));
+            lines.push(Line::from_spans(vec![Span::styled(
+                rest,
+                theme::TEXT,
+                true,
+            )]));
         } else if let Some(rest) = trimmed.strip_prefix("# ") {
-            lines.push(Line::from_spans(vec![Span::styled(rest, theme::TEXT, true)]));
-        } else if let Some(rest) = trimmed.strip_prefix("- ").or_else(|| trimmed.strip_prefix("* ")) {
+            lines.push(Line::from_spans(vec![Span::styled(
+                rest,
+                theme::TEXT,
+                true,
+            )]));
+        } else if let Some(rest) = trimmed
+            .strip_prefix("- ")
+            .or_else(|| trimmed.strip_prefix("* "))
+        {
             let mut spans = vec![Span::raw("  \u{2022} ")];
             spans.extend(parse_inline(rest));
             lines.push(Line::from_spans(spans));

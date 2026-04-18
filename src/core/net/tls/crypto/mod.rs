@@ -4,8 +4,8 @@
 
 use std::arch::asm;
 
-pub mod sha256;
 pub mod aes_gcm;
+pub mod sha256;
 pub mod x25519;
 
 /// Fill `buf` with cryptographically secure random bytes using the

@@ -1,5 +1,5 @@
-use crate::core::json::JsonValue;
 use crate::Error;
+use crate::core::json::JsonValue;
 
 // ---------------------------------------------------------------------------
 // Position
@@ -215,7 +215,10 @@ impl Diagnostic {
             .ok_or_else(|| Error::Json("Diagnostic missing 'message'".to_string()))?
             .to_string();
 
-        let code = json.get("code").and_then(|v| v.as_str()).map(|s| s.to_string());
+        let code = json
+            .get("code")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
 
         Ok(Diagnostic {
             range,
@@ -239,9 +242,9 @@ pub struct LspServerCapabilities {
 
 impl LspServerCapabilities {
     pub fn from_json(json: &JsonValue) -> crate::Result<Self> {
-        let caps = json
-            .get("capabilities")
-            .ok_or_else(|| Error::Json("LspServerCapabilities missing 'capabilities'".to_string()))?;
+        let caps = json.get("capabilities").ok_or_else(|| {
+            Error::Json("LspServerCapabilities missing 'capabilities'".to_string())
+        })?;
 
         let definition = caps
             .get("definitionProvider")

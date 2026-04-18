@@ -1,6 +1,6 @@
-use crate::core::json::JsonValue;
-use crate::Result;
 use super::store::MemoryStore;
+use crate::Result;
+use crate::core::json::JsonValue;
 
 const INDEX_FILE: &str = "index.json";
 
@@ -33,17 +33,44 @@ impl MemoryIndex {
         let mut entries = vec![];
 
         for kind_key in &["episodes", "knowledge"] {
-            let kind = if *kind_key == "episodes" { EntryKind::Episode } else { EntryKind::Knowledge };
+            let kind = if *kind_key == "episodes" {
+                EntryKind::Episode
+            } else {
+                EntryKind::Knowledge
+            };
             if let Some(arr) = json.get(kind_key).and_then(|v| v.as_array()) {
                 for item in arr {
-                    let id = item.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                    let file = item.get("file").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                    let summary = item.get("summary").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                    let tags = item.get("tags")
+                    let id = item
+                        .get("id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let file = item
+                        .get("file")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let summary = item
+                        .get("summary")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let tags = item
+                        .get("tags")
                         .and_then(|v| v.as_array())
-                        .map(|arr| arr.iter().filter_map(|t| t.as_str().map(|s| s.to_string())).collect())
+                        .map(|arr| {
+                            arr.iter()
+                                .filter_map(|t| t.as_str().map(|s| s.to_string()))
+                                .collect()
+                        })
                         .unwrap_or_default();
-                    entries.push(MemoryEntry { id, kind: kind.clone(), file, tags, summary });
+                    entries.push(MemoryEntry {
+                        id,
+                        kind: kind.clone(),
+                        file,
+                        tags,
+                        summary,
+                    });
                 }
             }
         }
@@ -51,14 +78,24 @@ impl MemoryIndex {
     }
 
     pub fn save(&self, store: &MemoryStore) -> Result<()> {
-        let episodes: Vec<&MemoryEntry> = self.entries.iter().filter(|e| e.kind == EntryKind::Episode).collect();
-        let knowledge: Vec<&MemoryEntry> = self.entries.iter().filter(|e| e.kind == EntryKind::Knowledge).collect();
+        let episodes: Vec<&MemoryEntry> = self
+            .entries
+            .iter()
+            .filter(|e| e.kind == EntryKind::Episode)
+            .collect();
+        let knowledge: Vec<&MemoryEntry> = self
+            .entries
+            .iter()
+            .filter(|e| e.kind == EntryKind::Knowledge)
+            .collect();
 
         fn entry_json(e: &MemoryEntry) -> String {
             let tags: Vec<String> = e.tags.iter().map(|t| format!("\"{}\"", t)).collect();
             format!(
                 "{{\"id\":\"{}\",\"file\":\"{}\",\"tags\":[{}],\"summary\":\"{}\"}}",
-                e.id, e.file, tags.join(","),
+                e.id,
+                e.file,
+                tags.join(","),
                 e.summary.replace('"', "\\\""),
             )
         }
@@ -77,13 +114,16 @@ impl MemoryIndex {
     /// 关键词预筛：返回 summary 或 tags 中包含 query 词的条目
     pub fn keyword_search(&self, query: &str) -> Vec<&MemoryEntry> {
         let words: Vec<&str> = query.split_whitespace().collect();
-        self.entries.iter().filter(|e| {
-            words.iter().any(|w| {
-                let w_lower = w.to_lowercase();
-                e.summary.to_lowercase().contains(&w_lower)
-                    || e.tags.iter().any(|t| t.to_lowercase().contains(&w_lower))
+        self.entries
+            .iter()
+            .filter(|e| {
+                words.iter().any(|w| {
+                    let w_lower = w.to_lowercase();
+                    e.summary.to_lowercase().contains(&w_lower)
+                        || e.tags.iter().any(|t| t.to_lowercase().contains(&w_lower))
+                })
             })
-        }).collect()
+            .collect()
     }
 
     pub fn upsert(&mut self, entry: MemoryEntry) {

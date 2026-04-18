@@ -10,7 +10,10 @@ fn tempdir() -> std::path::PathBuf {
     p
 }
 fn nanos() -> u32 {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().subsec_nanos()
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .subsec_nanos()
 }
 
 #[test]

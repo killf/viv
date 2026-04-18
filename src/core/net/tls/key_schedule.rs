@@ -4,14 +4,14 @@
 // Implements the full key derivation chain: Early Secret -> Handshake
 // Secret -> Master Secret, producing traffic keys at each phase.
 
-use super::crypto::sha256::{Sha256, hkdf_extract, hkdf_expand};
+use super::crypto::sha256::{Sha256, hkdf_expand, hkdf_extract};
 
 // ── Traffic Keys ────────────────────────────────────────────────────
 
 /// AES-128-GCM traffic key material derived from a traffic secret.
 pub struct TrafficKeys {
-    pub key: [u8; 16],  // AES-128 key
-    pub iv: [u8; 12],   // GCM nonce / IV
+    pub key: [u8; 16], // AES-128 key
+    pub iv: [u8; 12],  // GCM nonce / IV
 }
 
 // ── HKDF-Expand-Label (RFC 8446 section 7.1) ───────────────────────
@@ -146,10 +146,8 @@ impl KeySchedule {
         self.handshake_secret = hkdf_extract(&derived_1, shared_secret);
 
         // Client/Server handshake traffic secrets
-        self.client_hs_secret =
-            derive_secret(&self.handshake_secret, b"c hs traffic", hello_hash);
-        self.server_hs_secret =
-            derive_secret(&self.handshake_secret, b"s hs traffic", hello_hash);
+        self.client_hs_secret = derive_secret(&self.handshake_secret, b"c hs traffic", hello_hash);
+        self.server_hs_secret = derive_secret(&self.handshake_secret, b"s hs traffic", hello_hash);
 
         (
             traffic_keys(&self.client_hs_secret),
@@ -168,20 +166,15 @@ impl KeySchedule {
     /// ```
     ///
     /// Returns (client_traffic_keys, server_traffic_keys).
-    pub fn derive_app_secrets(
-        &mut self,
-        handshake_hash: &[u8; 32],
-    ) -> (TrafficKeys, TrafficKeys) {
+    pub fn derive_app_secrets(&mut self, handshake_hash: &[u8; 32]) -> (TrafficKeys, TrafficKeys) {
         let empty_hash = Sha256::hash(b"");
         let derived_2 = derive_secret(&self.handshake_secret, b"derived", &empty_hash);
 
         let zeros = [0u8; 32];
         self.master_secret = hkdf_extract(&derived_2, &zeros);
 
-        let client_app_secret =
-            derive_secret(&self.master_secret, b"c ap traffic", handshake_hash);
-        let server_app_secret =
-            derive_secret(&self.master_secret, b"s ap traffic", handshake_hash);
+        let client_app_secret = derive_secret(&self.master_secret, b"c ap traffic", handshake_hash);
+        let server_app_secret = derive_secret(&self.master_secret, b"s ap traffic", handshake_hash);
 
         (
             traffic_keys(&client_app_secret),

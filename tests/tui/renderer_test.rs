@@ -1,7 +1,7 @@
-use viv::tui::renderer::*;
 use viv::core::terminal::backend::TestBackend;
-use viv::core::terminal::size::TermSize;
 use viv::core::terminal::buffer::Rect;
+use viv::core::terminal::size::TermSize;
+use viv::tui::renderer::*;
 
 #[test]
 fn new_renderer_has_correct_area() {
@@ -89,7 +89,10 @@ fn flush_empty_diff_still_moves_cursor_when_position_changes() {
     r.flush(&mut backend, Some((5, 0))).unwrap();
     // No diff, but cursor changed → just the move, no sync block.
     let out = String::from_utf8_lossy(&backend.output);
-    assert!(!out.contains("\x1b[?2026"), "no sync block when only cursor moved");
+    assert!(
+        !out.contains("\x1b[?2026"),
+        "no sync block when only cursor moved"
+    );
     assert_eq!(backend.cursor_pos, (0, 5));
 }
 
@@ -106,6 +109,9 @@ fn flush_empty_diff_same_cursor_is_noop() {
 #[test]
 fn resize_updates_area() {
     let mut r = Renderer::new(TermSize { cols: 80, rows: 24 });
-    r.resize(TermSize { cols: 120, rows: 40 });
+    r.resize(TermSize {
+        cols: 120,
+        rows: 40,
+    });
     assert_eq!(r.area(), Rect::new(0, 0, 120, 40));
 }

@@ -2,7 +2,7 @@
 
 use std::fs;
 use std::io::Read;
-use viv::log::{init, Level};
+use viv::log::{Level, init};
 
 /// Serialize init() calls so flushers don't overwrite each other mid-test.
 static INIT_MTX: std::sync::Mutex<()> = std::sync::Mutex::new(());
@@ -31,7 +31,7 @@ fn log_file_written() {
     assert!(c.contains("msg1 1"), "missing msg1, got: {:?}", &c);
     assert!(c.contains("msg2 2"), "missing msg2");
     assert!(c.contains("msg3 3"), "missing msg3");
-    assert!(c.contains("INFO"),  "missing INFO");
+    assert!(c.contains("INFO"), "missing INFO");
     assert!(c.contains("DEBUG"), "missing DEBUG");
     assert!(c.contains("ERROR"), "missing ERROR");
 }

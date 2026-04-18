@@ -37,12 +37,15 @@ fn prompt_cache_updates_on_changed_content() {
 
 #[test]
 fn memory_block_not_cached() {
+    use viv::memory::index::{EntryKind, MemoryEntry};
     use viv::memory::retrieval::RetrievalResult;
-    use viv::memory::index::{MemoryEntry, EntryKind};
     let results = vec![RetrievalResult {
         entry: MemoryEntry {
-            id: "1".into(), kind: EntryKind::Knowledge,
-            file: "f.md".into(), tags: vec![], summary: "test fact".into(),
+            id: "1".into(),
+            kind: EntryKind::Knowledge,
+            file: "f.md".into(),
+            tags: vec![],
+            summary: "test fact".into(),
         },
         content: "test fact".into(),
     }];

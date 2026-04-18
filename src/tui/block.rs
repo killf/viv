@@ -148,13 +148,23 @@ impl Widget for Block {
                 put(buf, col, y, '─');
             }
             if area.width > 1 {
-                put(buf, right, y, if self.sides.right { top_right } else { '─' });
+                put(
+                    buf,
+                    right,
+                    y,
+                    if self.sides.right { top_right } else { '─' },
+                );
             }
         }
 
         // Bottom row
         if self.sides.bottom && area.height > 1 {
-            put(buf, x, bottom, if self.sides.left { bottom_left } else { '─' });
+            put(
+                buf,
+                x,
+                bottom,
+                if self.sides.left { bottom_left } else { '─' },
+            );
             for col in (x + 1)..right {
                 put(buf, col, bottom, '─');
             }
@@ -163,14 +173,22 @@ impl Widget for Block {
                     buf,
                     right,
                     bottom,
-                    if self.sides.right { bottom_right } else { '─' },
+                    if self.sides.right {
+                        bottom_right
+                    } else {
+                        '─'
+                    },
                 );
             }
         }
 
         // Side columns
         let side_start = if self.sides.top { y + 1 } else { y };
-        let side_end = if self.sides.bottom { bottom } else { bottom + 1 };
+        let side_end = if self.sides.bottom {
+            bottom
+        } else {
+            bottom + 1
+        };
         if self.sides.left {
             for row in side_start..side_end {
                 put(buf, x, row, '│');
@@ -184,20 +202,21 @@ impl Widget for Block {
 
         // Title rendered on the top border row, starting at column offset 1
         if let Some(ref title) = self.title
-            && self.sides.top {
-                let title_x = x + 1;
-                let max_x = right;
-                let tfg = self.title_fg.or(self.border_fg);
-                for (i, ch) in title.chars().enumerate() {
-                    let cur_x = title_x + i as u16;
-                    if cur_x >= max_x {
-                        break;
-                    }
-                    let cell = buf.get_mut(cur_x, y);
-                    cell.ch = ch;
-                    cell.fg = tfg;
-                    cell.bold = false;
+            && self.sides.top
+        {
+            let title_x = x + 1;
+            let max_x = right;
+            let tfg = self.title_fg.or(self.border_fg);
+            for (i, ch) in title.chars().enumerate() {
+                let cur_x = title_x + i as u16;
+                if cur_x >= max_x {
+                    break;
                 }
+                let cell = buf.get_mut(cur_x, y);
+                cell.ch = ch;
+                cell.fg = tfg;
+                cell.bold = false;
             }
+        }
     }
 }

@@ -22,7 +22,10 @@ pub struct Layout {
 
 impl Layout {
     pub fn new(direction: Direction) -> Self {
-        Layout { direction, constraints: Vec::new() }
+        Layout {
+            direction,
+            constraints: Vec::new(),
+        }
     }
 
     pub fn constraints(mut self, c: Vec<Constraint>) -> Self {
@@ -85,7 +88,13 @@ impl Layout {
             let mut leftover = remaining - per_fill * fill_count as u16;
             for (i, c) in self.constraints.iter().enumerate() {
                 if let Constraint::Fill = c {
-                    sizes[i] = per_fill + if leftover > 0 { leftover -= 1; 1 } else { 0 };
+                    sizes[i] = per_fill
+                        + if leftover > 0 {
+                            leftover -= 1;
+                            1
+                        } else {
+                            0
+                        };
                 }
             }
         }
@@ -95,12 +104,8 @@ impl Layout {
         let mut offset = 0u16;
         for size in sizes {
             let rect = match self.direction {
-                Direction::Horizontal => {
-                    Rect::new(area.x + offset, area.y, size, area.height)
-                }
-                Direction::Vertical => {
-                    Rect::new(area.x, area.y + offset, area.width, size)
-                }
+                Direction::Horizontal => Rect::new(area.x + offset, area.y, size, area.height),
+                Direction::Vertical => Rect::new(area.x, area.y + offset, area.width, size),
             };
             rects.push(rect);
             offset = offset.saturating_add(size);

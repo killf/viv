@@ -6,8 +6,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc;
 use std::task::{Context, Poll};
 
-use crate::core::platform::PlatformNotifier;
 use super::reactor::reactor;
+use crate::core::platform::PlatformNotifier;
 
 struct NotifierHandle {
     inner: PlatformNotifier,
@@ -116,7 +116,10 @@ pub fn async_channel<T>() -> (NotifySender<T>, AsyncReceiver<T>) {
         inner: PlatformNotifier::new().expect("create notifier"),
         ref_count: AtomicUsize::new(1),
     });
-    let sender = NotifySender { tx, notifier: Arc::clone(&notifier) };
+    let sender = NotifySender {
+        tx,
+        notifier: Arc::clone(&notifier),
+    };
     let receiver = AsyncReceiver {
         rx,
         notifier,

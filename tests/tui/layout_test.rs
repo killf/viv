@@ -1,5 +1,5 @@
-use viv::tui::layout::*;
 use viv::core::terminal::buffer::Rect;
+use viv::tui::layout::*;
 
 #[test]
 fn split_two_fixed_vertical() {
@@ -60,7 +60,11 @@ fn split_empty_area() {
 #[test]
 fn split_three_way() {
     let rects = Layout::new(Direction::Vertical)
-        .constraints(vec![Constraint::Fixed(1), Constraint::Fill, Constraint::Fixed(1)])
+        .constraints(vec![
+            Constraint::Fixed(1),
+            Constraint::Fill,
+            Constraint::Fixed(1),
+        ])
         .split(Rect::new(0, 0, 80, 24));
     assert_eq!(rects[0].height, 1);
     assert_eq!(rects[1].height, 22);

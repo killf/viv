@@ -1,9 +1,9 @@
+use super::reactor::reactor;
+use crate::core::platform::PlatformTimer;
 use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::time::Duration;
-use crate::core::platform::PlatformTimer;
-use super::reactor::reactor;
 
 pub struct Sleep {
     duration: Duration,
@@ -14,7 +14,12 @@ pub struct Sleep {
 
 impl Sleep {
     fn new(duration: Duration) -> Self {
-        Sleep { duration, timer: None, token: None, fired: false }
+        Sleep {
+            duration,
+            timer: None,
+            token: None,
+            fired: false,
+        }
     }
 }
 
@@ -37,7 +42,10 @@ impl Future for Sleep {
         if self.timer.is_none() {
             let timer = PlatformTimer::new(self.duration).expect("create timer");
             let handle = timer.handle();
-            let token = reactor().lock().unwrap().register_readable(handle, cx.waker().clone());
+            let token = reactor()
+                .lock()
+                .unwrap()
+                .register_readable(handle, cx.waker().clone());
             self.timer = Some(timer);
             self.token = Some(token);
             return Poll::Pending;

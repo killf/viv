@@ -14,18 +14,26 @@ struct MockTransport {
 
 impl MockTransport {
     fn new(responses: Vec<JsonValue>) -> Self {
-        MockTransport { sent: Vec::new(), responses: VecDeque::from(responses) }
+        MockTransport {
+            sent: Vec::new(),
+            responses: VecDeque::from(responses),
+        }
     }
 }
 
 impl Transport for MockTransport {
-    fn send(&mut self, msg: JsonValue) -> Pin<Box<dyn Future<Output = viv::Result<()>> + Send + '_>> {
+    fn send(
+        &mut self,
+        msg: JsonValue,
+    ) -> Pin<Box<dyn Future<Output = viv::Result<()>> + Send + '_>> {
         self.sent.push(msg);
         Box::pin(async { Ok(()) })
     }
     fn recv(&mut self) -> Pin<Box<dyn Future<Output = viv::Result<JsonValue>> + Send + '_>> {
-        let response = self.responses.pop_front()
-            .ok_or_else(|| viv::Error::Mcp { server: "mock".into(), message: "no response".into() });
+        let response = self.responses.pop_front().ok_or_else(|| viv::Error::Mcp {
+            server: "mock".into(),
+            message: "no response".into(),
+        });
         Box::pin(async move { response })
     }
     fn close(&mut self) -> Pin<Box<dyn Future<Output = viv::Result<()>> + Send + '_>> {
@@ -43,14 +51,21 @@ fn success(id: i64, result: JsonValue) -> JsonValue {
 
 fn init_result() -> JsonValue {
     JsonValue::Object(vec![
-        ("protocolVersion".into(), JsonValue::Str("2025-11-25".into())),
-        ("capabilities".into(), JsonValue::Object(vec![
-            ("tools".into(), JsonValue::Object(vec![])),
-        ])),
-        ("serverInfo".into(), JsonValue::Object(vec![
-            ("name".into(), JsonValue::Str("test".into())),
-            ("version".into(), JsonValue::Str("1.0".into())),
-        ])),
+        (
+            "protocolVersion".into(),
+            JsonValue::Str("2025-11-25".into()),
+        ),
+        (
+            "capabilities".into(),
+            JsonValue::Object(vec![("tools".into(), JsonValue::Object(vec![]))]),
+        ),
+        (
+            "serverInfo".into(),
+            JsonValue::Object(vec![
+                ("name".into(), JsonValue::Str("test".into())),
+                ("version".into(), JsonValue::Str("1.0".into())),
+            ]),
+        ),
     ])
 }
 
@@ -71,24 +86,30 @@ fn initialize_handshake() {
 
     let transport = client.into_transport();
     assert_eq!(transport.sent.len(), 2);
-    assert_eq!(transport.sent[0].get("method").unwrap().as_str().unwrap(), "initialize");
-    assert_eq!(transport.sent[1].get("method").unwrap().as_str().unwrap(), "notifications/initialized");
+    assert_eq!(
+        transport.sent[0].get("method").unwrap().as_str().unwrap(),
+        "initialize"
+    );
+    assert_eq!(
+        transport.sent[1].get("method").unwrap().as_str().unwrap(),
+        "notifications/initialized"
+    );
     assert!(transport.sent[1].get("id").is_none());
 }
 
 #[test]
 fn list_tools() {
-    let result = JsonValue::Object(vec![
-        ("tools".into(), JsonValue::Array(vec![
-            JsonValue::Object(vec![
-                ("name".into(), JsonValue::Str("read_file".into())),
-                ("description".into(), JsonValue::Str("Read a file".into())),
-                ("inputSchema".into(), JsonValue::Object(vec![
-                    ("type".into(), JsonValue::Str("object".into())),
-                ])),
-            ]),
-        ])),
-    ]);
+    let result = JsonValue::Object(vec![(
+        "tools".into(),
+        JsonValue::Array(vec![JsonValue::Object(vec![
+            ("name".into(), JsonValue::Str("read_file".into())),
+            ("description".into(), JsonValue::Str("Read a file".into())),
+            (
+                "inputSchema".into(),
+                JsonValue::Object(vec![("type".into(), JsonValue::Str("object".into()))]),
+            ),
+        ])]),
+    )]);
 
     let transport = MockTransport::new(vec![success(1, result)]);
     let mut client = McpClient::new(transport);
@@ -102,16 +123,22 @@ fn list_tools() {
 #[test]
 fn list_tools_with_pagination() {
     let page1 = JsonValue::Object(vec![
-        ("tools".into(), JsonValue::Array(vec![
-            JsonValue::Object(vec![("name".into(), JsonValue::Str("tool_a".into()))]),
-        ])),
+        (
+            "tools".into(),
+            JsonValue::Array(vec![JsonValue::Object(vec![(
+                "name".into(),
+                JsonValue::Str("tool_a".into()),
+            )])]),
+        ),
         ("nextCursor".into(), JsonValue::Str("cursor_1".into())),
     ]);
-    let page2 = JsonValue::Object(vec![
-        ("tools".into(), JsonValue::Array(vec![
-            JsonValue::Object(vec![("name".into(), JsonValue::Str("tool_b".into()))]),
-        ])),
-    ]);
+    let page2 = JsonValue::Object(vec![(
+        "tools".into(),
+        JsonValue::Array(vec![JsonValue::Object(vec![(
+            "name".into(),
+            JsonValue::Str("tool_b".into()),
+        )])]),
+    )]);
 
     let transport = MockTransport::new(vec![success(1, page1), success(2, page2)]);
     let mut client = McpClient::new(transport);
@@ -130,12 +157,13 @@ fn list_tools_with_pagination() {
 #[test]
 fn call_tool() {
     let result = JsonValue::Object(vec![
-        ("content".into(), JsonValue::Array(vec![
-            JsonValue::Object(vec![
+        (
+            "content".into(),
+            JsonValue::Array(vec![JsonValue::Object(vec![
                 ("type".into(), JsonValue::Str("text".into())),
                 ("text".into(), JsonValue::Str("file contents".into())),
-            ]),
-        ])),
+            ])]),
+        ),
         ("isError".into(), JsonValue::Bool(false)),
     ]);
 
@@ -153,10 +181,13 @@ fn jsonrpc_error_propagation() {
     let err_resp = JsonValue::Object(vec![
         ("jsonrpc".into(), JsonValue::Str("2.0".into())),
         ("id".into(), JsonValue::Number(Number::Int(1))),
-        ("error".into(), JsonValue::Object(vec![
-            ("code".into(), JsonValue::Number(Number::Int(-32601))),
-            ("message".into(), JsonValue::Str("Method not found".into())),
-        ])),
+        (
+            "error".into(),
+            JsonValue::Object(vec![
+                ("code".into(), JsonValue::Number(Number::Int(-32601))),
+                ("message".into(), JsonValue::Str("Method not found".into())),
+            ]),
+        ),
     ]);
 
     let transport = MockTransport::new(vec![err_resp]);
@@ -176,11 +207,12 @@ fn jsonrpc_error_propagation() {
 fn notifications_buffered() {
     let notif = JsonValue::Object(vec![
         ("jsonrpc".into(), JsonValue::Str("2.0".into())),
-        ("method".into(), JsonValue::Str("notifications/progress".into())),
+        (
+            "method".into(),
+            JsonValue::Str("notifications/progress".into()),
+        ),
     ]);
-    let result = JsonValue::Object(vec![
-        ("tools".into(), JsonValue::Array(vec![])),
-    ]);
+    let result = JsonValue::Object(vec![("tools".into(), JsonValue::Array(vec![]))]);
 
     let transport = MockTransport::new(vec![notif, success(1, result)]);
     let mut client = McpClient::new(transport);
@@ -198,15 +230,14 @@ fn notifications_buffered() {
 
 #[test]
 fn list_resources() {
-    let result = JsonValue::Object(vec![
-        ("resources".into(), JsonValue::Array(vec![
-            JsonValue::Object(vec![
-                ("uri".into(), JsonValue::Str("file:///tmp/test.txt".into())),
-                ("name".into(), JsonValue::Str("test.txt".into())),
-                ("mimeType".into(), JsonValue::Str("text/plain".into())),
-            ]),
-        ])),
-    ]);
+    let result = JsonValue::Object(vec![(
+        "resources".into(),
+        JsonValue::Array(vec![JsonValue::Object(vec![
+            ("uri".into(), JsonValue::Str("file:///tmp/test.txt".into())),
+            ("name".into(), JsonValue::Str("test.txt".into())),
+            ("mimeType".into(), JsonValue::Str("text/plain".into())),
+        ])]),
+    )]);
 
     let transport = MockTransport::new(vec![success(1, result)]);
     let mut client = McpClient::new(transport);
@@ -219,20 +250,20 @@ fn list_resources() {
 
 #[test]
 fn list_prompts() {
-    let result = JsonValue::Object(vec![
-        ("prompts".into(), JsonValue::Array(vec![
-            JsonValue::Object(vec![
-                ("name".into(), JsonValue::Str("code_review".into())),
-                ("description".into(), JsonValue::Str("Review code".into())),
-                ("arguments".into(), JsonValue::Array(vec![
-                    JsonValue::Object(vec![
-                        ("name".into(), JsonValue::Str("code".into())),
-                        ("required".into(), JsonValue::Bool(true)),
-                    ]),
-                ])),
-            ]),
-        ])),
-    ]);
+    let result = JsonValue::Object(vec![(
+        "prompts".into(),
+        JsonValue::Array(vec![JsonValue::Object(vec![
+            ("name".into(), JsonValue::Str("code_review".into())),
+            ("description".into(), JsonValue::Str("Review code".into())),
+            (
+                "arguments".into(),
+                JsonValue::Array(vec![JsonValue::Object(vec![
+                    ("name".into(), JsonValue::Str("code".into())),
+                    ("required".into(), JsonValue::Bool(true)),
+                ])]),
+            ),
+        ])]),
+    )]);
 
     let transport = MockTransport::new(vec![success(1, result)]);
     let mut client = McpClient::new(transport);

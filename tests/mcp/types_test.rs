@@ -5,17 +5,18 @@ use viv::mcp::types::*;
 
 #[test]
 fn parse_server_capabilities_tools_only() {
-    let json = JsonValue::parse(r#"{
+    let json = JsonValue::parse(
+        r#"{
         "capabilities": {
             "tools": {
                 "listChanged": true
             }
         }
-    }"#).unwrap();
+    }"#,
+    )
+    .unwrap();
 
-    let caps = ServerCapabilities::from_json(
-        json.get("capabilities").unwrap()
-    ).unwrap();
+    let caps = ServerCapabilities::from_json(json.get("capabilities").unwrap()).unwrap();
 
     assert!(caps.tools.is_some());
     assert!(caps.tools.unwrap().list_changed);
@@ -25,17 +26,18 @@ fn parse_server_capabilities_tools_only() {
 
 #[test]
 fn parse_server_capabilities_all() {
-    let json = JsonValue::parse(r#"{
+    let json = JsonValue::parse(
+        r#"{
         "capabilities": {
             "tools": { "listChanged": false },
             "resources": { "subscribe": true, "listChanged": true },
             "prompts": { "listChanged": true }
         }
-    }"#).unwrap();
+    }"#,
+    )
+    .unwrap();
 
-    let caps = ServerCapabilities::from_json(
-        json.get("capabilities").unwrap()
-    ).unwrap();
+    let caps = ServerCapabilities::from_json(json.get("capabilities").unwrap()).unwrap();
 
     let tools = caps.tools.unwrap();
     assert!(!tools.list_changed);
@@ -61,7 +63,8 @@ fn parse_server_capabilities_empty() {
 
 #[test]
 fn parse_mcp_tool() {
-    let json = JsonValue::parse(r#"{
+    let json = JsonValue::parse(
+        r#"{
         "name": "read_file",
         "description": "Read a file from disk",
         "inputSchema": {
@@ -71,22 +74,30 @@ fn parse_mcp_tool() {
             },
             "required": ["path"]
         }
-    }"#).unwrap();
+    }"#,
+    )
+    .unwrap();
 
     let tool = McpTool::from_json(&json).unwrap();
     assert_eq!(tool.name, "read_file");
     assert_eq!(tool.description.as_deref(), Some("Read a file from disk"));
     // input_schema should be the object value
     assert!(tool.input_schema.get("type").is_some());
-    assert_eq!(tool.input_schema.get("type").unwrap().as_str(), Some("object"));
+    assert_eq!(
+        tool.input_schema.get("type").unwrap().as_str(),
+        Some("object")
+    );
 }
 
 #[test]
 fn parse_mcp_tool_no_description() {
-    let json = JsonValue::parse(r#"{
+    let json = JsonValue::parse(
+        r#"{
         "name": "ping",
         "inputSchema": { "type": "object" }
-    }"#).unwrap();
+    }"#,
+    )
+    .unwrap();
 
     let tool = McpTool::from_json(&json).unwrap();
     assert_eq!(tool.name, "ping");
@@ -95,12 +106,15 @@ fn parse_mcp_tool_no_description() {
 
 #[test]
 fn parse_mcp_tool_list() {
-    let json = JsonValue::parse(r#"{
+    let json = JsonValue::parse(
+        r#"{
         "tools": [
             { "name": "a", "inputSchema": { "type": "object" } },
             { "name": "b", "description": "tool b", "inputSchema": { "type": "object" } }
         ]
-    }"#).unwrap();
+    }"#,
+    )
+    .unwrap();
 
     let tools = McpTool::parse_list(&json).unwrap();
     assert_eq!(tools.len(), 2);
@@ -113,12 +127,15 @@ fn parse_mcp_tool_list() {
 
 #[test]
 fn parse_mcp_resource() {
-    let json = JsonValue::parse(r#"{
+    let json = JsonValue::parse(
+        r#"{
         "uri": "file:///tmp/test.txt",
         "name": "test.txt",
         "description": "A test file",
         "mimeType": "text/plain"
-    }"#).unwrap();
+    }"#,
+    )
+    .unwrap();
 
     let res = McpResource::from_json(&json).unwrap();
     assert_eq!(res.uri, "file:///tmp/test.txt");
@@ -129,10 +146,13 @@ fn parse_mcp_resource() {
 
 #[test]
 fn parse_mcp_resource_minimal() {
-    let json = JsonValue::parse(r#"{
+    let json = JsonValue::parse(
+        r#"{
         "uri": "mem://data",
         "name": "data"
-    }"#).unwrap();
+    }"#,
+    )
+    .unwrap();
 
     let res = McpResource::from_json(&json).unwrap();
     assert_eq!(res.uri, "mem://data");
@@ -143,12 +163,15 @@ fn parse_mcp_resource_minimal() {
 
 #[test]
 fn parse_mcp_resource_list() {
-    let json = JsonValue::parse(r#"{
+    let json = JsonValue::parse(
+        r#"{
         "resources": [
             { "uri": "file:///a", "name": "a" },
             { "uri": "file:///b", "name": "b", "mimeType": "text/html" }
         ]
-    }"#).unwrap();
+    }"#,
+    )
+    .unwrap();
 
     let resources = McpResource::parse_list(&json).unwrap();
     assert_eq!(resources.len(), 2);
@@ -160,7 +183,8 @@ fn parse_mcp_resource_list() {
 
 #[test]
 fn parse_mcp_prompt() {
-    let json = JsonValue::parse(r#"{
+    let json = JsonValue::parse(
+        r#"{
         "name": "summarize",
         "description": "Summarize text",
         "arguments": [
@@ -174,14 +198,19 @@ fn parse_mcp_prompt() {
                 "required": false
             }
         ]
-    }"#).unwrap();
+    }"#,
+    )
+    .unwrap();
 
     let prompt = McpPrompt::from_json(&json).unwrap();
     assert_eq!(prompt.name, "summarize");
     assert_eq!(prompt.description.as_deref(), Some("Summarize text"));
     assert_eq!(prompt.arguments.len(), 2);
     assert_eq!(prompt.arguments[0].name, "text");
-    assert_eq!(prompt.arguments[0].description.as_deref(), Some("The text to summarize"));
+    assert_eq!(
+        prompt.arguments[0].description.as_deref(),
+        Some("The text to summarize")
+    );
     assert!(prompt.arguments[0].required);
     assert_eq!(prompt.arguments[1].name, "style");
     assert!(!prompt.arguments[1].required);
@@ -189,9 +218,12 @@ fn parse_mcp_prompt() {
 
 #[test]
 fn parse_mcp_prompt_no_arguments() {
-    let json = JsonValue::parse(r#"{
+    let json = JsonValue::parse(
+        r#"{
         "name": "greet"
-    }"#).unwrap();
+    }"#,
+    )
+    .unwrap();
 
     let prompt = McpPrompt::from_json(&json).unwrap();
     assert_eq!(prompt.name, "greet");
@@ -201,12 +233,15 @@ fn parse_mcp_prompt_no_arguments() {
 
 #[test]
 fn parse_mcp_prompt_list() {
-    let json = JsonValue::parse(r#"{
+    let json = JsonValue::parse(
+        r#"{
         "prompts": [
             { "name": "x" },
             { "name": "y", "description": "prompt y" }
         ]
-    }"#).unwrap();
+    }"#,
+    )
+    .unwrap();
 
     let prompts = McpPrompt::parse_list(&json).unwrap();
     assert_eq!(prompts.len(), 2);
@@ -218,12 +253,15 @@ fn parse_mcp_prompt_list() {
 
 #[test]
 fn parse_tool_call_result() {
-    let json = JsonValue::parse(r#"{
+    let json = JsonValue::parse(
+        r#"{
         "content": [
             { "type": "text", "text": "File contents here" }
         ],
         "isError": false
-    }"#).unwrap();
+    }"#,
+    )
+    .unwrap();
 
     let result = ToolCallResult::from_json(&json).unwrap();
     assert!(!result.is_error);
@@ -236,12 +274,15 @@ fn parse_tool_call_result() {
 
 #[test]
 fn parse_tool_call_result_error() {
-    let json = JsonValue::parse(r#"{
+    let json = JsonValue::parse(
+        r#"{
         "content": [
             { "type": "text", "text": "Something went wrong" }
         ],
         "isError": true
-    }"#).unwrap();
+    }"#,
+    )
+    .unwrap();
 
     let result = ToolCallResult::from_json(&json).unwrap();
     assert!(result.is_error);
@@ -249,11 +290,14 @@ fn parse_tool_call_result_error() {
 
 #[test]
 fn parse_tool_call_result_image() {
-    let json = JsonValue::parse(r#"{
+    let json = JsonValue::parse(
+        r#"{
         "content": [
             { "type": "image", "data": "base64data", "mimeType": "image/png" }
         ]
-    }"#).unwrap();
+    }"#,
+    )
+    .unwrap();
 
     let result = ToolCallResult::from_json(&json).unwrap();
     assert!(!result.is_error);
@@ -268,11 +312,14 @@ fn parse_tool_call_result_image() {
 
 #[test]
 fn parse_tool_call_result_resource() {
-    let json = JsonValue::parse(r#"{
+    let json = JsonValue::parse(
+        r#"{
         "content": [
             { "type": "resource", "resource": { "uri": "file:///x", "text": "hello" } }
         ]
-    }"#).unwrap();
+    }"#,
+    )
+    .unwrap();
 
     let result = ToolCallResult::from_json(&json).unwrap();
     match &result.content[0] {
@@ -286,14 +333,17 @@ fn parse_tool_call_result_resource() {
 
 #[test]
 fn tool_call_result_to_text() {
-    let json = JsonValue::parse(r#"{
+    let json = JsonValue::parse(
+        r#"{
         "content": [
             { "type": "text", "text": "line1" },
             { "type": "image", "data": "xxx", "mimeType": "image/png" },
             { "type": "text", "text": "line2" },
             { "type": "resource", "resource": { "uri": "file:///x", "text": "res_text" } }
         ]
-    }"#).unwrap();
+    }"#,
+    )
+    .unwrap();
 
     let result = ToolCallResult::from_json(&json).unwrap();
     assert_eq!(result.to_text(), "line1\nline2\nres_text");
@@ -310,7 +360,8 @@ fn tool_call_result_to_text_empty() {
 
 #[test]
 fn parse_resource_content_text() {
-    let json = JsonValue::parse(r#"{
+    let json = JsonValue::parse(
+        r#"{
         "contents": [
             {
                 "uri": "file:///test.txt",
@@ -318,12 +369,18 @@ fn parse_resource_content_text() {
                 "text": "Hello world"
             }
         ]
-    }"#).unwrap();
+    }"#,
+    )
+    .unwrap();
 
     let rc = ResourceContent::from_json(&json).unwrap();
     assert_eq!(rc.contents.len(), 1);
     match &rc.contents[0] {
-        ResourceContentItem::Text { uri, mime_type, text } => {
+        ResourceContentItem::Text {
+            uri,
+            mime_type,
+            text,
+        } => {
             assert_eq!(uri, "file:///test.txt");
             assert_eq!(mime_type.as_deref(), Some("text/plain"));
             assert_eq!(text, "Hello world");
@@ -334,7 +391,8 @@ fn parse_resource_content_text() {
 
 #[test]
 fn parse_resource_content_blob() {
-    let json = JsonValue::parse(r#"{
+    let json = JsonValue::parse(
+        r#"{
         "contents": [
             {
                 "uri": "file:///image.png",
@@ -342,11 +400,17 @@ fn parse_resource_content_blob() {
                 "blob": "base64encodeddata"
             }
         ]
-    }"#).unwrap();
+    }"#,
+    )
+    .unwrap();
 
     let rc = ResourceContent::from_json(&json).unwrap();
     match &rc.contents[0] {
-        ResourceContentItem::Blob { uri, mime_type, blob } => {
+        ResourceContentItem::Blob {
+            uri,
+            mime_type,
+            blob,
+        } => {
             assert_eq!(uri, "file:///image.png");
             assert_eq!(mime_type.as_deref(), Some("image/png"));
             assert_eq!(blob, "base64encodeddata");
@@ -359,7 +423,8 @@ fn parse_resource_content_blob() {
 
 #[test]
 fn parse_prompt_messages() {
-    let json = JsonValue::parse(r#"{
+    let json = JsonValue::parse(
+        r#"{
         "description": "A summarization prompt",
         "messages": [
             {
@@ -371,7 +436,9 @@ fn parse_prompt_messages() {
                 "content": { "type": "text", "text": "Here is a summary." }
             }
         ]
-    }"#).unwrap();
+    }"#,
+    )
+    .unwrap();
 
     let pm = PromptMessages::from_json(&json).unwrap();
     assert_eq!(pm.description.as_deref(), Some("A summarization prompt"));
@@ -386,14 +453,17 @@ fn parse_prompt_messages() {
 
 #[test]
 fn parse_prompt_messages_no_description() {
-    let json = JsonValue::parse(r#"{
+    let json = JsonValue::parse(
+        r#"{
         "messages": [
             {
                 "role": "user",
                 "content": { "type": "text", "text": "Hi" }
             }
         ]
-    }"#).unwrap();
+    }"#,
+    )
+    .unwrap();
 
     let pm = PromptMessages::from_json(&json).unwrap();
     assert!(pm.description.is_none());

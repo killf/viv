@@ -99,7 +99,11 @@ impl HttpResponse {
             body_start.to_vec()
         };
 
-        Ok(HttpResponse { status, headers, body })
+        Ok(HttpResponse {
+            status,
+            headers,
+            body,
+        })
     }
 
     /// Case-insensitive lookup of a response header value.
@@ -146,10 +150,8 @@ fn decode_chunked(mut src: &[u8]) -> crate::Result<Vec<u8>> {
 
         // Strip optional chunk extensions (";ext=val")
         let size_hex = size_str.split(';').next().unwrap_or("").trim();
-        let chunk_len =
-            usize::from_str_radix(size_hex, 16).map_err(|_| {
-                Error::Http(format!("chunked: invalid size '{size_hex}'"))
-            })?;
+        let chunk_len = usize::from_str_radix(size_hex, 16)
+            .map_err(|_| Error::Http(format!("chunked: invalid size '{size_hex}'")))?;
 
         src = &src[crlf + 2..]; // advance past size line
 

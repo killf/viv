@@ -4,19 +4,19 @@
 // the full TLS 1.3 handshake and record layer using only Rust code
 // with zero external dependencies.
 
-pub mod crypto;
-pub mod key_schedule;
 pub mod codec;
-pub mod record;
+pub mod crypto;
 pub mod handshake;
+pub mod key_schedule;
+pub mod record;
 pub mod x509;
 
 use std::io::{self, Read, Write};
 
-use codec::{CHANGE_CIPHER_SPEC, HANDSHAKE, ALERT};
+use super::tcp;
+use codec::{ALERT, CHANGE_CIPHER_SPEC, HANDSHAKE};
 use handshake::{Handshake, HandshakeResult};
 use record::RecordLayer;
-use super::tcp;
 
 // ── TlsStream (sync) ──────────────────────────────────────────────
 
@@ -72,7 +72,8 @@ impl TlsStream {
                     ALERT => {
                         if payload.len() >= 2 {
                             return Err(crate::Error::Tls(format!(
-                                "TLS alert: level={} desc={}", payload[0], payload[1]
+                                "TLS alert: level={} desc={}",
+                                payload[0], payload[1]
                             )));
                         }
                         return Err(crate::Error::Tls("TLS alert received".into()));
@@ -108,7 +109,8 @@ impl TlsStream {
                     }
                     _ => {
                         return Err(crate::Error::Tls(format!(
-                            "unexpected record type during handshake: 0x{:02x}", ct
+                            "unexpected record type during handshake: 0x{:02x}",
+                            ct
                         )));
                     }
                 }
@@ -117,7 +119,9 @@ impl TlsStream {
             // Need more data from TCP
             let n = tcp_stream.read(&mut tmp).map_err(crate::Error::Io)?;
             if n == 0 {
-                return Err(crate::Error::Tls("connection closed during handshake".into()));
+                return Err(crate::Error::Tls(
+                    "connection closed during handshake".into(),
+                ));
             }
             read_buf.extend_from_slice(&tmp[..n]);
         }
@@ -131,7 +135,9 @@ impl TlsStream {
         let finished_msg = hs.encode_client_finished();
         let mut finished_record = Vec::new();
         record.write_encrypted(HANDSHAKE, &finished_msg, &mut finished_record);
-        tcp_stream.write_all(&finished_record).map_err(crate::Error::Io)?;
+        tcp_stream
+            .write_all(&finished_record)
+            .map_err(crate::Error::Io)?;
 
         // 5. Install application keys
         hs.install_app_keys(&mut record);
@@ -160,8 +166,7 @@ impl Read for TlsStream {
         loop {
             // Try to parse a record from read_buf
             if self.read_buf.len() >= 5 {
-                let rec_len = ((self.read_buf[3] as usize) << 8)
-                    | (self.read_buf[4] as usize);
+                let rec_len = ((self.read_buf[3] as usize) << 8) | (self.read_buf[4] as usize);
                 if self.read_buf.len() >= 5 + rec_len {
                     let (ct, payload, consumed) = self
                         .record
@@ -176,8 +181,7 @@ impl Read for TlsStream {
                                 return Ok(payload.len());
                             } else {
                                 buf.copy_from_slice(&payload[..buf.len()]);
-                                self.plaintext_buf
-                                    .extend_from_slice(&payload[buf.len()..]);
+                                self.plaintext_buf.extend_from_slice(&payload[buf.len()..]);
                                 return Ok(buf.len());
                             }
                         }
@@ -219,11 +223,8 @@ impl Write for TlsStream {
         let chunk_size = 16384;
         let to_send = core::cmp::min(buf.len(), chunk_size);
         let mut encrypted = Vec::new();
-        self.record.write_encrypted(
-            codec::APPLICATION_DATA,
-            &buf[..to_send],
-            &mut encrypted,
-        );
+        self.record
+            .write_encrypted(codec::APPLICATION_DATA, &buf[..to_send], &mut encrypted);
         self.tcp.write_all(&encrypted)?;
         Ok(to_send)
     }
@@ -295,7 +296,8 @@ impl AsyncTlsStream {
                     ALERT => {
                         if payload.len() >= 2 {
                             return Err(crate::Error::Tls(format!(
-                                "TLS alert: level={} desc={}", payload[0], payload[1]
+                                "TLS alert: level={} desc={}",
+                                payload[0], payload[1]
                             )));
                         }
                         return Err(crate::Error::Tls("TLS alert received".into()));
@@ -329,7 +331,8 @@ impl AsyncTlsStream {
                     }
                     _ => {
                         return Err(crate::Error::Tls(format!(
-                            "unexpected record type during handshake: 0x{:02x}", ct
+                            "unexpected record type during handshake: 0x{:02x}",
+                            ct
                         )));
                     }
                 }
@@ -387,8 +390,7 @@ impl AsyncTlsStream {
         loop {
             // Try to parse a record
             if self.read_buf.len() >= 5 {
-                let rec_len = ((self.read_buf[3] as usize) << 8)
-                    | (self.read_buf[4] as usize);
+                let rec_len = ((self.read_buf[3] as usize) << 8) | (self.read_buf[4] as usize);
                 if self.read_buf.len() >= 5 + rec_len {
                     let (ct, payload, consumed) = self.record.read_record(&self.read_buf)?;
                     self.read_buf.drain(..consumed);
@@ -435,11 +437,8 @@ impl AsyncTlsStream {
         while offset < buf.len() {
             let end = core::cmp::min(offset + chunk_size, buf.len());
             let mut encrypted = Vec::new();
-            self.record.write_encrypted(
-                codec::APPLICATION_DATA,
-                &buf[offset..end],
-                &mut encrypted,
-            );
+            self.record
+                .write_encrypted(codec::APPLICATION_DATA, &buf[offset..end], &mut encrypted);
             async_write_all(&mut self.tcp, fd, &encrypted).await?;
             offset = end;
         }
@@ -451,11 +450,8 @@ impl Drop for AsyncTlsStream {
     fn drop(&mut self) {
         // Best-effort close_notify via std::io::Write (portable, no inline asm)
         let mut alert_record = Vec::new();
-        self.record.write_encrypted(
-            ALERT,
-            &[1, 0],
-            &mut alert_record,
-        );
+        self.record
+            .write_encrypted(ALERT, &[1, 0], &mut alert_record);
         self.tcp.inner_mut().set_nonblocking(false).ok();
         let stream = self.tcp.inner_mut();
         let _ = std::io::Write::write_all(stream, &alert_record);

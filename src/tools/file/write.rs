@@ -1,13 +1,15 @@
-use std::pin::Pin;
-use std::future::Future;
-use crate::error::Error;
 use crate::core::json::JsonValue;
+use crate::error::Error;
 use crate::tools::{PermissionLevel, Tool};
+use std::future::Future;
+use std::pin::Pin;
 
 pub struct WriteTool;
 
 impl Tool for WriteTool {
-    fn name(&self) -> &str { "FileWrite" }
+    fn name(&self) -> &str {
+        "FileWrite"
+    }
 
     fn description(&self) -> &str {
         "Writes a file to the local filesystem.\n\n- This tool will overwrite the existing file if there is one at the provided path\n- If this is an existing file, you MUST use the FileRead tool first to read the file's contents\n- NEVER create documentation files (*.md) or README files unless explicitly requested\n- Prefer the FileEdit tool for modifying existing files — only use this tool to create new files or for complete rewrites"
@@ -24,22 +26,31 @@ impl Tool for WriteTool {
         }"#).unwrap()
     }
 
-    fn execute(&self, input: &JsonValue) -> Pin<Box<dyn Future<Output = crate::Result<String>> + Send + '_>> {
+    fn execute(
+        &self,
+        input: &JsonValue,
+    ) -> Pin<Box<dyn Future<Output = crate::Result<String>> + Send + '_>> {
         let input = input.clone();
         Box::pin(async move {
-        let path = input.get("file_path").and_then(|v| v.as_str())
-            .ok_or_else(|| Error::Tool("missing 'file_path'".into()))?;
-        let content = input.get("content").and_then(|v| v.as_str())
-            .ok_or_else(|| Error::Tool("missing 'content'".into()))?;
+            let path = input
+                .get("file_path")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| Error::Tool("missing 'file_path'".into()))?;
+            let content = input
+                .get("content")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| Error::Tool("missing 'content'".into()))?;
 
-        if let Some(parent) = std::path::Path::new(path).parent() {
-            std::fs::create_dir_all(parent).map_err(|e| Error::Tool(e.to_string()))?;
-        }
-        std::fs::write(path, content)
-            .map_err(|e| Error::Tool(format!("write '{}': {}", path, e)))?;
-        Ok(format!("Wrote {} bytes to {}", content.len(), path))
+            if let Some(parent) = std::path::Path::new(path).parent() {
+                std::fs::create_dir_all(parent).map_err(|e| Error::Tool(e.to_string()))?;
+            }
+            std::fs::write(path, content)
+                .map_err(|e| Error::Tool(format!("write '{}': {}", path, e)))?;
+            Ok(format!("Wrote {} bytes to {}", content.len(), path))
         })
     }
 
-    fn permission_level(&self) -> PermissionLevel { PermissionLevel::Write }
+    fn permission_level(&self) -> PermissionLevel {
+        PermissionLevel::Write
+    }
 }

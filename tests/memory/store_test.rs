@@ -1,5 +1,5 @@
+use viv::memory::index::{EntryKind, MemoryEntry, MemoryIndex};
 use viv::memory::store::MemoryStore;
-use viv::memory::index::{MemoryIndex, MemoryEntry, EntryKind};
 
 fn tmp_store() -> MemoryStore {
     let dir = std::env::temp_dir().join(format!("viv_test_{}", std::process::id()));
@@ -45,13 +45,15 @@ fn index_keyword_search() {
     let store = tmp_store();
     let mut idx = MemoryIndex { entries: vec![] };
     idx.upsert(MemoryEntry {
-        id: "k1".into(), kind: EntryKind::Knowledge,
+        id: "k1".into(),
+        kind: EntryKind::Knowledge,
         file: "knowledge/k1.md".into(),
         tags: vec!["rust".into()],
         summary: "zero dependency architecture".into(),
     });
     idx.upsert(MemoryEntry {
-        id: "k2".into(), kind: EntryKind::Knowledge,
+        id: "k2".into(),
+        kind: EntryKind::Knowledge,
         file: "knowledge/k2.md".into(),
         tags: vec!["style".into()],
         summary: "use snake_case naming".into(),

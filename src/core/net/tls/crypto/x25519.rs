@@ -93,7 +93,7 @@ fn fe_add(a: &Fe, b: &Fe) -> Fe {
 /// which is congruent to 0 mod p and large enough to prevent underflow.
 fn fe_sub(a: &Fe, b: &Fe) -> Fe {
     const BIAS0: u64 = 0xFFFFFFFFFFFDA; // 2 * (2^51 - 19)
-    const BIAS: u64 = 0xFFFFFFFFFFFFE;  // 2 * (2^51 - 1)
+    const BIAS: u64 = 0xFFFFFFFFFFFFE; // 2 * (2^51 - 1)
 
     [
         (a[0].wrapping_add(BIAS0)).wrapping_sub(b[0]),
@@ -140,13 +140,25 @@ fn fe_mul(a: &Fe, b: &Fe) -> Fe {
     // Carry propagation
     let mask51 = MASK51 as u128;
 
-    let c = r0 >> 51; r0 &= mask51; r1 += c;
-    let c = r1 >> 51; r1 &= mask51; r2 += c;
-    let c = r2 >> 51; r2 &= mask51; r3 += c;
-    let c = r3 >> 51; r3 &= mask51; r4 += c;
-    let c = r4 >> 51; r4 &= mask51; r0 += c * 19;
+    let c = r0 >> 51;
+    r0 &= mask51;
+    r1 += c;
+    let c = r1 >> 51;
+    r1 &= mask51;
+    r2 += c;
+    let c = r2 >> 51;
+    r2 &= mask51;
+    r3 += c;
+    let c = r3 >> 51;
+    r3 &= mask51;
+    r4 += c;
+    let c = r4 >> 51;
+    r4 &= mask51;
+    r0 += c * 19;
     // One more carry from r0 in case the *19 pushed it over
-    let c = r0 >> 51; r0 &= mask51; r1 += c;
+    let c = r0 >> 51;
+    r0 &= mask51;
+    r1 += c;
 
     [r0 as u64, r1 as u64, r2 as u64, r3 as u64, r4 as u64]
 }
@@ -173,12 +185,24 @@ fn fe_sq(a: &Fe) -> Fe {
     // Carry propagation
     let mask51 = MASK51 as u128;
 
-    let c = r0 >> 51; r0 &= mask51; r1 += c;
-    let c = r1 >> 51; r1 &= mask51; r2 += c;
-    let c = r2 >> 51; r2 &= mask51; r3 += c;
-    let c = r3 >> 51; r3 &= mask51; r4 += c;
-    let c = r4 >> 51; r4 &= mask51; r0 += c * 19;
-    let c = r0 >> 51; r0 &= mask51; r1 += c;
+    let c = r0 >> 51;
+    r0 &= mask51;
+    r1 += c;
+    let c = r1 >> 51;
+    r1 &= mask51;
+    r2 += c;
+    let c = r2 >> 51;
+    r2 &= mask51;
+    r3 += c;
+    let c = r3 >> 51;
+    r3 &= mask51;
+    r4 += c;
+    let c = r4 >> 51;
+    r4 &= mask51;
+    r0 += c * 19;
+    let c = r0 >> 51;
+    r0 &= mask51;
+    r1 += c;
 
     [r0 as u64, r1 as u64, r2 as u64, r3 as u64, r4 as u64]
 }
@@ -188,18 +212,38 @@ fn fe_sq(a: &Fe) -> Fe {
 fn fe_reduce(h: &mut Fe) {
     // First, carry to ensure each limb < 2^52 roughly
     let mut c;
-    c = h[0] >> 51; h[0] &= MASK51; h[1] = h[1].wrapping_add(c);
-    c = h[1] >> 51; h[1] &= MASK51; h[2] = h[2].wrapping_add(c);
-    c = h[2] >> 51; h[2] &= MASK51; h[3] = h[3].wrapping_add(c);
-    c = h[3] >> 51; h[3] &= MASK51; h[4] = h[4].wrapping_add(c);
-    c = h[4] >> 51; h[4] &= MASK51; h[0] = h[0].wrapping_add(c.wrapping_mul(19));
+    c = h[0] >> 51;
+    h[0] &= MASK51;
+    h[1] = h[1].wrapping_add(c);
+    c = h[1] >> 51;
+    h[1] &= MASK51;
+    h[2] = h[2].wrapping_add(c);
+    c = h[2] >> 51;
+    h[2] &= MASK51;
+    h[3] = h[3].wrapping_add(c);
+    c = h[3] >> 51;
+    h[3] &= MASK51;
+    h[4] = h[4].wrapping_add(c);
+    c = h[4] >> 51;
+    h[4] &= MASK51;
+    h[0] = h[0].wrapping_add(c.wrapping_mul(19));
 
     // Second pass
-    c = h[0] >> 51; h[0] &= MASK51; h[1] = h[1].wrapping_add(c);
-    c = h[1] >> 51; h[1] &= MASK51; h[2] = h[2].wrapping_add(c);
-    c = h[2] >> 51; h[2] &= MASK51; h[3] = h[3].wrapping_add(c);
-    c = h[3] >> 51; h[3] &= MASK51; h[4] = h[4].wrapping_add(c);
-    c = h[4] >> 51; h[4] &= MASK51; h[0] = h[0].wrapping_add(c.wrapping_mul(19));
+    c = h[0] >> 51;
+    h[0] &= MASK51;
+    h[1] = h[1].wrapping_add(c);
+    c = h[1] >> 51;
+    h[1] &= MASK51;
+    h[2] = h[2].wrapping_add(c);
+    c = h[2] >> 51;
+    h[2] &= MASK51;
+    h[3] = h[3].wrapping_add(c);
+    c = h[3] >> 51;
+    h[3] &= MASK51;
+    h[4] = h[4].wrapping_add(c);
+    c = h[4] >> 51;
+    h[4] &= MASK51;
+    h[0] = h[0].wrapping_add(c.wrapping_mul(19));
 
     // Now subtract p if h >= p.
     // p = 2^255 - 19, in limbs: [2^51 - 19, 2^51 - 1, 2^51 - 1, 2^51 - 1, 2^51 - 1]
@@ -210,10 +254,17 @@ fn fe_reduce(h: &mut Fe) {
     // then checking if result >= 2^255).
     let mut t = [0u64; 5];
     t[0] = h[0].wrapping_add(19);
-    c = t[0] >> 51; t[0] &= MASK51;
-    t[1] = h[1].wrapping_add(c); c = t[1] >> 51; t[1] &= MASK51;
-    t[2] = h[2].wrapping_add(c); c = t[2] >> 51; t[2] &= MASK51;
-    t[3] = h[3].wrapping_add(c); c = t[3] >> 51; t[3] &= MASK51;
+    c = t[0] >> 51;
+    t[0] &= MASK51;
+    t[1] = h[1].wrapping_add(c);
+    c = t[1] >> 51;
+    t[1] &= MASK51;
+    t[2] = h[2].wrapping_add(c);
+    c = t[2] >> 51;
+    t[2] &= MASK51;
+    t[3] = h[3].wrapping_add(c);
+    c = t[3] >> 51;
+    t[3] &= MASK51;
     t[4] = h[4].wrapping_add(c);
 
     // If bit 51 of t[4] is set, then h+19 >= 2^255, meaning h >= p.
@@ -238,55 +289,72 @@ fn fe_invert(a: &Fe) -> Fe {
     //
     // Compute z^(2^255 - 21) = z^(p-2).
 
-    let z1 = *a;                         // z^1
-    let z2 = fe_sq(&z1);                 // z^2
-    let z8 = {                            // z^8
-        let t = fe_sq(&z2);              // z^4
-        fe_sq(&t)                         // z^8
+    let z1 = *a; // z^1
+    let z2 = fe_sq(&z1); // z^2
+    let z8 = {
+        // z^8
+        let t = fe_sq(&z2); // z^4
+        fe_sq(&t) // z^8
     };
-    let z9 = fe_mul(&z8, &z1);           // z^9
-    let z11 = fe_mul(&z9, &z2);          // z^11
-    let z_5_0 = fe_sq(&z11);             // z^22
-    let z_5_0 = fe_mul(&z_5_0, &z9);    // z^(2^5 - 1) = z^31
+    let z9 = fe_mul(&z8, &z1); // z^9
+    let z11 = fe_mul(&z9, &z2); // z^11
+    let z_5_0 = fe_sq(&z11); // z^22
+    let z_5_0 = fe_mul(&z_5_0, &z9); // z^(2^5 - 1) = z^31
 
     // z^(2^10 - 1)
-    let mut z_10_0 = fe_sq(&z_5_0);      // z^(2^6 - 2)
-    for _ in 1..5 { z_10_0 = fe_sq(&z_10_0); }
+    let mut z_10_0 = fe_sq(&z_5_0); // z^(2^6 - 2)
+    for _ in 1..5 {
+        z_10_0 = fe_sq(&z_10_0);
+    }
     let z_10_0 = fe_mul(&z_10_0, &z_5_0); // z^(2^10 - 1)
 
     // z^(2^20 - 1)
     let mut z_20_0 = fe_sq(&z_10_0);
-    for _ in 1..10 { z_20_0 = fe_sq(&z_20_0); }
+    for _ in 1..10 {
+        z_20_0 = fe_sq(&z_20_0);
+    }
     let z_20_0 = fe_mul(&z_20_0, &z_10_0);
 
     // z^(2^40 - 1)
     let mut z_40_0 = fe_sq(&z_20_0);
-    for _ in 1..20 { z_40_0 = fe_sq(&z_40_0); }
+    for _ in 1..20 {
+        z_40_0 = fe_sq(&z_40_0);
+    }
     let z_40_0 = fe_mul(&z_40_0, &z_20_0);
 
     // z^(2^50 - 1)
     let mut z_50_0 = fe_sq(&z_40_0);
-    for _ in 1..10 { z_50_0 = fe_sq(&z_50_0); }
+    for _ in 1..10 {
+        z_50_0 = fe_sq(&z_50_0);
+    }
     let z_50_0 = fe_mul(&z_50_0, &z_10_0);
 
     // z^(2^100 - 1)
     let mut z_100_0 = fe_sq(&z_50_0);
-    for _ in 1..50 { z_100_0 = fe_sq(&z_100_0); }
+    for _ in 1..50 {
+        z_100_0 = fe_sq(&z_100_0);
+    }
     let z_100_0 = fe_mul(&z_100_0, &z_50_0);
 
     // z^(2^200 - 1)
     let mut z_200_0 = fe_sq(&z_100_0);
-    for _ in 1..100 { z_200_0 = fe_sq(&z_200_0); }
+    for _ in 1..100 {
+        z_200_0 = fe_sq(&z_200_0);
+    }
     let z_200_0 = fe_mul(&z_200_0, &z_100_0);
 
     // z^(2^250 - 1)
     let mut z_250_0 = fe_sq(&z_200_0);
-    for _ in 1..50 { z_250_0 = fe_sq(&z_250_0); }
+    for _ in 1..50 {
+        z_250_0 = fe_sq(&z_250_0);
+    }
     let z_250_0 = fe_mul(&z_250_0, &z_50_0);
 
     // z^(2^255 - 2^5)
     let mut t = fe_sq(&z_250_0);
-    for _ in 1..5 { t = fe_sq(&t); }
+    for _ in 1..5 {
+        t = fe_sq(&t);
+    }
 
     // z^(2^255 - 21)  =  z^(2^255 - 32 + 11)  =  z^(2^255 - 2^5) * z^11
     fe_mul(&t, &z11)
@@ -304,9 +372,9 @@ fn fe_cswap(a: &mut Fe, b: &mut Fe, swap: u64) {
 
 /// Scalar clamping per RFC 7748 §5.
 fn clamp(scalar: &mut [u8; 32]) {
-    scalar[0] &= 248;   // clear bottom 3 bits
-    scalar[31] &= 127;  // clear top bit
-    scalar[31] |= 64;   // set second-to-top bit
+    scalar[0] &= 248; // clear bottom 3 bits
+    scalar[31] &= 127; // clear top bit
+    scalar[31] |= 64; // set second-to-top bit
 }
 
 // ── Public API ──────────────────────────────────────────────────────
@@ -324,7 +392,7 @@ pub fn scalarmult(scalar: &[u8; 32], point: &[u8; 32]) -> [u8; 32] {
     // Montgomery ladder state
     let mut x_2: Fe = [1, 0, 0, 0, 0]; // x_2 = 1
     let mut z_2: Fe = [0, 0, 0, 0, 0]; // z_2 = 0
-    let mut x_3 = u;                     // x_3 = u
+    let mut x_3 = u; // x_3 = u
     let mut z_3: Fe = [1, 0, 0, 0, 0]; // z_3 = 1
 
     let a24: Fe = [121665, 0, 0, 0, 0]; // (A-2)/4 for Curve25519

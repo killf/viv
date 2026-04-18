@@ -1,5 +1,3 @@
-use std::sync::{Arc, Mutex};
-use std::sync::mpsc::Sender;
 use crate::Result;
 use crate::agent::evolution::evolve_from_session;
 use crate::agent::message::{ContentBlock, Message, PromptCache};
@@ -10,7 +8,7 @@ use crate::core::runtime::channel::AsyncReceiver;
 use crate::llm::{LLMClient, LLMConfig, ModelTier};
 use crate::lsp::LspManager;
 use crate::lsp::config::LspConfig;
-use crate::lsp::tools::{LspDefinitionTool, LspReferencesTool, LspHoverTool, LspDiagnosticsTool};
+use crate::lsp::tools::{LspDefinitionTool, LspDiagnosticsTool, LspHoverTool, LspReferencesTool};
 use crate::mcp::McpManager;
 use crate::mcp::config::McpConfig;
 use crate::mcp::tools::{
@@ -22,6 +20,8 @@ use crate::memory::retrieval::retrieve_relevant;
 use crate::memory::store::MemoryStore;
 use crate::permissions::PermissionManager;
 use crate::tools::{PermissionLevel, ToolRegistry};
+use std::sync::mpsc::Sender;
+use std::sync::{Arc, Mutex};
 
 // ── PermissionMode ────────────────────────────────────────────────────────────
 
@@ -201,7 +201,8 @@ impl Agent {
                 &self.store,
                 &self.llm,
                 self.config.top_k_memory,
-            ).await;
+            )
+            .await;
             drop(idx);
             match results {
                 Ok(m) => {
@@ -224,7 +225,8 @@ impl Agent {
             100_000,
             10,
             self.llm.as_ref(),
-        ).await?;
+        )
+        .await?;
 
         self.agentic_loop(system).await?;
 
@@ -241,15 +243,18 @@ impl Agent {
 
         for _ in 0..self.config.max_iterations {
             let msg_tx = self.msg_tx.clone();
-            let stream_result = self.llm.stream_agent_async(
-                &system.blocks,
-                &self.messages,
-                &tools_json,
-                self.config.model_tier.clone(),
-                move |chunk| {
-                    let _ = msg_tx.send(AgentMessage::TextChunk(chunk.to_string()));
-                },
-            ).await?;
+            let stream_result = self
+                .llm
+                .stream_agent_async(
+                    &system.blocks,
+                    &self.messages,
+                    &tools_json,
+                    self.config.model_tier.clone(),
+                    move |chunk| {
+                        let _ = msg_tx.send(AgentMessage::TextChunk(chunk.to_string()));
+                    },
+                )
+                .await?;
 
             self.input_tokens += stream_result.input_tokens;
             self.output_tokens += stream_result.output_tokens;

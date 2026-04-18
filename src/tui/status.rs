@@ -21,7 +21,9 @@ impl StatusWidget {
 
 impl Widget for StatusWidget {
     fn render(&self, area: Rect, buf: &mut Buffer) {
-        if area.is_empty() { return; }
+        if area.is_empty() {
+            return;
+        }
         let cost = self.estimate_cost();
         let text = format!(
             "  {}  ↑ {}  ↓ {}  ~${:.3}",

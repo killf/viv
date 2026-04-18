@@ -3,14 +3,14 @@ use std::fmt;
 /// ANSI color codes for foreground colors.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Color {
-    Black   = 30,
-    Red     = 31,
-    Green   = 32,
-    Yellow  = 33,
-    Blue    = 34,
+    Black = 30,
+    Red = 31,
+    Green = 32,
+    Yellow = 33,
+    Blue = 34,
     Magenta = 35,
-    Cyan    = 36,
-    White   = 37,
+    Cyan = 36,
+    White = 37,
 }
 
 /// A buffered writer that produces ANSI escape sequences.

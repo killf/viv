@@ -10,7 +10,10 @@ fn tempdir() -> std::path::PathBuf {
     p
 }
 fn nanos() -> u32 {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().subsec_nanos()
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .subsec_nanos()
 }
 
 #[test]
@@ -20,8 +23,10 @@ fn grep_files_with_matches_default_mode() {
     fs::write(dir.join("b.txt"), "goodbye world").unwrap();
     fs::write(dir.join("c.txt"), "nothing here").unwrap();
     let input = JsonValue::parse(&format!(
-        r#"{{"pattern":"world","path":"{}"}}"#, dir.display()
-    )).unwrap();
+        r#"{{"pattern":"world","path":"{}"}}"#,
+        dir.display()
+    ))
+    .unwrap();
     let result = poll_to_completion(GrepTool.execute(&input)).unwrap();
     assert!(result.contains("a.txt"));
     assert!(result.contains("b.txt"));
@@ -33,8 +38,10 @@ fn grep_content_mode_shows_matching_lines() {
     let dir = tempdir();
     fs::write(dir.join("a.txt"), "line1\nfoo bar\nline3").unwrap();
     let input = JsonValue::parse(&format!(
-        r#"{{"pattern":"foo","path":"{}","output_mode":"content"}}"#, dir.display()
-    )).unwrap();
+        r#"{{"pattern":"foo","path":"{}","output_mode":"content"}}"#,
+        dir.display()
+    ))
+    .unwrap();
     let result = poll_to_completion(GrepTool.execute(&input)).unwrap();
     assert!(result.contains("foo bar"));
     assert!(!result.contains("line1"));
@@ -46,8 +53,10 @@ fn grep_glob_filter_limits_files() {
     fs::write(dir.join("a.rs"), "fn main() {}").unwrap();
     fs::write(dir.join("b.txt"), "fn main() {}").unwrap();
     let input = JsonValue::parse(&format!(
-        r#"{{"pattern":"main","path":"{}","glob":"*.rs"}}"#, dir.display()
-    )).unwrap();
+        r#"{{"pattern":"main","path":"{}","glob":"*.rs"}}"#,
+        dir.display()
+    ))
+    .unwrap();
     let result = poll_to_completion(GrepTool.execute(&input)).unwrap();
     assert!(result.contains("a.rs"));
     assert!(!result.contains("b.txt"));

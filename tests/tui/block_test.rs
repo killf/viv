@@ -1,6 +1,6 @@
+use viv::core::terminal::buffer::{Buffer, Rect};
 use viv::tui::block::*;
 use viv::tui::widget::Widget;
-use viv::core::terminal::buffer::{Rect, Buffer};
 
 #[test]
 fn no_border_inner_equals_area() {
@@ -117,7 +117,10 @@ fn horizontal_borders_title_inline() {
     b.render(Rect::new(0, 0, 30, 3), &mut buf);
     // Title should be on the top row somewhere
     let top_row: String = (0..30).map(|x| buf.get(x, 0).ch).collect();
-    assert!(top_row.contains("main"), "top row should contain title: {top_row:?}");
+    assert!(
+        top_row.contains("main"),
+        "top row should contain title: {top_row:?}"
+    );
     // Title should be surrounded by horizontal lines
     assert_eq!(buf.get(0, 0).ch, '─');
 }

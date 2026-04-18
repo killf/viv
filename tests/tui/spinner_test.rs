@@ -4,7 +4,10 @@ use viv::tui::spinner::*;
 #[test]
 fn spinner_default_has_multiple_frames() {
     let s = Spinner::new();
-    assert!(s.frame_count() >= 4, "spinner should have at least 4 animation frames");
+    assert!(
+        s.frame_count() >= 4,
+        "spinner should have at least 4 animation frames"
+    );
 }
 
 #[test]
@@ -57,7 +60,6 @@ fn random_verb_is_stable_for_same_seed() {
 #[test]
 fn random_verbs_differ_across_seeds() {
     // Across 10 different seeds, we should see at least 2 distinct verbs
-    let verbs: std::collections::HashSet<_> =
-        (0..10u64).map(random_verb).collect();
+    let verbs: std::collections::HashSet<_> = (0..10u64).map(random_verb).collect();
     assert!(verbs.len() >= 2);
 }

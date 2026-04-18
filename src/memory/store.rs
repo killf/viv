@@ -1,7 +1,7 @@
-use std::fs;
-use std::path::PathBuf;
 use crate::Result;
 use crate::error::Error;
+use std::fs;
+use std::path::PathBuf;
 
 pub struct MemoryStore {
     pub base_dir: PathBuf,

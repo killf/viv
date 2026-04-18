@@ -123,9 +123,9 @@ impl Framing {
                     .lines()
                     .find_map(|line| {
                         let lower = line.to_ascii_lowercase();
-                        lower.strip_prefix("content-length:").map(|v| {
-                            v.trim().parse::<usize>().ok()
-                        })
+                        lower
+                            .strip_prefix("content-length:")
+                            .map(|v| v.trim().parse::<usize>().ok())
                     })
                     .flatten()?;
 
@@ -162,7 +162,10 @@ impl Future for WaitReadable {
             self.token = None;
             return Poll::Ready(Ok(()));
         }
-        let t = reactor().lock().unwrap().register_readable(self.fd, cx.waker().clone());
+        let t = reactor()
+            .lock()
+            .unwrap()
+            .register_readable(self.fd, cx.waker().clone());
         self.token = Some(t);
         Poll::Pending
     }
@@ -237,15 +240,13 @@ impl StdioTransport {
 
         let child = cmd.spawn().map_err(crate::Error::Io)?;
 
-        let stdin_raw = stdin_fd(&child)
-            .ok_or_else(|| crate::Error::Io(std::io::Error::other(
-                "failed to get child stdin fd",
-            )))?;
+        let stdin_raw = stdin_fd(&child).ok_or_else(|| {
+            crate::Error::Io(std::io::Error::other("failed to get child stdin fd"))
+        })?;
 
-        let stdout_raw = stdout_fd(&child)
-            .ok_or_else(|| crate::Error::Io(std::io::Error::other(
-                "failed to get child stdout fd",
-            )))?;
+        let stdout_raw = stdout_fd(&child).ok_or_else(|| {
+            crate::Error::Io(std::io::Error::other("failed to get child stdout fd"))
+        })?;
 
         // Set stdout to non-blocking for reactor-based async reads
         set_nonblocking(stdout_raw)?;
@@ -262,7 +263,10 @@ impl StdioTransport {
 
 #[cfg(unix)]
 impl Transport for StdioTransport {
-    fn send(&mut self, msg: JsonValue) -> Pin<Box<dyn Future<Output = crate::Result<()>> + Send + '_>> {
+    fn send(
+        &mut self,
+        msg: JsonValue,
+    ) -> Pin<Box<dyn Future<Output = crate::Result<()>> + Send + '_>> {
         Box::pin(async move {
             let data = self.framing.encode(&msg.to_string());
             let bytes = data.as_bytes();
@@ -270,7 +274,11 @@ impl Transport for StdioTransport {
 
             while written < bytes.len() {
                 let n = unsafe {
-                    write(self.stdin_fd, bytes[written..].as_ptr(), bytes[written..].len())
+                    write(
+                        self.stdin_fd,
+                        bytes[written..].as_ptr(),
+                        bytes[written..].len(),
+                    )
                 };
                 if n < 0 {
                     let errno = unsafe { *__errno_location() };

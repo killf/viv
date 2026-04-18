@@ -1,6 +1,6 @@
+use viv::core::terminal::buffer::{Buffer, Rect};
 use viv::tui::input::*;
 use viv::tui::widget::Widget;
-use viv::core::terminal::buffer::{Rect, Buffer};
 
 #[test]
 fn renders_prompt_and_content() {
@@ -43,7 +43,10 @@ fn prompt_color() {
     let w = InputWidget::new("hi", 0, "> ").prompt_fg(viv::core::terminal::style::Color::Ansi(32));
     let mut buf = Buffer::empty(Rect::new(0, 0, 20, 1));
     w.render(Rect::new(0, 0, 20, 1), &mut buf);
-    assert_eq!(buf.get(0, 0).fg, Some(viv::core::terminal::style::Color::Ansi(32)));
+    assert_eq!(
+        buf.get(0, 0).fg,
+        Some(viv::core::terminal::style::Color::Ansi(32))
+    );
     assert_eq!(buf.get(2, 0).fg, None); // content has no color
 }
 
@@ -71,8 +74,7 @@ fn empty_content() {
 
 #[test]
 fn placeholder_shown_when_content_empty() {
-    let w = InputWidget::new("", 0, "> ")
-        .placeholder(Some("How can I help you?"));
+    let w = InputWidget::new("", 0, "> ").placeholder(Some("How can I help you?"));
     let mut buf = Buffer::empty(Rect::new(0, 0, 30, 1));
     w.render(Rect::new(0, 0, 30, 1), &mut buf);
     // After the prompt "> " (col 0-1), placeholder text starts at col 2
@@ -81,8 +83,7 @@ fn placeholder_shown_when_content_empty() {
 
 #[test]
 fn placeholder_hidden_when_content_present() {
-    let w = InputWidget::new("x", 1, "> ")
-        .placeholder(Some("How can I help you?"));
+    let w = InputWidget::new("x", 1, "> ").placeholder(Some("How can I help you?"));
     let mut buf = Buffer::empty(Rect::new(0, 0, 30, 1));
     w.render(Rect::new(0, 0, 30, 1), &mut buf);
     assert_eq!(buf.get(2, 0).ch, 'x');
@@ -90,11 +91,13 @@ fn placeholder_hidden_when_content_present() {
 
 #[test]
 fn placeholder_is_dim_colored() {
-    let w = InputWidget::new("", 0, "> ")
-        .placeholder(Some("hint"));
+    let w = InputWidget::new("", 0, "> ").placeholder(Some("hint"));
     let mut buf = Buffer::empty(Rect::new(0, 0, 20, 1));
     w.render(Rect::new(0, 0, 20, 1), &mut buf);
-    assert_eq!(buf.get(2, 0).fg, Some(viv::core::terminal::style::theme::DIM));
+    assert_eq!(
+        buf.get(2, 0).fg,
+        Some(viv::core::terminal::style::theme::DIM)
+    );
 }
 
 #[test]

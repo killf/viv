@@ -1,12 +1,14 @@
+use crate::core::platform::{PlatformReactor, RawHandle};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::task::Waker;
 use std::time::Duration;
-use crate::core::platform::{PlatformReactor, RawHandle};
 
 static REACTOR: OnceLock<Arc<Mutex<Reactor>>> = OnceLock::new();
 
 pub fn reactor() -> Arc<Mutex<Reactor>> {
-    REACTOR.get_or_init(|| Arc::new(Mutex::new(Reactor::new()))).clone()
+    REACTOR
+        .get_or_init(|| Arc::new(Mutex::new(Reactor::new())))
+        .clone()
 }
 
 pub struct Reactor {
@@ -21,11 +23,15 @@ impl Reactor {
     }
 
     pub fn register_readable(&mut self, handle: RawHandle, waker: Waker) -> u64 {
-        self.inner.register_read(handle, waker).expect("register_read")
+        self.inner
+            .register_read(handle, waker)
+            .expect("register_read")
     }
 
     pub fn register_writable(&mut self, handle: RawHandle, waker: Waker) -> u64 {
-        self.inner.register_write(handle, waker).expect("register_write")
+        self.inner
+            .register_write(handle, waker)
+            .expect("register_write")
     }
 
     pub fn remove(&mut self, token: u64) {

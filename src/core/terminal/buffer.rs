@@ -16,7 +16,8 @@ pub fn char_width(ch: char) -> u16 {
         || (0xFF01..=0xFF60).contains(&c)       // Fullwidth Forms
         || (0xFFE0..=0xFFE6).contains(&c)       // Fullwidth Signs
         || (0x20000..=0x2FA1F).contains(&c)     // CJK Extension B-F + Supplements
-        || (0x30000..=0x3134F).contains(&c)     // CJK Extension G
+        || (0x30000..=0x3134F).contains(&c)
+    // CJK Extension G
     {
         return 2;
     }
@@ -30,7 +31,8 @@ pub fn char_width(ch: char) -> u16 {
         || (0x30A0..=0x30FF).contains(&c)       // Katakana
         || (0x3100..=0x312F).contains(&c)       // Bopomofo
         || (0x3130..=0x318F).contains(&c)       // Hangul Compatibility Jamo
-        || (0x31F0..=0x31FF).contains(&c)       // Katakana Phonetic Extensions
+        || (0x31F0..=0x31FF).contains(&c)
+    // Katakana Phonetic Extensions
     {
         return 2;
     }
@@ -48,7 +50,12 @@ pub struct Rect {
 
 impl Rect {
     pub fn new(x: u16, y: u16, width: u16, height: u16) -> Self {
-        Rect { x, y, width, height }
+        Rect {
+            x,
+            y,
+            width,
+            height,
+        }
     }
 
     /// Total number of cells in the rect.
@@ -101,7 +108,12 @@ pub struct Cell {
 
 impl Default for Cell {
     fn default() -> Self {
-        Cell { ch: ' ', fg: None, bg: None, bold: false }
+        Cell {
+            ch: ' ',
+            fg: None,
+            bg: None,
+            bold: false,
+        }
     }
 }
 
@@ -116,7 +128,10 @@ impl Buffer {
     /// Create a buffer filled with default (blank) cells.
     pub fn empty(area: Rect) -> Self {
         let size = area.area() as usize;
-        Buffer { area, cells: vec![Cell::default(); size] }
+        Buffer {
+            area,
+            cells: vec![Cell::default(); size],
+        }
     }
 
     fn idx(&self, x: u16, y: u16) -> usize {
@@ -150,16 +165,28 @@ impl Buffer {
         let mut cur_x = x;
         for ch in s.chars() {
             let w = char_width(ch);
-            if w == 0 { continue; }
+            if w == 0 {
+                continue;
+            }
             if cur_x + w > max_x {
                 break;
             }
             let i = self.idx(cur_x, y);
-            self.cells[i] = Cell { ch, fg, bg: None, bold };
+            self.cells[i] = Cell {
+                ch,
+                fg,
+                bg: None,
+                bold,
+            };
             // For wide chars, fill the next cell with a placeholder
             if w == 2 && cur_x + 1 < max_x {
                 let i2 = self.idx(cur_x + 1, y);
-                self.cells[i2] = Cell { ch: '\0', fg, bg: None, bold };
+                self.cells[i2] = Cell {
+                    ch: '\0',
+                    fg,
+                    bg: None,
+                    bold,
+                };
             }
             cur_x += w;
         }

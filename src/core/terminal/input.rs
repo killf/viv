@@ -80,12 +80,30 @@ impl InputParser {
                             self.buf.drain(..1);
                             return Some(KeyEvent::Escape);
                         }
-                        Some(&b'A') => { self.buf.drain(..3); return Some(KeyEvent::Up); }
-                        Some(&b'B') => { self.buf.drain(..3); return Some(KeyEvent::Down); }
-                        Some(&b'C') => { self.buf.drain(..3); return Some(KeyEvent::Right); }
-                        Some(&b'D') => { self.buf.drain(..3); return Some(KeyEvent::Left); }
-                        Some(&b'H') => { self.buf.drain(..3); return Some(KeyEvent::Home); }
-                        Some(&b'F') => { self.buf.drain(..3); return Some(KeyEvent::End); }
+                        Some(&b'A') => {
+                            self.buf.drain(..3);
+                            return Some(KeyEvent::Up);
+                        }
+                        Some(&b'B') => {
+                            self.buf.drain(..3);
+                            return Some(KeyEvent::Down);
+                        }
+                        Some(&b'C') => {
+                            self.buf.drain(..3);
+                            return Some(KeyEvent::Right);
+                        }
+                        Some(&b'D') => {
+                            self.buf.drain(..3);
+                            return Some(KeyEvent::Left);
+                        }
+                        Some(&b'H') => {
+                            self.buf.drain(..3);
+                            return Some(KeyEvent::Home);
+                        }
+                        Some(&b'F') => {
+                            self.buf.drain(..3);
+                            return Some(KeyEvent::End);
+                        }
                         Some(&b'3') => {
                             // Delete: ESC [ 3 ~
                             if self.buf.get(3) == Some(&b'~') {
@@ -93,7 +111,8 @@ impl InputParser {
                                 return Some(KeyEvent::Delete);
                             }
                             // Unknown sequence — consume what we have
-                            let consumed: Vec<u8> = self.buf.drain(..self.buf.len().min(4)).collect();
+                            let consumed: Vec<u8> =
+                                self.buf.drain(..self.buf.len().min(4)).collect();
                             return Some(KeyEvent::Unknown(consumed));
                         }
                         Some(_) => {

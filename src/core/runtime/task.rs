@@ -1,8 +1,8 @@
 use std::future::Future;
 use std::mem;
 use std::pin::Pin;
-use std::sync::{Arc, Mutex};
 use std::sync::mpsc::Sender;
+use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
 
 pub type TaskId = usize;
@@ -20,7 +20,10 @@ pub struct OneshotSender<T>(Arc<Mutex<OneshotInner<T>>>);
 pub struct OneshotReceiver<T>(Arc<Mutex<OneshotInner<T>>>);
 
 pub fn oneshot<T>() -> (OneshotSender<T>, OneshotReceiver<T>) {
-    let inner = Arc::new(Mutex::new(OneshotInner { value: None, waker: None }));
+    let inner = Arc::new(Mutex::new(OneshotInner {
+        value: None,
+        waker: None,
+    }));
     (OneshotSender(Arc::clone(&inner)), OneshotReceiver(inner))
 }
 
@@ -45,7 +48,8 @@ impl<T: Unpin> Future for OneshotReceiver<T> {
         if let Some(value) = inner.value.take() {
             Poll::Ready(value)
         } else {
-            let needs_update = inner.waker
+            let needs_update = inner
+                .waker
                 .as_ref()
                 .is_none_or(|w| !w.will_wake(cx.waker()));
             if needs_update {
@@ -103,12 +107,8 @@ impl Task {
 // RawWaker vtable for Task
 // ---------------------------------------------------------------------------
 
-static TASK_VTABLE: RawWakerVTable = RawWakerVTable::new(
-    task_clone,
-    task_wake,
-    task_wake_by_ref,
-    task_drop,
-);
+static TASK_VTABLE: RawWakerVTable =
+    RawWakerVTable::new(task_clone, task_wake, task_wake_by_ref, task_drop);
 
 unsafe fn task_clone(ptr: *const ()) -> RawWaker {
     let arc = unsafe { Arc::from_raw(ptr as *const Task) };

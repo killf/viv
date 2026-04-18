@@ -1,7 +1,7 @@
 // Record layer tests — verify TLS record framing and AEAD roundtrip.
 
-use viv::core::net::tls::record::RecordLayer;
 use viv::core::net::tls::codec;
+use viv::core::net::tls::record::RecordLayer;
 
 // ── Plaintext record format ────────────────────────────────────────
 
@@ -53,7 +53,9 @@ fn encrypt_decrypt_roundtrip() {
     assert_eq!(encrypted[2], 0x03);
 
     // Decrypt
-    let (ct, decrypted, consumed) = reader.read_record(&encrypted).expect("decrypt should succeed");
+    let (ct, decrypted, consumed) = reader
+        .read_record(&encrypted)
+        .expect("decrypt should succeed");
 
     assert_eq!(ct, codec::APPLICATION_DATA);
     assert_eq!(decrypted, payload);
@@ -112,7 +114,11 @@ fn nonce_changes_between_records() {
     writer.write_encrypted(codec::APPLICATION_DATA, payload, &mut enc2);
 
     // The encrypted payloads (after the 5-byte header) should differ
-    assert_ne!(&enc1[5..], &enc2[5..], "nonce should produce different ciphertexts");
+    assert_ne!(
+        &enc1[5..],
+        &enc2[5..],
+        "nonce should produce different ciphertexts"
+    );
 }
 
 #[test]
@@ -123,8 +129,10 @@ fn read_plaintext_record() {
     let payload = b"data";
     let mut data = Vec::new();
     data.push(codec::HANDSHAKE);
-    data.push(0x03); data.push(0x01);
-    data.push(0x00); data.push(payload.len() as u8);
+    data.push(0x03);
+    data.push(0x01);
+    data.push(0x00);
+    data.push(payload.len() as u8);
     data.extend_from_slice(payload);
 
     let (ct, body, consumed) = record.read_record(&data).expect("read should succeed");

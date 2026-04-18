@@ -1,14 +1,16 @@
-use std::pin::Pin;
-use std::future::Future;
-use crate::error::Error;
 use crate::core::json::JsonValue;
+use crate::error::Error;
 use crate::tools::{PermissionLevel, Tool};
+use std::future::Future;
 use std::path::{Path, PathBuf};
+use std::pin::Pin;
 
 pub struct GlobTool;
 
 impl Tool for GlobTool {
-    fn name(&self) -> &str { "Glob" }
+    fn name(&self) -> &str {
+        "Glob"
+    }
 
     fn description(&self) -> &str {
         "Fast file pattern matching tool that works with any codebase size.\n\n- Supports glob patterns like \"**/*.js\" or \"src/**/*.ts\"\n- Returns matching file paths sorted by modification time\n- Use this tool when you need to find files by name patterns\n- When you are doing an open ended search that may require multiple rounds of globbing and grepping, use the Agent tool instead"
@@ -25,23 +27,34 @@ impl Tool for GlobTool {
         }"#).unwrap()
     }
 
-    fn execute(&self, input: &JsonValue) -> Pin<Box<dyn Future<Output = crate::Result<String>> + Send + '_>> {
+    fn execute(
+        &self,
+        input: &JsonValue,
+    ) -> Pin<Box<dyn Future<Output = crate::Result<String>> + Send + '_>> {
         let input = input.clone();
         Box::pin(async move {
-        let pattern = input.get("pattern").and_then(|v| v.as_str())
-            .ok_or_else(|| Error::Tool("missing 'pattern'".into()))?;
-        let root = input.get("path").and_then(|v| v.as_str()).unwrap_or(".");
+            let pattern = input
+                .get("pattern")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| Error::Tool("missing 'pattern'".into()))?;
+            let root = input.get("path").and_then(|v| v.as_str()).unwrap_or(".");
 
-        let mut matches: Vec<PathBuf> = vec![];
-        let parts: Vec<&str> = pattern.split('/').collect();
-        walk_glob(Path::new(root), &parts, &mut matches)
-            .map_err(|e| Error::Tool(format!("glob walk: {}", e)))?;
-        matches.sort();
-        Ok(matches.iter().map(|p| p.display().to_string()).collect::<Vec<_>>().join("\n"))
+            let mut matches: Vec<PathBuf> = vec![];
+            let parts: Vec<&str> = pattern.split('/').collect();
+            walk_glob(Path::new(root), &parts, &mut matches)
+                .map_err(|e| Error::Tool(format!("glob walk: {}", e)))?;
+            matches.sort();
+            Ok(matches
+                .iter()
+                .map(|p| p.display().to_string())
+                .collect::<Vec<_>>()
+                .join("\n"))
         })
     }
 
-    fn permission_level(&self) -> PermissionLevel { PermissionLevel::ReadOnly }
+    fn permission_level(&self) -> PermissionLevel {
+        PermissionLevel::ReadOnly
+    }
 }
 
 fn walk_glob(dir: &Path, parts: &[&str], out: &mut Vec<PathBuf>) -> std::io::Result<()> {
@@ -105,7 +118,9 @@ fn segment_match(pattern: &str, text: &str) -> bool {
     let mut dp = vec![vec![false; n + 1]; m + 1];
     dp[0][0] = true;
     for i in 1..=m {
-        if p[i - 1] == '*' { dp[i][0] = dp[i - 1][0]; }
+        if p[i - 1] == '*' {
+            dp[i][0] = dp[i - 1][0];
+        }
     }
     for i in 1..=m {
         for j in 1..=n {

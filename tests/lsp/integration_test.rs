@@ -3,7 +3,7 @@ use viv::core::json::{JsonValue, Number};
 use viv::core::runtime::block_on;
 use viv::lsp::LspManager;
 use viv::lsp::config::LspConfig;
-use viv::lsp::tools::{LspDefinitionTool, LspHoverTool, LspReferencesTool, LspDiagnosticsTool};
+use viv::lsp::tools::{LspDefinitionTool, LspDiagnosticsTool, LspHoverTool, LspReferencesTool};
 use viv::tools::Tool;
 
 #[test]
@@ -21,8 +21,11 @@ fn definition_tool_errors_when_no_server_configured() {
     let result = block_on(async move { tool.execute(&input).await });
     assert!(result.is_err());
     let err_msg = result.unwrap_err().to_string();
-    assert!(err_msg.contains("no LSP server configured") || err_msg.contains("LSP error"),
-        "unexpected error: {}", err_msg);
+    assert!(
+        err_msg.contains("no LSP server configured") || err_msg.contains("LSP error"),
+        "unexpected error: {}",
+        err_msg
+    );
 }
 
 #[test]

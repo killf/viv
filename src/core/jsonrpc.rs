@@ -91,9 +91,7 @@ impl Message {
             let method = json
                 .get("method")
                 .and_then(|v| v.as_str())
-                .ok_or_else(|| {
-                    Error::Json("Notification method must be a string".to_string())
-                })?
+                .ok_or_else(|| Error::Json("Notification method must be a string".to_string()))?
                 .to_string();
             let params = json.get("params").cloned();
             Ok(Message::Notification(Notification { method, params }))
@@ -128,14 +126,8 @@ impl Request {
     pub fn to_json(&self) -> JsonValue {
         let mut pairs = vec![
             ("jsonrpc".to_string(), JsonValue::Str("2.0".to_string())),
-            (
-                "id".to_string(),
-                JsonValue::Number(Number::Int(self.id)),
-            ),
-            (
-                "method".to_string(),
-                JsonValue::Str(self.method.clone()),
-            ),
+            ("id".to_string(), JsonValue::Number(Number::Int(self.id))),
+            ("method".to_string(), JsonValue::Str(self.method.clone())),
         ];
         if let Some(ref params) = self.params {
             pairs.push(("params".to_string(), params.clone()));
@@ -149,10 +141,7 @@ impl Notification {
     pub fn to_json(&self) -> JsonValue {
         let mut pairs = vec![
             ("jsonrpc".to_string(), JsonValue::Str("2.0".to_string())),
-            (
-                "method".to_string(),
-                JsonValue::Str(self.method.clone()),
-            ),
+            ("method".to_string(), JsonValue::Str(self.method.clone())),
         ];
         if let Some(ref params) = self.params {
             pairs.push(("params".to_string(), params.clone()));
@@ -176,10 +165,7 @@ impl Response {
                         "code".to_string(),
                         JsonValue::Number(Number::Int(error.code)),
                     ),
-                    (
-                        "message".to_string(),
-                        JsonValue::Str(error.message.clone()),
-                    ),
+                    ("message".to_string(), JsonValue::Str(error.message.clone())),
                 ];
                 if let Some(ref data) = error.data {
                     err_pairs.push(("data".to_string(), data.clone()));

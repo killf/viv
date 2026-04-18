@@ -105,20 +105,19 @@ impl Handshake {
                 // Verify cipher suite
                 if sh.cipher_suite != 0x1301 {
                     return Err(crate::Error::Tls(format!(
-                        "unsupported cipher suite: 0x{:04x}", sh.cipher_suite
+                        "unsupported cipher suite: 0x{:04x}",
+                        sh.cipher_suite
                     )));
                 }
 
                 // Compute shared secret
-                let shared = x25519::shared_secret(
-                    &self.x25519_secret,
-                    &sh.x25519_public,
-                );
+                let shared = x25519::shared_secret(&self.x25519_secret, &sh.x25519_public);
 
                 // Derive handshake secrets
                 let hello_hash = self.transcript.clone().finish();
-                let (client_hs_keys, server_hs_keys) =
-                    self.key_schedule.derive_handshake_secrets(&shared, &hello_hash);
+                let (client_hs_keys, server_hs_keys) = self
+                    .key_schedule
+                    .derive_handshake_secrets(&shared, &hello_hash);
 
                 // Install server handshake decrypter
                 record.install_decrypter(server_hs_keys.key, server_hs_keys.iv);
@@ -186,7 +185,8 @@ impl Handshake {
 
             // ── Unexpected state/message ───────────────────────────
             _ => Err(crate::Error::Tls(format!(
-                "unexpected handshake message in state {:?}", self.state
+                "unexpected handshake message in state {:?}",
+                self.state
             ))),
         }
     }
@@ -216,10 +216,10 @@ impl Handshake {
     /// Uses the transcript hash saved after server Finished (CH..SF),
     /// per RFC 8446 section 7.1.
     pub fn install_app_keys(&mut self, record: &mut RecordLayer) {
-        let hash = self.server_finished_hash
+        let hash = self
+            .server_finished_hash
             .expect("install_app_keys called before server Finished");
-        let (client_app, server_app) =
-            self.key_schedule.derive_app_secrets(&hash);
+        let (client_app, server_app) = self.key_schedule.derive_app_secrets(&hash);
         record.install_encrypter(client_app.key, client_app.iv);
         record.install_decrypter(server_app.key, server_app.iv);
     }

@@ -67,7 +67,8 @@ impl RecordEncrypter {
         // Allocate space for ciphertext + tag
         let ct_start = out.len();
         out.resize(ct_start + ct_len, 0);
-        self.cipher.encrypt(&nonce, &aad, &inner, &mut out[ct_start..]);
+        self.cipher
+            .encrypt(&nonce, &aad, &inner, &mut out[ct_start..]);
 
         self.seq += 1;
     }
@@ -101,7 +102,11 @@ impl RecordDecrypter {
 
     /// Decrypt a record payload. `header` is the 5-byte record header (AAD).
     /// Returns (real_content_type, plaintext).
-    fn decrypt(&mut self, header: &[u8; 5], ciphertext_and_tag: &[u8]) -> crate::Result<(u8, Vec<u8>)> {
+    fn decrypt(
+        &mut self,
+        header: &[u8; 5],
+        ciphertext_and_tag: &[u8],
+    ) -> crate::Result<(u8, Vec<u8>)> {
         if ciphertext_and_tag.len() < 17 {
             // At minimum: 1 byte content type + 16 byte tag
             return Err(crate::Error::Tls("encrypted record too short".into()));
@@ -110,7 +115,8 @@ impl RecordDecrypter {
         let nonce = self.nonce();
 
         let mut plaintext = vec![0u8; ciphertext_and_tag.len() - 16];
-        self.cipher.decrypt(&nonce, header, ciphertext_and_tag, &mut plaintext)?;
+        self.cipher
+            .decrypt(&nonce, header, ciphertext_and_tag, &mut plaintext)?;
 
         self.seq += 1;
 

@@ -77,7 +77,11 @@ fn parse_base_url(base_url: &str) -> UrlParts {
         None => (host_port.to_string(), if is_https { 443 } else { 80 }),
     };
 
-    UrlParts { host, port, path_prefix }
+    UrlParts {
+        host,
+        port,
+        path_prefix,
+    }
 }
 
 impl LLMConfig {
@@ -95,8 +99,7 @@ impl LLMConfig {
             message: "VIV_API_KEY not set".into(),
         })?;
 
-        let base_url = std::env::var("VIV_BASE_URL")
-            .unwrap_or_else(|_| "api.anthropic.com".into());
+        let base_url = std::env::var("VIV_BASE_URL").unwrap_or_else(|_| "api.anthropic.com".into());
 
         let fallback_model = std::env::var("VIV_MODEL").ok();
 
@@ -223,25 +226,31 @@ impl LLMClient {
 
             // Check if we have the header separator
             if header_end.is_none()
-                && let Some(pos) = raw.windows(4).position(|w| w == b"\r\n\r\n") {
-                    header_end = Some(pos + 4);
+                && let Some(pos) = raw.windows(4).position(|w| w == b"\r\n\r\n")
+            {
+                header_end = Some(pos + 4);
 
-                    // Parse status from the header
-                    let header_section = std::str::from_utf8(&raw[..pos])
-                        .map_err(|_| Error::Http("invalid UTF-8 in headers".into()))?;
-                    let status = parse_status_line(header_section)?;
-                    if status != 200 {
-                        // Read more to get the error body
-                        loop {
-                            let n2 = tls.read(&mut tmp)?;
-                            if n2 == 0 { break; }
-                            raw.extend_from_slice(&tmp[..n2]);
+                // Parse status from the header
+                let header_section = std::str::from_utf8(&raw[..pos])
+                    .map_err(|_| Error::Http("invalid UTF-8 in headers".into()))?;
+                let status = parse_status_line(header_section)?;
+                if status != 200 {
+                    // Read more to get the error body
+                    loop {
+                        let n2 = tls.read(&mut tmp)?;
+                        if n2 == 0 {
+                            break;
                         }
-                        let body_bytes = &raw[pos + 4..];
-                        let body_str = String::from_utf8_lossy(body_bytes).into_owned();
-                        return Err(Error::LLM { status, message: body_str });
+                        raw.extend_from_slice(&tmp[..n2]);
                     }
+                    let body_bytes = &raw[pos + 4..];
+                    let body_str = String::from_utf8_lossy(body_bytes).into_owned();
+                    return Err(Error::LLM {
+                        status,
+                        message: body_str,
+                    });
                 }
+            }
 
             // Once we have the header, process SSE body incrementally
             if let Some(hend) = header_end {
@@ -341,29 +350,38 @@ impl LLMClient {
 
         loop {
             let n = tls.read(&mut tmp)?;
-            if n == 0 { break; }
+            if n == 0 {
+                break;
+            }
             raw.extend_from_slice(&tmp[..n]);
 
             if header_end.is_none()
-                && let Some(pos) = raw.windows(4).position(|w| w == b"\r\n\r\n") {
-                    header_end = Some(pos + 4);
-                    let header_section = std::str::from_utf8(&raw[..pos])
-                        .map_err(|_| Error::Http("invalid UTF-8 in headers".into()))?;
-                    let status = parse_status_line(header_section)?;
-                    if status != 200 {
-                        loop {
-                            let n2 = tls.read(&mut tmp)?;
-                            if n2 == 0 { break; }
-                            raw.extend_from_slice(&tmp[..n2]);
+                && let Some(pos) = raw.windows(4).position(|w| w == b"\r\n\r\n")
+            {
+                header_end = Some(pos + 4);
+                let header_section = std::str::from_utf8(&raw[..pos])
+                    .map_err(|_| Error::Http("invalid UTF-8 in headers".into()))?;
+                let status = parse_status_line(header_section)?;
+                if status != 200 {
+                    loop {
+                        let n2 = tls.read(&mut tmp)?;
+                        if n2 == 0 {
+                            break;
                         }
-                        let body = String::from_utf8_lossy(&raw[pos + 4..]).into_owned();
-                        return Err(Error::LLM { status, message: body });
+                        raw.extend_from_slice(&tmp[..n2]);
                     }
+                    let body = String::from_utf8_lossy(&raw[pos + 4..]).into_owned();
+                    return Err(Error::LLM {
+                        status,
+                        message: body,
+                    });
                 }
+            }
             if let Some(hend) = header_end
-                && String::from_utf8_lossy(&raw[hend..]).contains("message_stop") {
-                    break;
-                }
+                && String::from_utf8_lossy(&raw[hend..]).contains("message_stop")
+            {
+                break;
+            }
         }
 
         parse_agent_stream(&raw, header_end, &mut on_text)
@@ -451,7 +469,10 @@ impl StreamAccumulator {
         use crate::agent::message::ContentBlock;
 
         let data = &event.data;
-        let json = match JsonValue::parse(data) { Ok(j) => j, Err(_) => return };
+        let json = match JsonValue::parse(data) {
+            Ok(j) => j,
+            Err(_) => return,
+        };
         let ev_type = match json.get("type").and_then(|v| v.as_str()) {
             Some(t) => t,
             None => return,
@@ -463,10 +484,20 @@ impl StreamAccumulator {
                 let block = json.get("content_block").unwrap_or(&JsonValue::Null);
                 let block_type = block.get("type").and_then(|v| v.as_str()).unwrap_or("");
                 match block_type {
-                    "text" => { self.text_acc.insert(idx, String::new()); }
+                    "text" => {
+                        self.text_acc.insert(idx, String::new());
+                    }
                     "tool_use" => {
-                        let id = block.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                        let name = block.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                        let id = block
+                            .get("id")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        let name = block
+                            .get("name")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string();
                         self.tool_acc.insert(idx, (id, name, String::new()));
                     }
                     _ => {}
@@ -480,14 +511,17 @@ impl StreamAccumulator {
                     "text_delta" => {
                         if let Some(text) = delta.get("text").and_then(|v| v.as_str()) {
                             on_text(text);
-                            if let Some(acc) = self.text_acc.get_mut(&idx) { acc.push_str(text); }
+                            if let Some(acc) = self.text_acc.get_mut(&idx) {
+                                acc.push_str(text);
+                            }
                         }
                     }
                     "input_json_delta" => {
                         if let Some(partial) = delta.get("partial_json").and_then(|v| v.as_str())
-                            && let Some(entry) = self.tool_acc.get_mut(&idx) {
-                                entry.2.push_str(partial);
-                            }
+                            && let Some(entry) = self.tool_acc.get_mut(&idx)
+                        {
+                            entry.2.push_str(partial);
+                        }
                     }
                     _ => {}
                 }
@@ -499,26 +533,30 @@ impl StreamAccumulator {
                 }
                 if let Some((id, name, json_str)) = self.tool_acc.remove(&idx) {
                     let input = JsonValue::parse(&json_str).unwrap_or(JsonValue::Object(vec![]));
-                    self.tool_uses.push(ContentBlock::ToolUse { id, name, input });
+                    self.tool_uses
+                        .push(ContentBlock::ToolUse { id, name, input });
                 }
             }
             "message_start" => {
                 if let Some(usage) = json.get("message").and_then(|m| m.get("usage")) {
-                    self.input_tokens += usage.get("input_tokens")
+                    self.input_tokens += usage
+                        .get("input_tokens")
                         .and_then(|v| v.as_i64())
                         .and_then(|n| u64::try_from(n).ok())
                         .unwrap_or(0);
                 }
             }
             "message_delta" => {
-                if let Some(reason) = json.get("delta")
+                if let Some(reason) = json
+                    .get("delta")
                     .and_then(|d| d.get("stop_reason"))
                     .and_then(|v| v.as_str())
                 {
                     self.stop_reason = reason.to_string();
                 }
                 if let Some(usage) = json.get("usage") {
-                    self.output_tokens += usage.get("output_tokens")
+                    self.output_tokens += usage
+                        .get("output_tokens")
                         .and_then(|v| v.as_i64())
                         .and_then(|n| u64::try_from(n).ok())
                         .unwrap_or(0);
@@ -546,11 +584,15 @@ fn parse_agent_stream(
 ) -> crate::Result<StreamResult> {
     let hend = match header_end {
         Some(h) => h,
-        None => return Ok(StreamResult {
-            text_blocks: vec![], tool_uses: vec![],
-            stop_reason: String::from("end_turn"),
-            input_tokens: 0, output_tokens: 0,
-        }),
+        None => {
+            return Ok(StreamResult {
+                text_blocks: vec![],
+                tool_uses: vec![],
+                stop_reason: String::from("end_turn"),
+                input_tokens: 0,
+                output_tokens: 0,
+            });
+        }
     };
     let body_str = String::from_utf8_lossy(&raw[hend..]);
 
@@ -615,11 +657,16 @@ impl LLMClient {
                 if status != 200 {
                     loop {
                         let n2 = stream.read(&mut buf).await?;
-                        if n2 == 0 { break; }
+                        if n2 == 0 {
+                            break;
+                        }
                         raw.extend_from_slice(&buf[..n2]);
                     }
                     let body = String::from_utf8_lossy(&raw[pos + 4..]).into_owned();
-                    return Err(Error::LLM { status, message: body });
+                    return Err(Error::LLM {
+                        status,
+                        message: body,
+                    });
                 }
                 break;
             }
@@ -647,7 +694,9 @@ impl LLMClient {
 
         loop {
             let n = stream.read(&mut buf).await?;
-            if n == 0 { break; }
+            if n == 0 {
+                break;
+            }
 
             let chunk = std::str::from_utf8(&buf[..n])
                 .map_err(|_| Error::Http("invalid UTF-8 in SSE chunk".into()))?;
@@ -659,7 +708,9 @@ impl LLMClient {
                     saw_stop = true;
                 }
             }
-            if saw_stop { break; }
+            if saw_stop {
+                break;
+            }
         }
 
         Ok(acc.into_result())
@@ -669,12 +720,16 @@ impl LLMClient {
 // ---- helpers ----------------------------------------------------------------
 
 fn parse_status_line(header_section: &str) -> crate::Result<u16> {
-    let first_line = header_section.lines().next()
+    let first_line = header_section
+        .lines()
+        .next()
         .ok_or_else(|| Error::Http("empty response".into()))?;
     let mut parts = first_line.splitn(3, ' ');
     let _version = parts.next();
-    let code_str = parts.next()
+    let code_str = parts
+        .next()
         .ok_or_else(|| Error::Http(format!("malformed status line: {first_line}")))?;
-    code_str.parse::<u16>()
+    code_str
+        .parse::<u16>()
         .map_err(|_| Error::Http(format!("invalid status code: {code_str}")))
 }

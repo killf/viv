@@ -69,8 +69,14 @@ struct Termios {
 impl Termios {
     fn zeroed() -> Self {
         Termios {
-            c_iflag: 0, c_oflag: 0, c_cflag: 0, c_lflag: 0,
-            c_line: 0, c_cc: [0; 32], c_ispeed: 0, c_ospeed: 0,
+            c_iflag: 0,
+            c_oflag: 0,
+            c_cflag: 0,
+            c_lflag: 0,
+            c_line: 0,
+            c_cc: [0; 32],
+            c_ispeed: 0,
+            c_ospeed: 0,
         }
     }
 
@@ -124,17 +130,29 @@ impl UnixTerminal {
             let flags = unsafe { fcntl(fd, F_GETFL) };
             if flags < 0 {
                 unsafe { close(fd) };
-                return Err(crate::Error::Terminal("fcntl(F_GETFL) on /dev/tty failed".to_string()));
+                return Err(crate::Error::Terminal(
+                    "fcntl(F_GETFL) on /dev/tty failed".to_string(),
+                ));
             }
             let ret = unsafe { fcntl(fd, F_SETFL, flags | O_NONBLOCK) };
             if ret < 0 {
                 unsafe { close(fd) };
-                return Err(crate::Error::Terminal("fcntl(F_SETFL) on /dev/tty failed".to_string()));
+                return Err(crate::Error::Terminal(
+                    "fcntl(F_SETFL) on /dev/tty failed".to_string(),
+                ));
             }
-            Ok(UnixTerminal { input_fd: fd, owns_input: true, original_termios: None })
+            Ok(UnixTerminal {
+                input_fd: fd,
+                owns_input: true,
+                original_termios: None,
+            })
         } else {
             // Fall back to fd 0 -- do NOT set O_NONBLOCK on shared fd
-            Ok(UnixTerminal { input_fd: 0, owns_input: false, original_termios: None })
+            Ok(UnixTerminal {
+                input_fd: 0,
+                owns_input: false,
+                original_termios: None,
+            })
         }
     }
 
@@ -145,7 +163,10 @@ impl UnixTerminal {
         let mut original = Termios::zeroed();
         let ret = unsafe { tcgetattr(self.input_fd, &mut original) };
         if ret != 0 {
-            return Err(crate::Error::Terminal(format!("tcgetattr failed with code {}", ret)));
+            return Err(crate::Error::Terminal(format!(
+                "tcgetattr failed with code {}",
+                ret
+            )));
         }
 
         let mut raw = Termios::zeroed();
@@ -160,7 +181,10 @@ impl UnixTerminal {
 
         let ret = unsafe { tcsetattr(self.input_fd, TCSAFLUSH, &raw) };
         if ret != 0 {
-            return Err(crate::Error::Terminal(format!("tcsetattr failed with code {}", ret)));
+            return Err(crate::Error::Terminal(format!(
+                "tcsetattr failed with code {}",
+                ret
+            )));
         }
         self.original_termios = Some(original);
         Ok(())
@@ -170,7 +194,10 @@ impl UnixTerminal {
         if let Some(ref original) = self.original_termios {
             let ret = unsafe { tcsetattr(self.input_fd, TCSAFLUSH, original) };
             if ret != 0 {
-                return Err(crate::Error::Terminal(format!("tcsetattr restore failed with code {}", ret)));
+                return Err(crate::Error::Terminal(format!(
+                    "tcsetattr restore failed with code {}",
+                    ret
+                )));
             }
             self.original_termios = None;
         }
@@ -178,7 +205,12 @@ impl UnixTerminal {
     }
 
     pub fn size(&self) -> crate::Result<(u16, u16)> {
-        let mut ws = Winsize { ws_row: 0, ws_col: 0, ws_xpixel: 0, ws_ypixel: 0 };
+        let mut ws = Winsize {
+            ws_row: 0,
+            ws_col: 0,
+            ws_xpixel: 0,
+            ws_ypixel: 0,
+        };
         let ret = unsafe { ioctl(1, TIOCGWINSZ, &mut ws) };
         if ret == 0 && ws.ws_col > 0 && ws.ws_row > 0 {
             Ok((ws.ws_row, ws.ws_col))
@@ -187,9 +219,13 @@ impl UnixTerminal {
         }
     }
 
-    pub fn input_handle(&self) -> RawHandle { self.input_fd }
+    pub fn input_handle(&self) -> RawHandle {
+        self.input_fd
+    }
 
-    pub fn owns_input(&self) -> bool { self.owns_input }
+    pub fn owns_input(&self) -> bool {
+        self.owns_input
+    }
 
     pub fn read_input(&self, buf: &mut [u8]) -> crate::Result<usize> {
         let n = unsafe { read(self.input_fd, buf.as_mut_ptr(), buf.len()) };
@@ -249,18 +285,30 @@ impl UnixResizeListener {
         for &fd in &[read_fd, write_fd] {
             let flags = unsafe { fcntl(fd, F_GETFL) };
             if flags < 0 {
-                unsafe { close(read_fd); close(write_fd); }
-                return Err(crate::Error::Terminal("fcntl(F_GETFL) failed on signal pipe".to_string()));
+                unsafe {
+                    close(read_fd);
+                    close(write_fd);
+                }
+                return Err(crate::Error::Terminal(
+                    "fcntl(F_GETFL) failed on signal pipe".to_string(),
+                ));
             }
             let ret = unsafe { fcntl(fd, F_SETFL, flags | O_NONBLOCK) };
             if ret < 0 {
-                unsafe { close(read_fd); close(write_fd); }
-                return Err(crate::Error::Terminal("fcntl(F_SETFL) failed on signal pipe".to_string()));
+                unsafe {
+                    close(read_fd);
+                    close(write_fd);
+                }
+                return Err(crate::Error::Terminal(
+                    "fcntl(F_SETFL) failed on signal pipe".to_string(),
+                ));
             }
         }
 
         // Set global write fd for the signal handler
-        unsafe { RESIZE_SIGNAL_WRITE_FD = write_fd; }
+        unsafe {
+            RESIZE_SIGNAL_WRITE_FD = write_fd;
+        }
 
         // Install SIGWINCH handler
         let sa = Sigaction {
@@ -271,20 +319,30 @@ impl UnixResizeListener {
         };
         let ret = unsafe { sigaction(SIGWINCH, &sa, std::ptr::null_mut()) };
         if ret != 0 {
-            unsafe { close(read_fd); close(write_fd); }
-            return Err(crate::Error::Terminal(format!("sigaction() failed: {}", ret)));
+            unsafe {
+                close(read_fd);
+                close(write_fd);
+            }
+            return Err(crate::Error::Terminal(format!(
+                "sigaction() failed: {}",
+                ret
+            )));
         }
 
         Ok(UnixResizeListener { read_fd, write_fd })
     }
 
-    pub fn handle(&self) -> RawHandle { self.read_fd }
+    pub fn handle(&self) -> RawHandle {
+        self.read_fd
+    }
 
     pub fn drain(&self) {
         let mut buf = [0u8; 64];
         loop {
             let n = unsafe { read(self.read_fd, buf.as_mut_ptr(), buf.len()) };
-            if n <= 0 { break; }
+            if n <= 0 {
+                break;
+            }
         }
     }
 }

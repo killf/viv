@@ -17,7 +17,7 @@ use crate::tui::message_style::{
 use crate::tui::paragraph::{Line, Paragraph, Span};
 use crate::tui::permission::{render_permission_pending, render_permission_result};
 use crate::tui::renderer::Renderer;
-use crate::tui::spinner::{random_verb, Spinner};
+use crate::tui::spinner::{Spinner, random_verb};
 use crate::tui::status::StatusWidget;
 use crate::tui::widget::Widget;
 
@@ -145,37 +145,34 @@ impl TerminalUI {
             }
 
             // Animate spinner while busy and no real response yet
-            if self.busy && self.current_response.is_empty()
-                && let Some(idx) = self.response_line_idx {
-                    let elapsed = self
-                        .spinner_start
-                        .map(|s| s.elapsed().as_millis() as u64)
-                        .unwrap_or(0);
-                    self.history_lines.truncate(idx);
-                    self.history_lines.push(Line::from_spans(vec![
-                        Span::styled(
-                            format!("{} ", self.spinner.frame_at(elapsed)),
-                            theme::CLAUDE,
-                            false,
-                        ),
-                        Span::styled(
-                            format!("{}\u{2026}", self.spinner_verb),
-                            theme::DIM,
-                            false,
-                        ),
-                    ]));
-                    dirty = true;
-                }
+            if self.busy
+                && self.current_response.is_empty()
+                && let Some(idx) = self.response_line_idx
+            {
+                let elapsed = self
+                    .spinner_start
+                    .map(|s| s.elapsed().as_millis() as u64)
+                    .unwrap_or(0);
+                self.history_lines.truncate(idx);
+                self.history_lines.push(Line::from_spans(vec![
+                    Span::styled(
+                        format!("{} ", self.spinner.frame_at(elapsed)),
+                        theme::CLAUDE,
+                        false,
+                    ),
+                    Span::styled(format!("{}\u{2026}", self.spinner_verb), theme::DIM, false),
+                ]));
+                dirty = true;
+            }
 
             // Animate the shutdown spinner while waiting for the agent to
             // finish `evolve()` after Ctrl+D.
             if self.quitting
-                && let (Some(start), Some(idx)) =
-                    (self.quitting_start, self.quitting_line_idx)
-                {
-                    let elapsed = start.elapsed().as_millis() as u64;
-                    self.history_lines.truncate(idx);
-                    self.history_lines.push(Line::from_spans(vec![
+                && let (Some(start), Some(idx)) = (self.quitting_start, self.quitting_line_idx)
+            {
+                let elapsed = start.elapsed().as_millis() as u64;
+                self.history_lines.truncate(idx);
+                self.history_lines.push(Line::from_spans(vec![
                         Span::styled(
                             format!("{} ", self.spinner.frame_at(elapsed)),
                             theme::CLAUDE,
@@ -188,8 +185,8 @@ impl TerminalUI {
                             false,
                         ),
                     ]));
-                    dirty = true;
-                }
+                dirty = true;
+            }
 
             if dirty {
                 // Compute the cursor position before painting, then hand it to
@@ -278,15 +275,10 @@ impl TerminalUI {
                         theme::CLAUDE,
                         false,
                     ),
-                    Span::styled(
-                        format!("{}\u{2026}", self.spinner_verb),
-                        theme::DIM,
-                        false,
-                    ),
+                    Span::styled(format!("{}\u{2026}", self.spinner_verb), theme::DIM, false),
                 ]));
                 self.response_line_idx = Some(self.history_lines.len() - 1);
-                self.scroll =
-                    compute_max_scroll(&self.history_lines, &self.renderer, &self.editor);
+                self.scroll = compute_max_scroll(&self.history_lines, &self.renderer, &self.editor);
             }
 
             AgentMessage::TextChunk(s) => {
@@ -304,16 +296,13 @@ impl TerminalUI {
                     // Keep scroll at bottom.
                     let _ = new_len; // suppress unused warning
                 }
-                self.scroll =
-                    compute_max_scroll(&self.history_lines, &self.renderer, &self.editor);
+                self.scroll = compute_max_scroll(&self.history_lines, &self.renderer, &self.editor);
             }
 
             AgentMessage::Status(s) => {
-                self.history_lines.push(Line::from_spans(vec![
-                    Span::styled(s, theme::DIM, false),
-                ]));
-                self.scroll =
-                    compute_max_scroll(&self.history_lines, &self.renderer, &self.editor);
+                self.history_lines
+                    .push(Line::from_spans(vec![Span::styled(s, theme::DIM, false)]));
+                self.scroll = compute_max_scroll(&self.history_lines, &self.renderer, &self.editor);
             }
 
             AgentMessage::ToolStart { name, input } => {
@@ -322,11 +311,12 @@ impl TerminalUI {
                 } else {
                     format!("  \u{25b6} {}({})", name, input)
                 };
-                self.history_lines.push(Line::from_spans(vec![
-                    Span::styled(summary, theme::DIM, false),
-                ]));
-                self.scroll =
-                    compute_max_scroll(&self.history_lines, &self.renderer, &self.editor);
+                self.history_lines.push(Line::from_spans(vec![Span::styled(
+                    summary,
+                    theme::DIM,
+                    false,
+                )]));
+                self.scroll = compute_max_scroll(&self.history_lines, &self.renderer, &self.editor);
             }
 
             AgentMessage::ToolEnd { .. } => {
@@ -336,16 +326,15 @@ impl TerminalUI {
             AgentMessage::ToolError { name, error } => {
                 let msg = format!("tool error [{}]: {}", name, error);
                 self.history_lines.extend(format_error_message(&msg));
-                self.scroll =
-                    compute_max_scroll(&self.history_lines, &self.renderer, &self.editor);
+                self.scroll = compute_max_scroll(&self.history_lines, &self.renderer, &self.editor);
             }
 
             AgentMessage::PermissionRequest { tool, input } => {
-                self.history_lines.push(render_permission_pending(&tool, &input));
+                self.history_lines
+                    .push(render_permission_pending(&tool, &input));
                 let idx = self.history_lines.len() - 1;
                 self.pending_permission = Some((idx, tool, input));
-                self.scroll =
-                    compute_max_scroll(&self.history_lines, &self.renderer, &self.editor);
+                self.scroll = compute_max_scroll(&self.history_lines, &self.renderer, &self.editor);
             }
 
             AgentMessage::Tokens { input, output } => {
@@ -357,8 +346,7 @@ impl TerminalUI {
                 self.busy = false;
                 self.response_line_idx = None;
                 self.history_lines.push(Line::raw(""));
-                self.scroll =
-                    compute_max_scroll(&self.history_lines, &self.renderer, &self.editor);
+                self.scroll = compute_max_scroll(&self.history_lines, &self.renderer, &self.editor);
             }
 
             AgentMessage::Evolved => {
@@ -369,8 +357,7 @@ impl TerminalUI {
                 self.history_lines
                     .extend(format_error_message(&format!("error: {}", e)));
                 self.busy = false;
-                self.scroll =
-                    compute_max_scroll(&self.history_lines, &self.renderer, &self.editor);
+                self.scroll = compute_max_scroll(&self.history_lines, &self.renderer, &self.editor);
             }
         }
     }
@@ -568,7 +555,11 @@ pub struct LineEditor {
 
 impl LineEditor {
     pub fn new() -> Self {
-        LineEditor { lines: vec![String::new()], row: 0, col: 0 }
+        LineEditor {
+            lines: vec![String::new()],
+            row: 0,
+            col: 0,
+        }
     }
 
     pub fn content(&self) -> String {

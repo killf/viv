@@ -1,10 +1,10 @@
-use std::sync::mpsc;
-use std::task::Poll;
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::mpsc;
+use std::task::Poll;
 use std::task::{Context, RawWaker, RawWakerVTable, Waker};
 
-use viv::core::runtime::task::{oneshot, Task};
+use viv::core::runtime::task::{Task, oneshot};
 
 // Noop waker for manual polling
 fn noop_raw_waker() -> RawWaker {
@@ -47,11 +47,7 @@ fn oneshot_ready_after_send() {
 fn waker_sends_task_id_on_wake() {
     let (sender, receiver) = mpsc::channel::<usize>();
 
-    let task = Task::new(
-        0,
-        async { /* no-op future */ },
-        sender,
-    );
+    let task = Task::new(0, async { /* no-op future */ }, sender);
 
     let waker = task.waker();
     waker.wake_by_ref();

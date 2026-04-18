@@ -5,7 +5,6 @@ pub struct PermissionManager {
     session_allowed: HashSet<String>,
 }
 
-
 impl PermissionManager {
     /// Returns true if the tool has already been granted in this session.
     pub fn is_allowed(&self, tool_name: &str) -> bool {

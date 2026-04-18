@@ -133,9 +133,9 @@ pub fn encode_finished(verify_data: &[u8; 32], out: &mut Vec<u8>) {
 /// This is sent as a full TLS record (type 0x14), not a handshake message.
 pub fn encode_change_cipher_spec(out: &mut Vec<u8>) {
     out.push(CHANGE_CIPHER_SPEC); // content type
-    push_u16(out, 0x0303);        // legacy version TLS 1.2
-    push_u16(out, 1);             // length = 1
-    out.push(0x01);               // CCS payload
+    push_u16(out, 0x0303); // legacy version TLS 1.2
+    push_u16(out, 1); // length = 1
+    out.push(0x01); // CCS payload
 }
 
 // ── Extension encoders ─────────────────────────────────────────────
@@ -160,7 +160,7 @@ fn encode_ext_server_name(name: &str, out: &mut Vec<u8>) {
 fn encode_ext_supported_versions(out: &mut Vec<u8>) {
     push_u16(out, EXT_SUPPORTED_VERSIONS);
     push_u16(out, 3); // extension data length
-    out.push(2);      // list length (1 * 2 bytes)
+    out.push(2); // list length (1 * 2 bytes)
     push_u16(out, 0x0304); // TLS 1.3
 }
 
@@ -178,7 +178,7 @@ fn encode_ext_key_share(pub_key: &[u8; 32], out: &mut Vec<u8>) {
     // client_shares length = group(2) + key_len(2) + key(32) = 36
     push_u16(out, 36);
     push_u16(out, 0x001d); // x25519
-    push_u16(out, 32);     // key exchange length
+    push_u16(out, 32); // key exchange length
     out.extend_from_slice(pub_key);
 }
 
@@ -225,7 +225,8 @@ pub fn decode_handshake(data: &[u8]) -> crate::Result<HandshakeMessage> {
         CERTIFICATE_VERIFY => decode_certificate_verify(body),
         FINISHED => decode_finished(body),
         _ => Err(crate::Error::Tls(format!(
-            "unknown handshake type: 0x{:02x}", msg_type
+            "unknown handshake type: 0x{:02x}",
+            msg_type
         ))),
     }
 }
@@ -262,7 +263,9 @@ fn decode_server_hello(body: &[u8]) -> crate::Result<HandshakeMessage> {
 
     // compression_method (skip 1 byte)
     if pos >= body.len() {
-        return Err(crate::Error::Tls("ServerHello truncated at compression".into()));
+        return Err(crate::Error::Tls(
+            "ServerHello truncated at compression".into(),
+        ));
     }
     pos += 1;
 
@@ -301,7 +304,8 @@ fn decode_server_hello(body: &[u8]) -> crate::Result<HandshakeMessage> {
                     let ver = read_u16(body, pos)?;
                     if ver != 0x0304 {
                         return Err(crate::Error::Tls(format!(
-                            "unsupported TLS version: 0x{:04x}", ver
+                            "unsupported TLS version: 0x{:04x}",
+                            ver
                         )));
                     }
                 }

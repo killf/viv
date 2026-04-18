@@ -55,12 +55,10 @@ impl<T: Transport> LspClient<T> {
                     JsonValue::Object(vec![
                         (
                             "definition".to_string(),
-                            JsonValue::Object(vec![
-                                (
-                                    "dynamicRegistration".to_string(),
-                                    JsonValue::Bool(false),
-                                ),
-                            ]),
+                            JsonValue::Object(vec![(
+                                "dynamicRegistration".to_string(),
+                                JsonValue::Bool(false),
+                            )]),
                         ),
                         (
                             "references".to_string(),
@@ -76,10 +74,7 @@ impl<T: Transport> LspClient<T> {
                                 JsonValue::Bool(false),
                             )]),
                         ),
-                        (
-                            "publishDiagnostics".to_string(),
-                            JsonValue::Object(vec![]),
-                        ),
+                        ("publishDiagnostics".to_string(), JsonValue::Object(vec![])),
                     ]),
                 )]),
             ),
@@ -103,7 +98,9 @@ impl<T: Transport> LspClient<T> {
         character: u32,
     ) -> crate::Result<Vec<Location>> {
         let params = text_document_position(uri, line, character);
-        let result = self.request("textDocument/definition", Some(params)).await?;
+        let result = self
+            .request("textDocument/definition", Some(params))
+            .await?;
         parse_location_response(&result)
     }
 
@@ -123,7 +120,9 @@ impl<T: Transport> LspClient<T> {
             )]),
         ));
         let params = JsonValue::Object(params_pairs);
-        let result = self.request("textDocument/references", Some(params)).await?;
+        let result = self
+            .request("textDocument/references", Some(params))
+            .await?;
         parse_location_response(&result)
     }
 
@@ -184,23 +183,25 @@ impl<T: Transport> LspClient<T> {
         content: &str,
         version: i32,
     ) -> crate::Result<()> {
-        let params = JsonValue::Object(vec![(
-            "textDocument".to_string(),
-            JsonValue::Object(vec![
-                ("uri".to_string(), JsonValue::Str(uri.to_string())),
-                (
-                    "version".to_string(),
-                    JsonValue::Number(crate::core::json::Number::Int(version as i64)),
-                ),
-            ]),
-        ), (
-            "contentChanges".to_string(),
-            JsonValue::Array(vec![
+        let params = JsonValue::Object(vec![
+            (
+                "textDocument".to_string(),
                 JsonValue::Object(vec![
-                    ("text".to_string(), JsonValue::Str(content.to_string())),
+                    ("uri".to_string(), JsonValue::Str(uri.to_string())),
+                    (
+                        "version".to_string(),
+                        JsonValue::Number(crate::core::json::Number::Int(version as i64)),
+                    ),
                 ]),
-            ]),
-        )]);
+            ),
+            (
+                "contentChanges".to_string(),
+                JsonValue::Array(vec![JsonValue::Object(vec![(
+                    "text".to_string(),
+                    JsonValue::Str(content.to_string()),
+                )])]),
+            ),
+        ]);
         self.notify("textDocument/didChange", Some(params)).await
     }
 
@@ -229,7 +230,11 @@ impl<T: Transport> LspClient<T> {
     ) -> crate::Result<JsonValue> {
         let id = self.next_id;
         self.next_id += 1;
-        let req = Request { id, method: method.to_string(), params };
+        let req = Request {
+            id,
+            method: method.to_string(),
+            params,
+        };
         self.transport.send(req.to_json()).await?;
 
         loop {
@@ -257,7 +262,10 @@ impl<T: Transport> LspClient<T> {
 
     /// Send a JSON-RPC notification (no response expected).
     async fn notify(&mut self, method: &str, params: Option<JsonValue>) -> crate::Result<()> {
-        let notif = Notification { method: method.to_string(), params };
+        let notif = Notification {
+            method: method.to_string(),
+            params,
+        };
         self.transport.send(notif.to_json()).await
     }
 
@@ -323,9 +331,7 @@ fn text_document_position(uri: &str, line: u32, character: u32) -> JsonValue {
 fn parse_location_response(result: &JsonValue) -> crate::Result<Vec<Location>> {
     match result {
         JsonValue::Null => Ok(Vec::new()),
-        JsonValue::Array(items) => {
-            items.iter().map(Location::from_json).collect()
-        }
+        JsonValue::Array(items) => items.iter().map(Location::from_json).collect(),
         obj @ JsonValue::Object(_) => Ok(vec![Location::from_json(obj)?]),
         _ => Err(Error::Lsp {
             server: "lsp".to_string(),

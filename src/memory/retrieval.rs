@@ -1,7 +1,7 @@
-use crate::Result;
-use crate::llm::{LLMClient, ModelTier};
 use super::index::{MemoryEntry, MemoryIndex};
 use super::store::MemoryStore;
+use crate::Result;
+use crate::llm::{LLMClient, ModelTier};
 
 pub struct RetrievalResult {
     pub entry: MemoryEntry,
@@ -35,7 +35,10 @@ pub async fn retrieve_relevant(
     let mut results = vec![];
     for entry in selected {
         if let Ok(content) = store.read(&entry.file) {
-            results.push(RetrievalResult { entry: entry.clone(), content });
+            results.push(RetrievalResult {
+                entry: entry.clone(),
+                content,
+            });
         }
     }
     Ok(results)
@@ -61,13 +64,19 @@ async fn llm_rank<'a>(
     );
 
     use crate::agent::message::{Message, SystemBlock};
-    let system = vec![SystemBlock::dynamic("You are a memory retrieval assistant.")];
+    let system = vec![SystemBlock::dynamic(
+        "You are a memory retrieval assistant.",
+    )];
     let messages = vec![Message::user_text(prompt)];
     let mut response = String::new();
-    llm.stream_agent_async(&system, &messages, "", ModelTier::Fast, |t| response.push_str(t)).await?;
+    llm.stream_agent_async(&system, &messages, "", ModelTier::Fast, |t| {
+        response.push_str(t)
+    })
+    .await?;
 
     let indices = parse_index_array(&response);
-    Ok(indices.into_iter()
+    Ok(indices
+        .into_iter()
         .filter(|&i| i < candidates.len())
         .map(|i| candidates[i])
         .take(top_k)
@@ -78,7 +87,8 @@ fn parse_index_array(s: &str) -> Vec<usize> {
     let start = s.find('[').unwrap_or(0);
     let end = s.rfind(']').map(|i| i + 1).unwrap_or(s.len());
     let slice = &s[start..end];
-    slice.split(|c: char| !c.is_ascii_digit())
+    slice
+        .split(|c: char| !c.is_ascii_digit())
         .filter(|s| !s.is_empty())
         .filter_map(|s| s.parse::<usize>().ok())
         .collect()

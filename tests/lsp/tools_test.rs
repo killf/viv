@@ -1,9 +1,9 @@
 use std::sync::{Arc, Mutex};
+use viv::core::json::JsonValue;
 use viv::lsp::LspManager;
 use viv::lsp::config::LspConfig;
 use viv::lsp::tools::{LspDefinitionTool, LspDiagnosticsTool, LspHoverTool, LspReferencesTool};
 use viv::tools::{PermissionLevel, Tool};
-use viv::core::json::JsonValue;
 
 fn empty_manager() -> Arc<Mutex<LspManager>> {
     let config = LspConfig::parse("{}").unwrap();
@@ -27,7 +27,10 @@ fn definition_tool_metadata() {
     let props = schema.get("properties").expect("schema has properties");
     assert!(props.get("file").is_some(), "schema has 'file' property");
     assert!(props.get("line").is_some(), "schema has 'line' property");
-    assert!(props.get("column").is_some(), "schema has 'column' property");
+    assert!(
+        props.get("column").is_some(),
+        "schema has 'column' property"
+    );
 
     // All three required
     let required = schema.get("required").expect("schema has required");
@@ -121,12 +124,24 @@ fn definition_tool_no_server_returns_error() {
     let tool = LspDefinitionTool::new(mgr);
 
     let input = JsonValue::Object(vec![
-        ("file".to_string(), JsonValue::Str("/tmp/test.rs".to_string())),
-        ("line".to_string(), JsonValue::Number(viv::core::json::Number::Int(0))),
-        ("column".to_string(), JsonValue::Number(viv::core::json::Number::Int(0))),
+        (
+            "file".to_string(),
+            JsonValue::Str("/tmp/test.rs".to_string()),
+        ),
+        (
+            "line".to_string(),
+            JsonValue::Number(viv::core::json::Number::Int(0)),
+        ),
+        (
+            "column".to_string(),
+            JsonValue::Number(viv::core::json::Number::Int(0)),
+        ),
     ]);
 
     let result = viv::tools::poll_to_completion(tool.execute(&input));
     // Should fail because no LSP server is configured
-    assert!(result.is_err(), "expected error when no LSP server configured");
+    assert!(
+        result.is_err(),
+        "expected error when no LSP server configured"
+    );
 }

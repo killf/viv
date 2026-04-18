@@ -10,7 +10,10 @@ fn tempdir() -> std::path::PathBuf {
     p
 }
 fn nanos() -> u32 {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().subsec_nanos()
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .subsec_nanos()
 }
 
 #[test]
@@ -22,7 +25,7 @@ fn read_returns_content_with_line_numbers() {
     let result = poll_to_completion(ReadTool.execute(&input)).unwrap();
     assert!(result.contains("alpha"));
     assert!(result.contains("beta"));
-    assert!(result.contains('1'));  // line number
+    assert!(result.contains('1')); // line number
 }
 
 #[test]
@@ -30,7 +33,11 @@ fn read_with_offset_skips_lines() {
     let dir = tempdir();
     let path = dir.join("f.txt");
     fs::write(&path, "a\nb\nc\n").unwrap();
-    let input = JsonValue::parse(&format!(r#"{{"file_path":"{}","offset":2,"limit":1}}"#, path.display())).unwrap();
+    let input = JsonValue::parse(&format!(
+        r#"{{"file_path":"{}","offset":2,"limit":1}}"#,
+        path.display()
+    ))
+    .unwrap();
     let result = poll_to_completion(ReadTool.execute(&input)).unwrap();
     assert!(result.contains('b'));
     assert!(!result.contains('a'));

@@ -9,7 +9,7 @@ fn block_on_immediate_future() {
 #[test]
 fn spawn_two_tasks_run() {
     let result = block_on(async {
-        1i32 + 2i32  // 简单验证 block_on 工作
+        1i32 + 2i32 // 简单验证 block_on 工作
     });
     assert_eq!(result, 3);
 }
@@ -24,13 +24,19 @@ fn task_wakes_and_completes() {
     let waker_slot: Arc<Mutex<Option<Waker>>> = Arc::new(Mutex::new(None));
     let slot = waker_slot.clone();
 
-    struct OncePending { done: bool, slot: Arc<Mutex<Option<Waker>>> }
+    struct OncePending {
+        done: bool,
+        slot: Arc<Mutex<Option<Waker>>>,
+    }
     impl std::future::Future for OncePending {
         type Output = i32;
-        fn poll(mut self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>)
-            -> std::task::Poll<i32>
-        {
-            if self.done { return std::task::Poll::Ready(99); }
+        fn poll(
+            mut self: std::pin::Pin<&mut Self>,
+            cx: &mut std::task::Context<'_>,
+        ) -> std::task::Poll<i32> {
+            if self.done {
+                return std::task::Poll::Ready(99);
+            }
             self.done = true;
             // 存储 waker 后立刻 wake：模拟外部事件立即就绪
             let waker = cx.waker().clone();
@@ -40,8 +46,6 @@ fn task_wakes_and_completes() {
         }
     }
 
-    let result = block_on(async move {
-        OncePending { done: false, slot }.await
-    });
+    let result = block_on(async move { OncePending { done: false, slot }.await });
     assert_eq!(result, 99);
 }

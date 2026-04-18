@@ -56,7 +56,12 @@ fn buffer_empty_all_default() {
 #[test]
 fn buffer_set_get() {
     let mut buf = Buffer::empty(Rect::new(0, 0, 10, 5));
-    let cell = Cell { ch: 'X', fg: Some(Color::Ansi(31)), bg: None, bold: true };
+    let cell = Cell {
+        ch: 'X',
+        fg: Some(Color::Ansi(31)),
+        bg: None,
+        bold: true,
+    };
     buf.set(3, 2, cell);
     assert_eq!(*buf.get(3, 2), cell);
 }

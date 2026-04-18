@@ -10,7 +10,11 @@ pub struct Cell {
 
 impl Default for Cell {
     fn default() -> Self {
-        Cell { ch: ' ', fg: None, bold: false }
+        Cell {
+            ch: ' ',
+            fg: None,
+            bold: false,
+        }
     }
 }
 
@@ -64,7 +68,11 @@ impl Screen {
                 break;
             }
             let i = (row as usize) * (self.width as usize) + c;
-            self.back[i] = Cell { ch, fg: None, bold: false };
+            self.back[i] = Cell {
+                ch,
+                fg: None,
+                bold: false,
+            };
         }
     }
 

@@ -33,10 +33,15 @@ impl PipeNotifier {
         }
         set_nonblocking(fds[0]);
         set_nonblocking(fds[1]);
-        Ok(PipeNotifier { read_fd: fds[0], write_fd: fds[1] })
+        Ok(PipeNotifier {
+            read_fd: fds[0],
+            write_fd: fds[1],
+        })
     }
 
-    pub fn handle(&self) -> RawHandle { self.read_fd }
+    pub fn handle(&self) -> RawHandle {
+        self.read_fd
+    }
 
     pub fn notify(&self) -> crate::Result<()> {
         let byte: u8 = 1;
@@ -48,7 +53,9 @@ impl PipeNotifier {
         let mut buf = [0u8; 64];
         loop {
             let n = unsafe { read(self.read_fd, buf.as_mut_ptr(), buf.len()) };
-            if n <= 0 { break; }
+            if n <= 0 {
+                break;
+            }
         }
         Ok(())
     }
@@ -56,6 +63,9 @@ impl PipeNotifier {
 
 impl Drop for PipeNotifier {
     fn drop(&mut self) {
-        unsafe { close(self.read_fd); close(self.write_fd); }
+        unsafe {
+            close(self.read_fd);
+            close(self.write_fd);
+        }
     }
 }

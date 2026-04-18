@@ -116,7 +116,13 @@ impl<T: Transport> McpClient<T> {
             });
 
             let result = self.request("tools/list", params).await?;
-            let result_obj = JsonValue::Object(vec![("tools".into(), result.get("tools").cloned().unwrap_or(JsonValue::Array(vec![])))]);
+            let result_obj = JsonValue::Object(vec![(
+                "tools".into(),
+                result
+                    .get("tools")
+                    .cloned()
+                    .unwrap_or(JsonValue::Array(vec![])),
+            )]);
             all_tools.extend(McpTool::parse_list(&result_obj)?);
 
             // Check for next cursor
@@ -157,7 +163,13 @@ impl<T: Transport> McpClient<T> {
             });
 
             let result = self.request("resources/list", params).await?;
-            let result_obj = JsonValue::Object(vec![("resources".into(), result.get("resources").cloned().unwrap_or(JsonValue::Array(vec![])))]);
+            let result_obj = JsonValue::Object(vec![(
+                "resources".into(),
+                result
+                    .get("resources")
+                    .cloned()
+                    .unwrap_or(JsonValue::Array(vec![])),
+            )]);
             all_resources.extend(McpResource::parse_list(&result_obj)?);
 
             match result.get("nextCursor").and_then(|v| v.as_str()) {
@@ -190,7 +202,13 @@ impl<T: Transport> McpClient<T> {
             });
 
             let result = self.request("prompts/list", params).await?;
-            let result_obj = JsonValue::Object(vec![("prompts".into(), result.get("prompts").cloned().unwrap_or(JsonValue::Array(vec![])))]);
+            let result_obj = JsonValue::Object(vec![(
+                "prompts".into(),
+                result
+                    .get("prompts")
+                    .cloned()
+                    .unwrap_or(JsonValue::Array(vec![])),
+            )]);
             all_prompts.extend(McpPrompt::parse_list(&result_obj)?);
 
             match result.get("nextCursor").and_then(|v| v.as_str()) {

@@ -1,6 +1,6 @@
-use std::io::Write as IoWrite;
 use super::size::TermSize;
 use crate::core::platform::PlatformTerminal;
+use std::io::Write as IoWrite;
 
 /// ANSI sequence to switch to the terminal's alternate screen buffer
 /// (like vim/htop). Preserves the user's scrollback.
@@ -152,7 +152,9 @@ impl CrossBackend {
 }
 
 impl Default for CrossBackend {
-    fn default() -> Self { Self::new().expect("CrossBackend::new") }
+    fn default() -> Self {
+        Self::new().expect("CrossBackend::new")
+    }
 }
 
 impl Drop for CrossBackend {

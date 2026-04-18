@@ -1,5 +1,5 @@
-use crate::core::json::JsonValue;
 use crate::Error;
+use crate::core::json::JsonValue;
 
 // ---------------------------------------------------------------------------
 // Server capabilities from initialize response
@@ -341,18 +341,14 @@ impl ContentItem {
                 let mime_type = json
                     .get("mimeType")
                     .and_then(|v| v.as_str())
-                    .ok_or_else(|| {
-                        Error::Json("image ContentItem missing 'mimeType'".to_string())
-                    })?
+                    .ok_or_else(|| Error::Json("image ContentItem missing 'mimeType'".to_string()))?
                     .to_string();
                 Ok(ContentItem::Image { data, mime_type })
             }
             "resource" => {
-                let resource = json
-                    .get("resource")
-                    .ok_or_else(|| {
-                        Error::Json("resource ContentItem missing 'resource'".to_string())
-                    })?;
+                let resource = json.get("resource").ok_or_else(|| {
+                    Error::Json("resource ContentItem missing 'resource'".to_string())
+                })?;
                 let uri = resource
                     .get("uri")
                     .and_then(|v| v.as_str())

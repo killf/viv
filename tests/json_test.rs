@@ -25,80 +25,125 @@ fn test_parse_false() {
 // --- Numbers ---
 #[test]
 fn test_parse_integer() {
-    assert_eq!(JsonValue::parse("42").unwrap(), JsonValue::Number(Number::Int(42)));
+    assert_eq!(
+        JsonValue::parse("42").unwrap(),
+        JsonValue::Number(Number::Int(42))
+    );
 }
 
 #[test]
 fn test_parse_negative_integer() {
-    assert_eq!(JsonValue::parse("-7").unwrap(), JsonValue::Number(Number::Int(-7)));
+    assert_eq!(
+        JsonValue::parse("-7").unwrap(),
+        JsonValue::Number(Number::Int(-7))
+    );
 }
 
 #[test]
 fn test_parse_float() {
-    assert_eq!(JsonValue::parse("-3.14").unwrap(), JsonValue::Number(Number::Float(-3.14)));
+    assert_eq!(
+        JsonValue::parse("-3.14").unwrap(),
+        JsonValue::Number(Number::Float(-3.14))
+    );
 }
 
 #[test]
 fn test_parse_exponent() {
-    assert_eq!(JsonValue::parse("1e3").unwrap(), JsonValue::Number(Number::Float(1000.0)));
+    assert_eq!(
+        JsonValue::parse("1e3").unwrap(),
+        JsonValue::Number(Number::Float(1000.0))
+    );
 }
 
 #[test]
 fn test_parse_negative_exponent() {
-    assert_eq!(JsonValue::parse("2.5e-2").unwrap(), JsonValue::Number(Number::Float(0.025)));
+    assert_eq!(
+        JsonValue::parse("2.5e-2").unwrap(),
+        JsonValue::Number(Number::Float(0.025))
+    );
 }
 
 #[test]
 fn test_parse_zero() {
-    assert_eq!(JsonValue::parse("0").unwrap(), JsonValue::Number(Number::Int(0)));
+    assert_eq!(
+        JsonValue::parse("0").unwrap(),
+        JsonValue::Number(Number::Int(0))
+    );
 }
 
 // --- Strings ---
 #[test]
 fn test_parse_simple_string() {
-    assert_eq!(JsonValue::parse(r#""hello""#).unwrap(), JsonValue::Str("hello".to_string()));
+    assert_eq!(
+        JsonValue::parse(r#""hello""#).unwrap(),
+        JsonValue::Str("hello".to_string())
+    );
 }
 
 #[test]
 fn test_parse_empty_string() {
-    assert_eq!(JsonValue::parse(r#""""#).unwrap(), JsonValue::Str("".to_string()));
+    assert_eq!(
+        JsonValue::parse(r#""""#).unwrap(),
+        JsonValue::Str("".to_string())
+    );
 }
 
 #[test]
 fn test_parse_string_with_escaped_quote() {
-    assert_eq!(JsonValue::parse(r#""say \"hi\"""#).unwrap(), JsonValue::Str(r#"say "hi""#.to_string()));
+    assert_eq!(
+        JsonValue::parse(r#""say \"hi\"""#).unwrap(),
+        JsonValue::Str(r#"say "hi""#.to_string())
+    );
 }
 
 #[test]
 fn test_parse_string_with_escaped_backslash() {
-    assert_eq!(JsonValue::parse(r#""a\\b""#).unwrap(), JsonValue::Str("a\\b".to_string()));
+    assert_eq!(
+        JsonValue::parse(r#""a\\b""#).unwrap(),
+        JsonValue::Str("a\\b".to_string())
+    );
 }
 
 #[test]
 fn test_parse_string_with_escaped_newline() {
-    assert_eq!(JsonValue::parse(r#""line1\nline2""#).unwrap(), JsonValue::Str("line1\nline2".to_string()));
+    assert_eq!(
+        JsonValue::parse(r#""line1\nline2""#).unwrap(),
+        JsonValue::Str("line1\nline2".to_string())
+    );
 }
 
 #[test]
 fn test_parse_string_with_escaped_tab() {
-    assert_eq!(JsonValue::parse(r#""col1\tcol2""#).unwrap(), JsonValue::Str("col1\tcol2".to_string()));
+    assert_eq!(
+        JsonValue::parse(r#""col1\tcol2""#).unwrap(),
+        JsonValue::Str("col1\tcol2".to_string())
+    );
 }
 
 #[test]
 fn test_parse_string_with_escaped_slash() {
-    assert_eq!(JsonValue::parse(r#""a\/b""#).unwrap(), JsonValue::Str("a/b".to_string()));
+    assert_eq!(
+        JsonValue::parse(r#""a\/b""#).unwrap(),
+        JsonValue::Str("a/b".to_string())
+    );
 }
 
 #[test]
 fn test_parse_string_with_unicode_escape() {
     // \u0041 = 'A'
-    assert_eq!(JsonValue::parse(r#""\u0041""#).unwrap(), JsonValue::Str("A".to_string()));
+    assert_eq!(
+        JsonValue::parse(r#""\u0041""#).unwrap(),
+        JsonValue::Str("A".to_string())
+    );
 }
 
 #[test]
 fn test_parse_string_with_unicode_escape_emoji_range() {
     // \u03B1 = Greek small letter alpha
-    assert_eq!(JsonValue::parse(r#""\u03B1""#).unwrap(), JsonValue::Str("α".to_string()));
+    assert_eq!(
+        JsonValue::parse(r#""\u03B1""#).unwrap(),
+        JsonValue::Str("α".to_string())
+    );
 }
 
 // --- Arrays ---
@@ -123,7 +168,10 @@ fn test_parse_array_of_numbers() {
 fn test_parse_array_with_whitespace() {
     assert_eq!(
         JsonValue::parse("[ 1 , 2 ]").unwrap(),
-        JsonValue::Array(vec![JsonValue::Number(Number::Int(1)), JsonValue::Number(Number::Int(2))])
+        JsonValue::Array(vec![
+            JsonValue::Number(Number::Int(1)),
+            JsonValue::Number(Number::Int(2))
+        ])
     );
 }
 
@@ -150,7 +198,10 @@ fn test_parse_empty_object() {
 fn test_parse_simple_object() {
     assert_eq!(
         JsonValue::parse(r#"{"key":"value"}"#).unwrap(),
-        JsonValue::Object(vec![("key".to_string(), JsonValue::Str("value".to_string()))])
+        JsonValue::Object(vec![(
+            "key".to_string(),
+            JsonValue::Str("value".to_string())
+        )])
     );
 }
 
@@ -179,8 +230,14 @@ fn test_parse_nested_array() {
     assert_eq!(
         JsonValue::parse("[[1,2],[3,4]]").unwrap(),
         JsonValue::Array(vec![
-            JsonValue::Array(vec![JsonValue::Number(Number::Int(1)), JsonValue::Number(Number::Int(2))]),
-            JsonValue::Array(vec![JsonValue::Number(Number::Int(3)), JsonValue::Number(Number::Int(4))]),
+            JsonValue::Array(vec![
+                JsonValue::Number(Number::Int(1)),
+                JsonValue::Number(Number::Int(2))
+            ]),
+            JsonValue::Array(vec![
+                JsonValue::Number(Number::Int(3)),
+                JsonValue::Number(Number::Int(4))
+            ]),
         ])
     );
 }
@@ -191,7 +248,10 @@ fn test_parse_nested_object() {
         JsonValue::parse(r#"{"outer":{"inner":42}}"#).unwrap(),
         JsonValue::Object(vec![(
             "outer".to_string(),
-            JsonValue::Object(vec![("inner".to_string(), JsonValue::Number(Number::Int(42)))])
+            JsonValue::Object(vec![(
+                "inner".to_string(),
+                JsonValue::Number(Number::Int(42))
+            )])
         )])
     );
 }
@@ -239,12 +299,18 @@ fn test_display_float() {
 
 #[test]
 fn test_display_string() {
-    assert_eq!(JsonValue::Str("hello".to_string()).to_string(), r#""hello""#);
+    assert_eq!(
+        JsonValue::Str("hello".to_string()).to_string(),
+        r#""hello""#
+    );
 }
 
 #[test]
 fn test_display_string_with_quote() {
-    assert_eq!(JsonValue::Str(r#"say "hi""#.to_string()).to_string(), r#""say \"hi\"""#);
+    assert_eq!(
+        JsonValue::Str(r#"say "hi""#.to_string()).to_string(),
+        r#""say \"hi\"""#
+    );
 }
 
 #[test]
@@ -255,7 +321,11 @@ fn test_display_string_with_newline() {
 #[test]
 fn test_display_array() {
     assert_eq!(
-        JsonValue::Array(vec![JsonValue::Number(Number::Int(1)), JsonValue::Number(Number::Int(2))]).to_string(),
+        JsonValue::Array(vec![
+            JsonValue::Number(Number::Int(1)),
+            JsonValue::Number(Number::Int(2))
+        ])
+        .to_string(),
         "[1,2]"
     );
 }
@@ -284,7 +354,11 @@ fn test_roundtrip_bool() {
 
 #[test]
 fn test_roundtrip_number() {
-    for v in [JsonValue::Number(Number::Int(42)), JsonValue::Number(Number::Float(-3.14)), JsonValue::Number(Number::Int(0))] {
+    for v in [
+        JsonValue::Number(Number::Int(42)),
+        JsonValue::Number(Number::Float(-3.14)),
+        JsonValue::Number(Number::Int(0)),
+    ] {
         assert_eq!(JsonValue::parse(&v.to_string()).unwrap(), v);
     }
 }
@@ -314,10 +388,13 @@ fn test_roundtrip_complex_object() {
         ("name".to_string(), JsonValue::Str("Claude".to_string())),
         ("version".to_string(), JsonValue::Number(Number::Int(3))),
         ("active".to_string(), JsonValue::Bool(true)),
-        ("tags".to_string(), JsonValue::Array(vec![
-            JsonValue::Str("ai".to_string()),
-            JsonValue::Str("assistant".to_string()),
-        ])),
+        (
+            "tags".to_string(),
+            JsonValue::Array(vec![
+                JsonValue::Str("ai".to_string()),
+                JsonValue::Str("assistant".to_string()),
+            ]),
+        ),
     ]);
     assert_eq!(JsonValue::parse(&v.to_string()).unwrap(), v);
 }
@@ -326,7 +403,10 @@ fn test_roundtrip_complex_object() {
 #[test]
 fn test_get_existing_key() {
     let v = JsonValue::parse(r#"{"model":"claude-3","temperature":1}"#).unwrap();
-    assert_eq!(v.get("model"), Some(&JsonValue::Str("claude-3".to_string())));
+    assert_eq!(
+        v.get("model"),
+        Some(&JsonValue::Str("claude-3".to_string()))
+    );
 }
 
 #[test]
@@ -379,7 +459,8 @@ fn test_as_object() {
 #[test]
 fn test_accessor_chain() {
     let v = JsonValue::parse(r#"{"user":{"name":"Alice","age":30}}"#).unwrap();
-    let name = v.get("user")
+    let name = v
+        .get("user")
         .and_then(|u| u.get("name"))
         .and_then(|n| n.as_str());
     assert_eq!(name, Some("Alice"));

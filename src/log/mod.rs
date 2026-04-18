@@ -4,9 +4,9 @@ use std::fmt;
 use std::fs::{self, OpenOptions};
 use std::io::{self, BufWriter, Write};
 use std::path::Path;
-use std::sync::mpsc;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc;
 use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -14,8 +14,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub enum Level {
     Error = 0,
-    Warn  = 1,
-    Info  = 2,
+    Warn = 1,
+    Info = 2,
     Debug = 3,
     Trace = 4,
 }
@@ -24,19 +24,19 @@ impl Level {
     pub fn from_str(s: &str) -> Result<Self, ()> {
         match s {
             "ERROR" => Ok(Level::Error),
-            "WARN"  => Ok(Level::Warn),
-            "INFO"  => Ok(Level::Info),
+            "WARN" => Ok(Level::Warn),
+            "INFO" => Ok(Level::Info),
             "DEBUG" => Ok(Level::Debug),
             "TRACE" => Ok(Level::Trace),
-            _       => Err(()),
+            _ => Err(()),
         }
     }
 
     pub fn as_str(&self) -> &'static str {
         match self {
             Level::Error => "ERROR",
-            Level::Warn  => "WARN ",
-            Level::Info  => "INFO ",
+            Level::Warn => "WARN ",
+            Level::Info => "INFO ",
             Level::Debug => "DEBUG",
             Level::Trace => "TRACE",
         }
@@ -51,22 +51,31 @@ impl fmt::Display for Level {
 
 impl std::str::FromStr for Level {
     type Err = ();
-    fn from_str(s: &str) -> Result<Self, Self::Err> { Level::from_str(s) }
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Level::from_str(s)
+    }
 }
 
 /// Single log entry.
 pub struct Record {
-    time:   String,
-    level:  Level,
+    time: String,
+    level: Level,
     module: String,
-    file:   &'static str,
-    line:   u32,
-    msg:    String,
+    file: &'static str,
+    line: u32,
+    msg: String,
 }
 
 impl Record {
     pub fn new(level: Level, module: String, file: &'static str, line: u32, msg: String) -> Self {
-        Record { time: timestamp(), level, module, file, line, msg }
+        Record {
+            time: timestamp(),
+            level,
+            module,
+            file,
+            line,
+            msg,
+        }
     }
 }
 
@@ -75,12 +84,7 @@ impl fmt::Display for Record {
         write!(
             f,
             "{} {} [{}] {} ({}:{})\n",
-            self.time,
-            self.level,
-            self.module,
-            self.msg,
-            self.file,
-            self.line
+            self.time, self.level, self.module, self.msg, self.file, self.line
         )
     }
 }
@@ -111,8 +115,10 @@ fn timestamp() -> String {
     let minutes = (remainder % 3600) / 60;
     let seconds = remainder % 60;
     let (year, month, day) = rata_die(days as i64);
-    format!("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}.{:03}Z",
-            year, month, day, hours, minutes, seconds, millis)
+    format!(
+        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}.{:03}Z",
+        year, month, day, hours, minutes, seconds, millis
+    )
 }
 
 /// Convert days-since-1970 to (year, month, day) in UTC.
@@ -134,8 +140,7 @@ fn rata_die(days: i64) -> (i64, u8, u8) {
 
 // Global registry of the active flusher JoinHandle.
 // Used to ensure sequential init() calls wait for the previous flusher to exit.
-static PREV_HANDLE: std::sync::Mutex<Option<thread::JoinHandle<()>>> =
-    std::sync::Mutex::new(None);
+static PREV_HANDLE: std::sync::Mutex<Option<thread::JoinHandle<()>>> = std::sync::Mutex::new(None);
 
 // Stores (sender, shutdown_flag).
 // - shutdown flag signals the thread to drain and exit.
@@ -155,7 +160,7 @@ const MAX_LOG_SIZE: u64 = 10 * 1024 * 1024; // 10 MB
 fn rotate_log(path: &str) -> io::Result<()> {
     for i in (1..5).rev() {
         let from = format!("{}.{}", path, i);
-        let to   = format!("{}.{}", path, i + 1);
+        let to = format!("{}.{}", path, i + 1);
         if Path::new(&from).exists() {
             fs::rename(&from, &to)?;
         }
@@ -181,11 +186,7 @@ fn spawn_flusher(path: String, level: Level) -> Option<thread::JoinHandle<()>> {
     }
 
     let handle = thread::spawn(move || {
-        let file = match OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&path)
-        {
+        let file = match OpenOptions::new().create(true).append(true).open(&path) {
             Ok(f) => f,
             Err(e) => {
                 eprintln!("[log] failed to open {}: {}", path, e);

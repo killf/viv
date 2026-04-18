@@ -1,4 +1,4 @@
-use crate::core::terminal::buffer::{char_width, Buffer, Rect};
+use crate::core::terminal::buffer::{Buffer, Rect, char_width};
 use crate::core::terminal::style::Color;
 use crate::tui::widget::Widget;
 
@@ -12,11 +12,19 @@ pub struct Span {
 
 impl Span {
     pub fn raw(text: impl Into<String>) -> Self {
-        Span { text: text.into(), fg: None, bold: false }
+        Span {
+            text: text.into(),
+            fg: None,
+            bold: false,
+        }
     }
 
     pub fn styled(text: impl Into<String>, fg: Color, bold: bool) -> Self {
-        Span { text: text.into(), fg: Some(fg), bold }
+        Span {
+            text: text.into(),
+            fg: Some(fg),
+            bold,
+        }
     }
 }
 
@@ -28,7 +36,9 @@ pub struct Line {
 
 impl Line {
     pub fn raw(text: impl Into<String>) -> Self {
-        Line { spans: vec![Span::raw(text)] }
+        Line {
+            spans: vec![Span::raw(text)],
+        }
     }
 
     pub fn from_spans(spans: Vec<Span>) -> Self {
@@ -70,7 +80,12 @@ fn wrap_line(line: &Line, width: usize) -> Vec<Vec<StyledChar>> {
     let mut chars: Vec<StyledChar> = Vec::new();
     for span in &line.spans {
         for ch in span.text.chars() {
-            chars.push(StyledChar { ch, fg: span.fg, bold: span.bold, width: char_width(ch) });
+            chars.push(StyledChar {
+                ch,
+                fg: span.fg,
+                bold: span.bold,
+                width: char_width(ch),
+            });
         }
     }
 
@@ -90,13 +105,23 @@ fn wrap_line(line: &Line, width: usize) -> Vec<Vec<StyledChar>> {
         while i < chars.len() && chars[i].ch != ' ' {
             let w = chars[i].width as usize;
             word_width += w;
-            word.push(StyledChar { ch: chars[i].ch, fg: chars[i].fg, bold: chars[i].bold, width: chars[i].width });
+            word.push(StyledChar {
+                ch: chars[i].ch,
+                fg: chars[i].fg,
+                bold: chars[i].bold,
+                width: chars[i].width,
+            });
             i += 1;
         }
         // Collect trailing spaces
         let mut spaces: Vec<StyledChar> = Vec::new();
         while i < chars.len() && chars[i].ch == ' ' {
-            spaces.push(StyledChar { ch: ' ', fg: chars[i].fg, bold: chars[i].bold, width: 1 });
+            spaces.push(StyledChar {
+                ch: ' ',
+                fg: chars[i].fg,
+                bold: chars[i].bold,
+                width: 1,
+            });
             i += 1;
         }
 
@@ -188,8 +213,12 @@ impl Widget for Paragraph {
             let y = area.y + row_idx as u16;
             let mut col = area.x;
             for sc in row {
-                if sc.width == 0 { continue; }
-                if col + sc.width > area.x + area.width { break; }
+                if sc.width == 0 {
+                    continue;
+                }
+                if col + sc.width > area.x + area.width {
+                    break;
+                }
                 let cell = buf.get_mut(col, y);
                 cell.ch = sc.ch;
                 cell.fg = sc.fg;

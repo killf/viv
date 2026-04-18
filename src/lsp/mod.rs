@@ -53,7 +53,11 @@ impl LspManager {
             #[cfg(not(unix))]
             servers.insert(name.clone(), ());
         }
-        LspManager { config, servers, open_documents: HashMap::new() }
+        LspManager {
+            config,
+            servers,
+            open_documents: HashMap::new(),
+        }
     }
 
     /// Returns `true` if no servers are configured.
@@ -84,7 +88,12 @@ impl LspManager {
             .to_string();
 
         // Start the server if not yet running.
-        if self.servers.get(&name).map(|v| v.is_none()).unwrap_or(false) {
+        if self
+            .servers
+            .get(&name)
+            .map(|v| v.is_none())
+            .unwrap_or(false)
+        {
             self.start_server(&name).await?;
         }
 
@@ -168,7 +177,13 @@ impl LspManager {
             .server_name_for_file(file)
             .expect("file has a configured LSP server")
             .to_string();
-        self.open_documents.insert(uri, OpenDocument { server_name, version: 1 });
+        self.open_documents.insert(
+            uri,
+            OpenDocument {
+                server_name,
+                version: 1,
+            },
+        );
         Ok(())
     }
 
@@ -228,7 +243,9 @@ impl LspManager {
         // Get or start the server.
         let client = self.get_or_start(file).await?;
 
-        client.notify_did_change(&uri_clone, &content, version).await?;
+        client
+            .notify_did_change(&uri_clone, &content, version)
+            .await?;
         Ok(())
     }
 

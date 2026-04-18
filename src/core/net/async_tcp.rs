@@ -1,3 +1,5 @@
+use super::tcp::connect as tcp_connect;
+use crate::core::runtime::reactor::reactor;
 use std::future::Future;
 use std::io::{self, Read, Write};
 use std::net::TcpStream;
@@ -7,8 +9,6 @@ use std::os::unix::io::AsRawFd;
 use std::os::windows::io::AsRawSocket;
 use std::pin::Pin;
 use std::task::{Context, Poll};
-use crate::core::runtime::reactor::reactor;
-use super::tcp::connect as tcp_connect;
 
 pub struct AsyncTcpStream {
     inner: TcpStream,
@@ -22,29 +22,52 @@ impl AsyncTcpStream {
 
     pub fn raw_handle(&self) -> crate::core::platform::RawHandle {
         #[cfg(unix)]
-        { self.inner.as_raw_fd() }
+        {
+            self.inner.as_raw_fd()
+        }
         #[cfg(windows)]
-        { self.inner.as_raw_socket() as crate::core::platform::RawHandle }
+        {
+            self.inner.as_raw_socket() as crate::core::platform::RawHandle
+        }
     }
 
-    pub fn inner_mut(&mut self) -> &mut TcpStream { &mut self.inner }
+    pub fn inner_mut(&mut self) -> &mut TcpStream {
+        &mut self.inner
+    }
 
     pub fn connect(host: &str, port: u16) -> ConnectFuture {
-        ConnectFuture { host: host.to_string(), port, done: false }
+        ConnectFuture {
+            host: host.to_string(),
+            port,
+            done: false,
+        }
     }
 
     pub fn read<'a>(&'a mut self, buf: &'a mut [u8]) -> ReadFuture<'a> {
-        ReadFuture { stream: self, buf, token: None }
+        ReadFuture {
+            stream: self,
+            buf,
+            token: None,
+        }
     }
 
     pub fn write_all<'a>(&'a mut self, buf: &'a [u8]) -> WriteFuture<'a> {
-        WriteFuture { stream: self, buf, written: 0, token: None }
+        WriteFuture {
+            stream: self,
+            buf,
+            written: 0,
+            token: None,
+        }
     }
 }
 
 // ── ConnectFuture ─────────────────────────────────────────────────────────────
 
-pub struct ConnectFuture { host: String, port: u16, done: bool }
+pub struct ConnectFuture {
+    host: String,
+    port: u16,
+    done: bool,
+}
 
 impl Future for ConnectFuture {
     type Output = crate::Result<AsyncTcpStream>;
@@ -56,9 +79,7 @@ impl Future for ConnectFuture {
                 Err(e) => Poll::Ready(Err(e)),
             }
         } else {
-            Poll::Ready(Err(crate::Error::Io(
-                io::Error::other("already connected"),
-            )))
+            Poll::Ready(Err(crate::Error::Io(io::Error::other("already connected"))))
         }
     }
 }
@@ -85,7 +106,10 @@ impl<'a> Future for ReadFuture<'a> {
             Ok(n) => Poll::Ready(Ok(n)),
             Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
                 let fd = this.stream.raw_handle();
-                let token = reactor().lock().unwrap().register_readable(fd, cx.waker().clone());
+                let token = reactor()
+                    .lock()
+                    .unwrap()
+                    .register_readable(fd, cx.waker().clone());
                 this.token = Some(token);
                 Poll::Pending
             }
@@ -128,7 +152,10 @@ impl<'a> Future for WriteFuture<'a> {
                 Ok(n) => this.written += n,
                 Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
                     let fd = this.stream.raw_handle();
-                    let token = reactor().lock().unwrap().register_writable(fd, cx.waker().clone());
+                    let token = reactor()
+                        .lock()
+                        .unwrap()
+                        .register_writable(fd, cx.waker().clone());
                     this.token = Some(token);
                     return Poll::Pending;
                 }

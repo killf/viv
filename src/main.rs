@@ -3,8 +3,8 @@ use std::thread;
 use viv::agent::agent::{Agent, AgentConfig};
 use viv::bus::AgentMessage;
 use viv::bus::terminal::TerminalUI;
-use viv::core::runtime::channel::async_channel;
 use viv::core::runtime::block_on_local;
+use viv::core::runtime::channel::async_channel;
 
 fn main() {
     if let Err(e) = run() {

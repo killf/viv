@@ -18,7 +18,10 @@ struct MockTransport {
 
 impl MockTransport {
     fn new(responses: Vec<JsonValue>) -> Self {
-        MockTransport { sent: Vec::new(), responses: VecDeque::from(responses) }
+        MockTransport {
+            sent: Vec::new(),
+            responses: VecDeque::from(responses),
+        }
     }
 }
 
@@ -66,28 +69,35 @@ fn notification(method: &str, params: JsonValue) -> JsonValue {
 
 /// A minimal `initialize` response with definitionProvider, referencesProvider, hoverProvider.
 fn init_result() -> JsonValue {
-    JsonValue::Object(vec![("capabilities".into(), JsonValue::Object(vec![
-        ("definitionProvider".into(), JsonValue::Bool(true)),
-        ("referencesProvider".into(), JsonValue::Bool(true)),
-        ("hoverProvider".into(), JsonValue::Bool(true)),
-    ]))])
+    JsonValue::Object(vec![(
+        "capabilities".into(),
+        JsonValue::Object(vec![
+            ("definitionProvider".into(), JsonValue::Bool(true)),
+            ("referencesProvider".into(), JsonValue::Bool(true)),
+            ("hoverProvider".into(), JsonValue::Bool(true)),
+        ]),
+    )])
 }
 
-fn make_range(
-    start_line: i64,
-    start_char: i64,
-    end_line: i64,
-    end_char: i64,
-) -> JsonValue {
+fn make_range(start_line: i64, start_char: i64, end_line: i64, end_char: i64) -> JsonValue {
     JsonValue::Object(vec![
-        ("start".into(), JsonValue::Object(vec![
-            ("line".into(), JsonValue::Number(Number::Int(start_line))),
-            ("character".into(), JsonValue::Number(Number::Int(start_char))),
-        ])),
-        ("end".into(), JsonValue::Object(vec![
-            ("line".into(), JsonValue::Number(Number::Int(end_line))),
-            ("character".into(), JsonValue::Number(Number::Int(end_char))),
-        ])),
+        (
+            "start".into(),
+            JsonValue::Object(vec![
+                ("line".into(), JsonValue::Number(Number::Int(start_line))),
+                (
+                    "character".into(),
+                    JsonValue::Number(Number::Int(start_char)),
+                ),
+            ]),
+        ),
+        (
+            "end".into(),
+            JsonValue::Object(vec![
+                ("line".into(), JsonValue::Number(Number::Int(end_line))),
+                ("character".into(), JsonValue::Number(Number::Int(end_char))),
+            ]),
+        ),
     ])
 }
 
@@ -124,7 +134,10 @@ fn initialize_handshake() {
     assert_eq!(transport.sent.len(), 2);
 
     let init_req = &transport.sent[0];
-    assert_eq!(init_req.get("method").unwrap().as_str().unwrap(), "initialize");
+    assert_eq!(
+        init_req.get("method").unwrap().as_str().unwrap(),
+        "initialize"
+    );
     assert!(init_req.get("id").is_some(), "initialize must have an id");
 
     // rootUri should be a file:// URI
@@ -133,11 +146,20 @@ fn initialize_handshake() {
         .and_then(|p| p.get("rootUri"))
         .and_then(|v| v.as_str())
         .unwrap();
-    assert!(root_uri.starts_with("file://"), "rootUri should start with file://");
+    assert!(
+        root_uri.starts_with("file://"),
+        "rootUri should start with file://"
+    );
 
     let init_notif = &transport.sent[1];
-    assert_eq!(init_notif.get("method").unwrap().as_str().unwrap(), "initialized");
-    assert!(init_notif.get("id").is_none(), "initialized must NOT have an id");
+    assert_eq!(
+        init_notif.get("method").unwrap().as_str().unwrap(),
+        "initialized"
+    );
+    assert!(
+        init_notif.get("id").is_none(),
+        "initialized must NOT have an id"
+    );
 }
 
 /// `initialize` with a path that already has `file://` should not double-prefix.
@@ -168,12 +190,14 @@ fn definition_request() {
         make_location("file:///src/lib.rs"),
     ]);
 
-    let transport =
-        MockTransport::new(vec![success(1, locations)]);
+    let transport = MockTransport::new(vec![success(1, locations)]);
     let mut client = LspClient::new(transport, "rust-analyzer");
 
     let locations = block_on(async move {
-        client.definition("file:///src/main.rs", 10, 5).await.unwrap()
+        client
+            .definition("file:///src/main.rs", 10, 5)
+            .await
+            .unwrap()
     });
 
     assert_eq!(locations.len(), 2);
@@ -190,7 +214,10 @@ fn definition_single_location() {
     let mut client = LspClient::new(transport, "rust-analyzer");
 
     let locations = block_on(async move {
-        client.definition("file:///src/main.rs", 3, 0).await.unwrap()
+        client
+            .definition("file:///src/main.rs", 3, 0)
+            .await
+            .unwrap()
     });
 
     assert_eq!(locations.len(), 1);
@@ -204,7 +231,10 @@ fn definition_null_result() {
     let mut client = LspClient::new(transport, "rust-analyzer");
 
     let locations = block_on(async move {
-        client.definition("file:///src/main.rs", 0, 0).await.unwrap()
+        client
+            .definition("file:///src/main.rs", 0, 0)
+            .await
+            .unwrap()
     });
 
     assert!(locations.is_empty());
@@ -249,8 +279,7 @@ fn hover_request() {
     let transport = MockTransport::new(vec![success(1, hover_resp)]);
     let mut client = LspClient::new(transport, "rust-analyzer");
 
-    let result =
-        block_on(async move { client.hover("file:///src/main.rs", 2, 4).await.unwrap() });
+    let result = block_on(async move { client.hover("file:///src/main.rs", 2, 4).await.unwrap() });
 
     let hover = result.expect("expected Some(HoverResult)");
     assert_eq!(hover.contents, "fn foo() -> u32");
@@ -262,8 +291,7 @@ fn null_result_for_hover() {
     let transport = MockTransport::new(vec![success(1, JsonValue::Null)]);
     let mut client = LspClient::new(transport, "rust-analyzer");
 
-    let result =
-        block_on(async move { client.hover("file:///src/main.rs", 0, 0).await.unwrap() });
+    let result = block_on(async move { client.hover("file:///src/main.rs", 0, 0).await.unwrap() });
 
     assert!(result.is_none());
 }
@@ -276,11 +304,14 @@ fn diagnostics_from_notification() {
         "textDocument/publishDiagnostics",
         JsonValue::Object(vec![
             ("uri".into(), JsonValue::Str("file:///src/main.rs".into())),
-            ("diagnostics".into(), JsonValue::Array(vec![JsonValue::Object(vec![
-                ("range".into(), make_range(3, 0, 3, 10)),
-                ("severity".into(), JsonValue::Number(Number::Int(1))),
-                ("message".into(), JsonValue::Str("unused variable".into())),
-            ])])),
+            (
+                "diagnostics".into(),
+                JsonValue::Array(vec![JsonValue::Object(vec![
+                    ("range".into(), make_range(3, 0, 3, 10)),
+                    ("severity".into(), JsonValue::Number(Number::Int(1))),
+                    ("message".into(), JsonValue::Str("unused variable".into())),
+                ])]),
+            ),
         ]),
     );
 
@@ -290,7 +321,10 @@ fn diagnostics_from_notification() {
     let mut client = LspClient::new(transport, "rust-analyzer");
 
     let (locs, client) = block_on(async move {
-        let locs = client.definition("file:///src/main.rs", 0, 0).await.unwrap();
+        let locs = client
+            .definition("file:///src/main.rs", 0, 0)
+            .await
+            .unwrap();
         (locs, client)
     });
 
@@ -323,7 +357,10 @@ fn did_open_notification() {
     let transport = client.into_transport();
     assert_eq!(transport.sent.len(), 1);
     let msg = &transport.sent[0];
-    assert_eq!(msg.get("method").unwrap().as_str().unwrap(), "textDocument/didOpen");
+    assert_eq!(
+        msg.get("method").unwrap().as_str().unwrap(),
+        "textDocument/didOpen"
+    );
     assert!(msg.get("id").is_none(), "didOpen must NOT have an id");
 }
 
@@ -340,9 +377,15 @@ fn shutdown_sequence() {
 
     let transport = client.into_transport();
     assert_eq!(transport.sent.len(), 2);
-    assert_eq!(transport.sent[0].get("method").unwrap().as_str().unwrap(), "shutdown");
+    assert_eq!(
+        transport.sent[0].get("method").unwrap().as_str().unwrap(),
+        "shutdown"
+    );
     assert!(transport.sent[0].get("id").is_some());
-    assert_eq!(transport.sent[1].get("method").unwrap().as_str().unwrap(), "exit");
+    assert_eq!(
+        transport.sent[1].get("method").unwrap().as_str().unwrap(),
+        "exit"
+    );
     assert!(transport.sent[1].get("id").is_none());
 }
 
@@ -363,15 +406,24 @@ fn did_change_notification() {
     let transport = client.into_transport();
     assert_eq!(transport.sent.len(), 1);
     let msg = &transport.sent[0];
-    assert_eq!(msg.get("method").unwrap().as_str().unwrap(), "textDocument/didChange");
+    assert_eq!(
+        msg.get("method").unwrap().as_str().unwrap(),
+        "textDocument/didChange"
+    );
     assert!(msg.get("id").is_none(), "didChange must NOT have an id");
 
     let params = msg.get("params").unwrap();
     let doc = params.get("textDocument").unwrap();
-    assert_eq!(doc.get("uri").unwrap().as_str().unwrap(), "file:///src/main.rs");
+    assert_eq!(
+        doc.get("uri").unwrap().as_str().unwrap(),
+        "file:///src/main.rs"
+    );
     assert_eq!(doc.get("version").unwrap().as_i64().unwrap(), 2);
 
     let changes = params.get("contentChanges").unwrap().as_array().unwrap();
     assert_eq!(changes.len(), 1);
-    assert_eq!(changes[0].get("text").unwrap().as_str().unwrap(), "fn updated() {}");
+    assert_eq!(
+        changes[0].get("text").unwrap().as_str().unwrap(),
+        "fn updated() {}"
+    );
 }

@@ -97,10 +97,8 @@ unsafe extern "system" {
         nLength: u32,
         lpNumberOfEventsRead: *mut u32,
     ) -> i32;
-    pub fn GetNumberOfConsoleInputEvents(
-        hConsoleInput: HANDLE,
-        lpcNumberOfEvents: *mut u32,
-    ) -> i32;
+    pub fn GetNumberOfConsoleInputEvents(hConsoleInput: HANDLE, lpcNumberOfEvents: *mut u32)
+    -> i32;
 
     pub fn CreateIoCompletionPort(
         FileHandle: HANDLE,

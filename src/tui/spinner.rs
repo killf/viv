@@ -53,7 +53,10 @@ pub struct Spinner {
 impl Spinner {
     /// Create a spinner with the default braille frames at 120ms per frame.
     pub fn new() -> Self {
-        Spinner { frames: DEFAULT_FRAMES, frame_duration_ms: 120 }
+        Spinner {
+            frames: DEFAULT_FRAMES,
+            frame_duration_ms: 120,
+        }
     }
 
     /// Number of frames in the rotation.

@@ -26,7 +26,9 @@ const SBOX: [u8; 256] = [
 ];
 
 /// Round constants for AES-128 key expansion (indices 1..10 used)
-const RCON: [u8; 11] = [0x00, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36];
+const RCON: [u8; 11] = [
+    0x00, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36,
+];
 
 // ── AES-128 ─────────────────────────────────────────────────────────
 
@@ -383,9 +385,5 @@ fn inc32(counter: &mut [u8; 16]) {
 
 /// Round up to the next multiple of 16.
 fn pad16_len(len: usize) -> usize {
-    if len == 0 {
-        0
-    } else {
-        (len + 15) & !15
-    }
+    if len == 0 { 0 } else { (len + 15) & !15 }
 }

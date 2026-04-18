@@ -5,15 +5,26 @@ use crate::core::json::{JsonValue, ToJson};
 #[derive(Debug, Clone)]
 pub enum ContentBlock {
     Text(String),
-    ToolUse { id: String, name: String, input: JsonValue },
-    ToolResult { tool_use_id: String, content: Vec<ContentBlock>, is_error: bool },
+    ToolUse {
+        id: String,
+        name: String,
+        input: JsonValue,
+    },
+    ToolResult {
+        tool_use_id: String,
+        content: Vec<ContentBlock>,
+        is_error: bool,
+    },
 }
 
 impl ToJson for ContentBlock {
     fn to_json(&self) -> String {
         match self {
             ContentBlock::Text(t) => {
-                format!("{{\"type\":\"text\",\"text\":{}}}", JsonValue::Str(t.clone()))
+                format!(
+                    "{{\"type\":\"text\",\"text\":{}}}",
+                    JsonValue::Str(t.clone())
+                )
             }
             ContentBlock::ToolUse { id, name, input } => {
                 format!(
@@ -23,7 +34,11 @@ impl ToJson for ContentBlock {
                     input,
                 )
             }
-            ContentBlock::ToolResult { tool_use_id, content, is_error } => {
+            ContentBlock::ToolResult {
+                tool_use_id,
+                content,
+                is_error,
+            } => {
                 let content_json: Vec<String> = content.iter().map(|b| b.to_json()).collect();
                 format!(
                     "{{\"type\":\"tool_result\",\"tool_use_id\":{},\"content\":[{}],\"is_error\":{}}}",
@@ -50,11 +65,16 @@ impl Message {
     }
 
     pub fn role(&self) -> &str {
-        match self { Message::User(_) => "user", Message::Assistant(_) => "assistant" }
+        match self {
+            Message::User(_) => "user",
+            Message::Assistant(_) => "assistant",
+        }
     }
 
     pub fn blocks(&self) -> &[ContentBlock] {
-        match self { Message::User(b) | Message::Assistant(b) => b }
+        match self {
+            Message::User(b) | Message::Assistant(b) => b,
+        }
     }
 }
 
@@ -79,10 +99,16 @@ pub struct SystemBlock {
 
 impl SystemBlock {
     pub fn cached(text: impl Into<String>) -> Self {
-        SystemBlock { text: text.into(), cached: true }
+        SystemBlock {
+            text: text.into(),
+            cached: true,
+        }
     }
     pub fn dynamic(text: impl Into<String>) -> Self {
-        SystemBlock { text: text.into(), cached: false }
+        SystemBlock {
+            text: text.into(),
+            cached: false,
+        }
     }
 }
 
@@ -94,7 +120,10 @@ impl ToJson for SystemBlock {
                 JsonValue::Str(self.text.clone()),
             )
         } else {
-            format!("{{\"type\":\"text\",\"text\":{}}}", JsonValue::Str(self.text.clone()))
+            format!(
+                "{{\"type\":\"text\",\"text\":{}}}",
+                JsonValue::Str(self.text.clone())
+            )
         }
     }
 }

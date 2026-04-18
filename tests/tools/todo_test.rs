@@ -1,8 +1,8 @@
 use std::fs;
 use viv::core::json::JsonValue;
 use viv::tools::Tool;
-use viv::tools::todo::{TodoReadTool, TodoWriteTool};
 use viv::tools::poll_to_completion;
+use viv::tools::todo::{TodoReadTool, TodoWriteTool};
 
 fn tempdir() -> std::path::PathBuf {
     let p = std::env::temp_dir().join(format!("viv_todo_{}", nanos()));
@@ -10,7 +10,10 @@ fn tempdir() -> std::path::PathBuf {
     p
 }
 fn nanos() -> u32 {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().subsec_nanos()
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .subsec_nanos()
 }
 
 #[test]
@@ -18,9 +21,9 @@ fn todo_write_then_read_roundtrip() {
     let dir = tempdir();
     let path = dir.join("todo.json");
     let write = TodoWriteTool::new(path.clone());
-    let input = JsonValue::parse(
-        r#"{"todos":[{"id":"1","content":"buy milk","status":"pending"}]}"#
-    ).unwrap();
+    let input =
+        JsonValue::parse(r#"{"todos":[{"id":"1","content":"buy milk","status":"pending"}]}"#)
+            .unwrap();
     poll_to_completion(write.execute(&input)).unwrap();
 
     let read = TodoReadTool::new(path);

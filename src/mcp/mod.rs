@@ -38,7 +38,10 @@ impl McpClientKind {
             #[cfg(unix)]
             McpClientKind::Stdio(c) => Box::pin(c.call_tool(name, args)),
             #[cfg(not(unix))]
-            _ => { let _ = (name, args); unreachable!() }
+            _ => {
+                let _ = (name, args);
+                unreachable!()
+            }
         }
     }
 
@@ -50,7 +53,10 @@ impl McpClientKind {
             #[cfg(unix)]
             McpClientKind::Stdio(c) => Box::pin(c.read_resource(uri)),
             #[cfg(not(unix))]
-            _ => { let _ = uri; unreachable!() }
+            _ => {
+                let _ = uri;
+                unreachable!()
+            }
         }
     }
 
@@ -63,7 +69,10 @@ impl McpClientKind {
             #[cfg(unix)]
             McpClientKind::Stdio(c) => Box::pin(c.get_prompt(name, args)),
             #[cfg(not(unix))]
-            _ => { let _ = (name, args); unreachable!() }
+            _ => {
+                let _ = (name, args);
+                unreachable!()
+            }
         }
     }
 

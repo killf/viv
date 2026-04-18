@@ -1,4 +1,4 @@
-use crate::agent::message::{SystemBlock, PromptCache, hash_str};
+use crate::agent::message::{PromptCache, SystemBlock, hash_str};
 use crate::memory::retrieval::RetrievalResult;
 
 const BASE_SYSTEM_PROMPT: &str = r#"You are viv, a self-evolving AI programming agent.

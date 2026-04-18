@@ -1,21 +1,27 @@
-use std::pin::Pin;
-use std::future::Future;
-use std::sync::Arc;
 use crate::core::json::JsonValue;
-use crate::core::net::tls::AsyncTlsStream;
 use crate::core::net::http::HttpRequest;
+use crate::core::net::tls::AsyncTlsStream;
 use crate::core::runtime::AssertSend;
 use crate::error::Error;
 use crate::llm::{LLMClient, ModelTier};
 use crate::tools::{PermissionLevel, Tool};
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::Arc;
 
-pub struct WebFetchTool { pub llm: Arc<LLMClient> }
+pub struct WebFetchTool {
+    pub llm: Arc<LLMClient>,
+}
 impl WebFetchTool {
-    pub fn new(llm: Arc<LLMClient>) -> Self { WebFetchTool { llm } }
+    pub fn new(llm: Arc<LLMClient>) -> Self {
+        WebFetchTool { llm }
+    }
 }
 
 impl Tool for WebFetchTool {
-    fn name(&self) -> &str { "WebFetch" }
+    fn name(&self) -> &str {
+        "WebFetch"
+    }
 
     fn description(&self) -> &str {
         "Fetches content from a specified URL and processes it using an AI model.\n\n- Takes a URL and a prompt as input\n- Fetches the URL content, converts HTML to plain text\n- Processes the content with the prompt using a fast model\n- Returns the model's response about the content\n\nIMPORTANT: Will FAIL for authenticated or private URLs. The URL must be a fully-formed valid URL. HTTP URLs are automatically upgraded to HTTPS."
@@ -32,33 +38,53 @@ impl Tool for WebFetchTool {
         }"#).unwrap()
     }
 
-    fn execute(&self, input: &JsonValue) -> Pin<Box<dyn Future<Output = crate::Result<String>> + Send + '_>> {
+    fn execute(
+        &self,
+        input: &JsonValue,
+    ) -> Pin<Box<dyn Future<Output = crate::Result<String>> + Send + '_>> {
         let input = input.clone();
         let llm = Arc::clone(&self.llm);
         Box::pin(AssertSend(async move {
-            let url = input.get("url").and_then(|v| v.as_str())
+            let url = input
+                .get("url")
+                .and_then(|v| v.as_str())
                 .ok_or_else(|| Error::Tool("missing 'url'".into()))?;
-            let prompt = input.get("prompt").and_then(|v| v.as_str())
+            let prompt = input
+                .get("prompt")
+                .and_then(|v| v.as_str())
                 .ok_or_else(|| Error::Tool("missing 'prompt'".into()))?;
 
             let text = fetch_url_async(url).await?;
             let truncated: String = text.chars().take(8000).collect();
 
             use crate::agent::message::{Message, SystemBlock};
-            let system = vec![SystemBlock::dynamic("You extract relevant content from web pages.")];
-            let user_msg = format!("Answer this about the page: {}\n\nPage:\n{}", prompt, truncated);
+            let system = vec![SystemBlock::dynamic(
+                "You extract relevant content from web pages.",
+            )];
+            let user_msg = format!(
+                "Answer this about the page: {}\n\nPage:\n{}",
+                prompt, truncated
+            );
             let messages = vec![Message::user_text(user_msg)];
             let mut response = String::new();
-            llm.stream_agent_async(&system, &messages, "", ModelTier::Fast, |t| response.push_str(t)).await?;
+            llm.stream_agent_async(&system, &messages, "", ModelTier::Fast, |t| {
+                response.push_str(t)
+            })
+            .await?;
             Ok(response)
         }))
     }
 
-    fn permission_level(&self) -> PermissionLevel { PermissionLevel::Execute }
+    fn permission_level(&self) -> PermissionLevel {
+        PermissionLevel::Execute
+    }
 }
 
 async fn fetch_url_async(url: &str) -> crate::Result<String> {
-    let rest = url.strip_prefix("https://").or_else(|| url.strip_prefix("http://")).unwrap_or(url);
+    let rest = url
+        .strip_prefix("https://")
+        .or_else(|| url.strip_prefix("http://"))
+        .unwrap_or(url);
     let (host_port, path) = match rest.find('/') {
         Some(i) => (&rest[..i], &rest[i..]),
         None => (rest, "/"),
@@ -90,11 +116,15 @@ async fn fetch_url_async(url: &str) -> crate::Result<String> {
     let mut tmp = [0u8; 4096];
     loop {
         let n = tls.read(&mut tmp).await?;
-        if n == 0 || raw.len() > 1_000_000 { break; }
+        if n == 0 || raw.len() > 1_000_000 {
+            break;
+        }
         raw.extend_from_slice(&tmp[..n]);
     }
 
-    let body = raw.windows(4).position(|w| w == b"\r\n\r\n")
+    let body = raw
+        .windows(4)
+        .position(|w| w == b"\r\n\r\n")
         .map(|i| &raw[i + 4..])
         .unwrap_or(&raw);
 
@@ -110,9 +140,20 @@ fn strip_html(html: &str) -> String {
             '<' => in_tag = true,
             '>' => in_tag = false,
             _ if in_tag => {}
-            ' ' | '\t' => { if !last_space { out.push(' '); last_space = true; } }
-            '\n' | '\r' => { out.push('\n'); last_space = false; }
-            _ => { out.push(ch); last_space = false; }
+            ' ' | '\t' => {
+                if !last_space {
+                    out.push(' ');
+                    last_space = true;
+                }
+            }
+            '\n' | '\r' => {
+                out.push('\n');
+                last_space = false;
+            }
+            _ => {
+                out.push(ch);
+                last_space = false;
+            }
         }
     }
     out

@@ -10,7 +10,10 @@ fn tempdir() -> std::path::PathBuf {
     p
 }
 fn nanos() -> u32 {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().subsec_nanos()
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .subsec_nanos()
 }
 
 #[test]
@@ -19,8 +22,10 @@ fn edit_replaces_unique_string() {
     let path = dir.join("f.txt");
     fs::write(&path, "hello world").unwrap();
     let input = JsonValue::parse(&format!(
-        r#"{{"file_path":"{}","old_string":"world","new_string":"rust"}}"#, path.display()
-    )).unwrap();
+        r#"{{"file_path":"{}","old_string":"world","new_string":"rust"}}"#,
+        path.display()
+    ))
+    .unwrap();
     poll_to_completion(EditTool.execute(&input)).unwrap();
     assert_eq!(fs::read_to_string(&path).unwrap(), "hello rust");
 }
@@ -31,8 +36,10 @@ fn edit_fails_when_old_string_not_found() {
     let path = dir.join("f.txt");
     fs::write(&path, "hello world").unwrap();
     let input = JsonValue::parse(&format!(
-        r#"{{"file_path":"{}","old_string":"missing","new_string":"x"}}"#, path.display()
-    )).unwrap();
+        r#"{{"file_path":"{}","old_string":"missing","new_string":"x"}}"#,
+        path.display()
+    ))
+    .unwrap();
     assert!(poll_to_completion(EditTool.execute(&input)).is_err());
 }
 
@@ -42,8 +49,10 @@ fn edit_fails_when_old_string_not_unique() {
     let path = dir.join("f.txt");
     fs::write(&path, "a a a").unwrap();
     let input = JsonValue::parse(&format!(
-        r#"{{"file_path":"{}","old_string":"a","new_string":"b"}}"#, path.display()
-    )).unwrap();
+        r#"{{"file_path":"{}","old_string":"a","new_string":"b"}}"#,
+        path.display()
+    ))
+    .unwrap();
     assert!(poll_to_completion(EditTool.execute(&input)).is_err());
 }
 
@@ -53,8 +62,10 @@ fn edit_replace_all_replaces_every_occurrence() {
     let path = dir.join("f.txt");
     fs::write(&path, "a a a").unwrap();
     let input = JsonValue::parse(&format!(
-        r#"{{"file_path":"{}","old_string":"a","new_string":"b","replace_all":true}}"#, path.display()
-    )).unwrap();
+        r#"{{"file_path":"{}","old_string":"a","new_string":"b","replace_all":true}}"#,
+        path.display()
+    ))
+    .unwrap();
     poll_to_completion(EditTool.execute(&input)).unwrap();
     assert_eq!(fs::read_to_string(&path).unwrap(), "b b b");
 }

@@ -11,7 +11,8 @@ fn sleep_waits_at_least_duration() {
     let elapsed = start.elapsed();
     assert!(
         elapsed >= Duration::from_millis(45),
-        "elapsed too short: {:?}", elapsed
+        "elapsed too short: {:?}",
+        elapsed
     );
 }
 

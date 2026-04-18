@@ -1,6 +1,6 @@
 use super::input::{InputParser, KeyEvent};
 use super::size::TermSize;
-use crate::core::platform::{PlatformReactor, PlatformTerminal, PlatformResizeListener};
+use crate::core::platform::{PlatformReactor, PlatformResizeListener, PlatformTerminal};
 
 #[cfg(unix)]
 unsafe extern "C" {
@@ -167,7 +167,12 @@ impl EventLoop {
         {
             // We do epoll_wait directly on the reactor's epoll fd.
             unsafe extern "C" {
-                fn epoll_wait(epfd: i32, events: *mut EpollEventRaw, maxevents: i32, timeout: i32) -> i32;
+                fn epoll_wait(
+                    epfd: i32,
+                    events: *mut EpollEventRaw,
+                    maxevents: i32,
+                    timeout: i32,
+                ) -> i32;
             }
             const MAX_EVENTS: usize = 64;
             let mut events = [EpollEventRaw { events: 0, data: 0 }; MAX_EVENTS];
@@ -186,7 +191,8 @@ impl EventLoop {
                     return Ok(Vec::new());
                 }
                 return Err(crate::Error::Terminal(format!(
-                    "epoll_wait failed: errno {}", errno
+                    "epoll_wait failed: errno {}",
+                    errno
                 )));
             }
             let tokens = events[..n as usize].iter().map(|e| e.data).collect();

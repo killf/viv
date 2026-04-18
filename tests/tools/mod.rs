@@ -1,4 +1,4 @@
 mod bash_test;
+pub mod file;
 mod registry_test;
 mod todo_test;
-pub mod file;

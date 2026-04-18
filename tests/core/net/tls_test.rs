@@ -17,7 +17,11 @@ fn tls_stream_is_constructible() {
 #[test]
 fn tcp_connect_real_server() {
     let stream = tcp::connect("8.8.8.8", 53);
-    assert!(stream.is_ok(), "TCP connect to 8.8.8.8:53 failed: {:?}", stream.err());
+    assert!(
+        stream.is_ok(),
+        "TCP connect to 8.8.8.8:53 failed: {:?}",
+        stream.err()
+    );
 }
 
 /// Pure Rust TLS 1.3 handshake + HTTPS GET against a real server.
@@ -28,13 +32,12 @@ fn tcp_connect_real_server() {
 #[cfg(feature = "full_test")]
 #[test]
 fn tls13_pure_rust_https_get() {
-    use viv::core::net::tls::TlsStream;
-    use viv::core::net::http::HttpRequest;
     use std::io::{Read, Write};
+    use viv::core::net::http::HttpRequest;
+    use viv::core::net::tls::TlsStream;
 
     let host = "example.com";
-    let mut tls = TlsStream::connect(host, 443)
-        .expect("TLS 1.3 connect failed");
+    let mut tls = TlsStream::connect(host, 443).expect("TLS 1.3 connect failed");
 
     let req = HttpRequest {
         method: "GET".into(),
@@ -54,7 +57,9 @@ fn tls13_pure_rust_https_get() {
     let mut buf = [0u8; 4096];
     loop {
         let n = tls.read(&mut buf).unwrap_or(0);
-        if n == 0 { break; }
+        if n == 0 {
+            break;
+        }
         response.extend_from_slice(&buf[..n]);
     }
 
@@ -66,5 +71,9 @@ fn tls13_pure_rust_https_get() {
         "Expected HTTP/1.x response, got: {}",
         first_line,
     );
-    println!("Pure Rust TLS 1.3: {} bytes, status: {}", response.len(), first_line);
+    println!(
+        "Pure Rust TLS 1.3: {} bytes, status: {}",
+        response.len(),
+        first_line
+    );
 }

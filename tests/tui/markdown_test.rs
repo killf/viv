@@ -1,5 +1,5 @@
-use viv::tui::markdown::render_markdown;
 use viv::core::terminal::style::theme;
+use viv::tui::markdown::render_markdown;
 
 #[test]
 fn bold_text_is_rendered_bold() {
@@ -12,7 +12,11 @@ fn bold_text_is_rendered_bold() {
 #[test]
 fn inline_code_uses_suggestion_color() {
     let lines = render_markdown("use `cargo test` to run");
-    let code_span = lines[0].spans.iter().find(|s| s.text.contains("cargo test")).unwrap();
+    let code_span = lines[0]
+        .spans
+        .iter()
+        .find(|s| s.text.contains("cargo test"))
+        .unwrap();
     assert_eq!(code_span.fg, Some(theme::SUGGESTION));
 }
 
@@ -41,9 +45,9 @@ fn ordered_list_item_keeps_number() {
 fn fenced_code_block_content_is_rendered() {
     let md = "```\nlet x = 1;\n```";
     let lines = render_markdown(md);
-    let has_code = lines.iter().any(|l| {
-        l.spans.iter().any(|s| s.text.contains("let x = 1;"))
-    });
+    let has_code = lines
+        .iter()
+        .any(|l| l.spans.iter().any(|s| s.text.contains("let x = 1;")));
     assert!(has_code, "fenced code block content should be rendered");
 }
 
@@ -59,11 +63,17 @@ fn unclosed_bold_marker_does_not_drop_content() {
     let lines = render_markdown("see **code");
     let text: String = lines[0].spans.iter().map(|s| s.text.as_str()).collect();
     // "code" must not be dropped
-    assert!(text.contains("code"), "content after unclosed ** should not be dropped");
+    assert!(
+        text.contains("code"),
+        "content after unclosed ** should not be dropped"
+    );
 }
 
 #[test]
 fn empty_input_returns_one_line() {
     let lines = render_markdown("");
-    assert!(!lines.is_empty(), "empty input should return at least one line");
+    assert!(
+        !lines.is_empty(),
+        "empty input should return at least one line"
+    );
 }

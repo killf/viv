@@ -1,14 +1,14 @@
 pub mod channel;
-pub mod task;
 pub mod executor;
 pub mod reactor;
+pub mod task;
 pub mod timer;
 
-pub use executor::{block_on, block_on_local, noop_waker, Executor};
+pub use channel::{AsyncReceiver, NotifySender, async_channel};
+pub use executor::{Executor, block_on, block_on_local, noop_waker};
 pub use reactor::reactor;
-pub use timer::sleep;
 pub use task::JoinHandle;
-pub use channel::{async_channel, NotifySender, AsyncReceiver};
+pub use timer::sleep;
 
 use std::future::Future;
 use std::pin::Pin;
@@ -39,11 +39,17 @@ impl Runtime {
                 }
                 let did_work = exec.run_ready();
                 if !did_work {
-                    reactor().lock().unwrap().wait(std::time::Duration::from_millis(10));
+                    reactor()
+                        .lock()
+                        .unwrap()
+                        .wait(std::time::Duration::from_millis(10));
                 }
             }
         });
-        Runtime { _handle: handle, tx }
+        Runtime {
+            _handle: handle,
+            tx,
+        }
     }
 
     pub fn spawn(&self, f: impl FnOnce(&mut Executor) + Send + 'static) {
@@ -67,7 +73,10 @@ unsafe impl<F: Future> Send for AssertSend<F> {}
 
 impl<F: Future> Future for AssertSend<F> {
     type Output = F::Output;
-    fn poll(self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<Self::Output> {
+    fn poll(
+        self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Self::Output> {
         unsafe { self.map_unchecked_mut(|s| &mut s.0).poll(cx) }
     }
 }

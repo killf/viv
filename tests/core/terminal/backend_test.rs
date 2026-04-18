@@ -12,7 +12,13 @@ fn test_backend_write_captures() {
 fn test_backend_size() {
     let b = TestBackend::new(120, 40);
     let size = b.size().unwrap();
-    assert_eq!(size, TermSize { cols: 120, rows: 40 });
+    assert_eq!(
+        size,
+        TermSize {
+            cols: 120,
+            rows: 40
+        }
+    );
 }
 
 #[test]
@@ -62,7 +68,9 @@ fn test_linux_backend_emits_alt_screen_sequences() {
     let mut w: Vec<u8> = Vec::new();
     // LinuxBackend writes to stdout; assert the expected sequences exist as
     // documented constants on the Backend trait / module.
-    w.write_all(viv::core::terminal::backend::ENTER_ALT_SCREEN).unwrap();
-    w.write_all(viv::core::terminal::backend::LEAVE_ALT_SCREEN).unwrap();
+    w.write_all(viv::core::terminal::backend::ENTER_ALT_SCREEN)
+        .unwrap();
+    w.write_all(viv::core::terminal::backend::LEAVE_ALT_SCREEN)
+        .unwrap();
     assert_eq!(w, b"\x1b[?1049h\x1b[?1049l");
 }

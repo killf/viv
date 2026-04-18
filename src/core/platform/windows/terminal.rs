@@ -23,9 +23,8 @@ impl WinTerminal {
         }
 
         // Enable VT processing for ANSI escape sequences
-        let new_output = output_mode
-            | ffi::ENABLE_PROCESSED_OUTPUT
-            | ffi::ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+        let new_output =
+            output_mode | ffi::ENABLE_PROCESSED_OUTPUT | ffi::ENABLE_VIRTUAL_TERMINAL_PROCESSING;
         unsafe { ffi::SetConsoleMode(output_handle, new_output) };
 
         Ok(WinTerminal {
@@ -105,8 +104,7 @@ impl WinTerminal {
         let mut written = 0usize;
         for record in &records[..read_count as usize] {
             if record.event_type == ffi::KEY_EVENT {
-                let key =
-                    unsafe { &*(record.event.as_ptr() as *const ffi::KEY_EVENT_RECORD) };
+                let key = unsafe { &*(record.event.as_ptr() as *const ffi::KEY_EVENT_RECORD) };
                 if key.b_key_down != 0 && key.u_char != 0 {
                     if let Some(ch) = char::from_u32(key.u_char as u32) {
                         let mut utf8_buf = [0u8; 4];

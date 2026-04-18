@@ -1,11 +1,14 @@
-use viv::memory::retrieval::{format_memory_injection, RetrievalResult};
-use viv::memory::index::{MemoryEntry, EntryKind};
+use viv::memory::index::{EntryKind, MemoryEntry};
+use viv::memory::retrieval::{RetrievalResult, format_memory_injection};
 
 fn make_result(summary: &str, kind: EntryKind) -> RetrievalResult {
     RetrievalResult {
         entry: MemoryEntry {
-            id: "x".into(), kind, file: "f.md".into(),
-            tags: vec![], summary: summary.into(),
+            id: "x".into(),
+            kind,
+            file: "f.md".into(),
+            tags: vec![],
+            summary: summary.into(),
         },
         content: summary.into(),
     }

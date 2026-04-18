@@ -60,7 +60,11 @@ fn parse_multiple_servers() {
     assert_eq!(ts.args, vec!["--stdio"]);
     assert_eq!(ts.extensions, vec![".ts", ".tsx"]);
     assert_eq!(ts.env.len(), 1);
-    assert!(ts.env.iter().any(|(k, v)| k == "NODE_ENV" && v == "production"));
+    assert!(
+        ts.env
+            .iter()
+            .any(|(k, v)| k == "NODE_ENV" && v == "production")
+    );
 }
 
 #[test]

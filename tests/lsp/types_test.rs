@@ -13,7 +13,10 @@ fn parse_position() {
 
 #[test]
 fn position_to_json() {
-    let pos = Position { line: 3, character: 7 };
+    let pos = Position {
+        line: 3,
+        character: 7,
+    };
     let json_str = pos.to_json();
     let parsed = JsonValue::parse(&json_str).unwrap();
     assert_eq!(parsed.get("line").and_then(|v| v.as_i64()), Some(3));
@@ -24,13 +27,16 @@ fn position_to_json() {
 
 #[test]
 fn parse_location() {
-    let json = JsonValue::parse(r#"{
+    let json = JsonValue::parse(
+        r#"{
         "uri": "file:///home/user/main.rs",
         "range": {
             "start": {"line": 0, "character": 0},
             "end": {"line": 0, "character": 10}
         }
-    }"#).unwrap();
+    }"#,
+    )
+    .unwrap();
     let loc = Location::from_json(&json).unwrap();
     assert_eq!(loc.uri, "file:///home/user/main.rs");
     assert_eq!(loc.range.start.line, 0);
@@ -41,26 +47,32 @@ fn parse_location() {
 
 #[test]
 fn location_file_path_strips_prefix() {
-    let json = JsonValue::parse(r#"{
+    let json = JsonValue::parse(
+        r#"{
         "uri": "file:///home/user/project/src/main.rs",
         "range": {
             "start": {"line": 1, "character": 0},
             "end": {"line": 1, "character": 5}
         }
-    }"#).unwrap();
+    }"#,
+    )
+    .unwrap();
     let loc = Location::from_json(&json).unwrap();
     assert_eq!(loc.file_path(), "/home/user/project/src/main.rs");
 }
 
 #[test]
 fn location_file_path_no_prefix() {
-    let json = JsonValue::parse(r#"{
+    let json = JsonValue::parse(
+        r#"{
         "uri": "/absolute/path/file.rs",
         "range": {
             "start": {"line": 0, "character": 0},
             "end": {"line": 0, "character": 0}
         }
-    }"#).unwrap();
+    }"#,
+    )
+    .unwrap();
     let loc = Location::from_json(&json).unwrap();
     assert_eq!(loc.file_path(), "/absolute/path/file.rs");
 }
@@ -76,24 +88,30 @@ fn parse_hover_result_with_string() {
 
 #[test]
 fn parse_hover_result_with_markup() {
-    let json = JsonValue::parse(r#"{
+    let json = JsonValue::parse(
+        r#"{
         "contents": {
             "kind": "markdown",
             "value": "**bold** hover text"
         }
-    }"#).unwrap();
+    }"#,
+    )
+    .unwrap();
     let hover = HoverResult::from_json(&json).unwrap();
     assert_eq!(hover.contents, "**bold** hover text");
 }
 
 #[test]
 fn parse_hover_result_with_array() {
-    let json = JsonValue::parse(r#"{
+    let json = JsonValue::parse(
+        r#"{
         "contents": [
             {"language": "rust", "value": "fn foo()"},
             "some docs"
         ]
-    }"#).unwrap();
+    }"#,
+    )
+    .unwrap();
     let hover = HoverResult::from_json(&json).unwrap();
     // Array elements joined; at minimum not empty
     assert!(!hover.contents.is_empty());
@@ -103,10 +121,22 @@ fn parse_hover_result_with_array() {
 
 #[test]
 fn diagnostic_severity_from_i64() {
-    assert_eq!(DiagnosticSeverity::from_i64(1), Some(DiagnosticSeverity::Error));
-    assert_eq!(DiagnosticSeverity::from_i64(2), Some(DiagnosticSeverity::Warning));
-    assert_eq!(DiagnosticSeverity::from_i64(3), Some(DiagnosticSeverity::Information));
-    assert_eq!(DiagnosticSeverity::from_i64(4), Some(DiagnosticSeverity::Hint));
+    assert_eq!(
+        DiagnosticSeverity::from_i64(1),
+        Some(DiagnosticSeverity::Error)
+    );
+    assert_eq!(
+        DiagnosticSeverity::from_i64(2),
+        Some(DiagnosticSeverity::Warning)
+    );
+    assert_eq!(
+        DiagnosticSeverity::from_i64(3),
+        Some(DiagnosticSeverity::Information)
+    );
+    assert_eq!(
+        DiagnosticSeverity::from_i64(4),
+        Some(DiagnosticSeverity::Hint)
+    );
     assert_eq!(DiagnosticSeverity::from_i64(5), None);
 }
 
@@ -122,7 +152,8 @@ fn diagnostic_severity_labels() {
 
 #[test]
 fn parse_diagnostic() {
-    let json = JsonValue::parse(r#"{
+    let json = JsonValue::parse(
+        r#"{
         "range": {
             "start": {"line": 5, "character": 2},
             "end": {"line": 5, "character": 8}
@@ -130,7 +161,9 @@ fn parse_diagnostic() {
         "severity": 1,
         "message": "undefined variable",
         "code": "E0425"
-    }"#).unwrap();
+    }"#,
+    )
+    .unwrap();
     let diag = Diagnostic::from_json(&json).unwrap();
     assert_eq!(diag.range.start.line, 5);
     assert_eq!(diag.range.start.character, 2);
@@ -141,13 +174,16 @@ fn parse_diagnostic() {
 
 #[test]
 fn parse_diagnostic_minimal() {
-    let json = JsonValue::parse(r#"{
+    let json = JsonValue::parse(
+        r#"{
         "range": {
             "start": {"line": 0, "character": 0},
             "end": {"line": 0, "character": 1}
         },
         "message": "warning: unused import"
-    }"#).unwrap();
+    }"#,
+    )
+    .unwrap();
     let diag = Diagnostic::from_json(&json).unwrap();
     assert!(diag.severity.is_none());
     assert!(diag.code.is_none());
@@ -158,13 +194,16 @@ fn parse_diagnostic_minimal() {
 
 #[test]
 fn parse_server_capabilities() {
-    let json = JsonValue::parse(r#"{
+    let json = JsonValue::parse(
+        r#"{
         "capabilities": {
             "definitionProvider": true,
             "referencesProvider": false,
             "hoverProvider": true
         }
-    }"#).unwrap();
+    }"#,
+    )
+    .unwrap();
     let caps = LspServerCapabilities::from_json(&json).unwrap();
     assert!(caps.definition);
     assert!(!caps.references);
@@ -173,13 +212,16 @@ fn parse_server_capabilities() {
 
 #[test]
 fn parse_server_capabilities_all_false() {
-    let json = JsonValue::parse(r#"{
+    let json = JsonValue::parse(
+        r#"{
         "capabilities": {
             "definitionProvider": false,
             "referencesProvider": false,
             "hoverProvider": false
         }
-    }"#).unwrap();
+    }"#,
+    )
+    .unwrap();
     let caps = LspServerCapabilities::from_json(&json).unwrap();
     assert!(!caps.definition);
     assert!(!caps.references);

@@ -1,5 +1,5 @@
-use std::fmt;
 use crate::Error;
+use std::fmt;
 
 pub trait ToJson {
     fn to_json(&self) -> String;
@@ -58,7 +58,10 @@ impl JsonValue {
         let value = parser.parse_value()?;
         parser.skip_whitespace();
         if parser.pos < parser.chars.len() {
-            return Err(Error::Json(format!("Unexpected trailing characters at position {}", parser.pos)));
+            return Err(Error::Json(format!(
+                "Unexpected trailing characters at position {}",
+                parser.pos
+            )));
         }
         Ok(value)
     }
@@ -206,8 +209,16 @@ impl Parser {
     fn expect(&mut self, expected: char) -> Result<(), Error> {
         match self.consume() {
             Some(ch) if ch == expected => Ok(()),
-            Some(ch) => Err(Error::Json(format!("Expected '{}' but got '{}' at position {}", expected, ch, self.pos - 1))),
-            None => Err(Error::Json(format!("Expected '{}' but got end of input", expected))),
+            Some(ch) => Err(Error::Json(format!(
+                "Expected '{}' but got '{}' at position {}",
+                expected,
+                ch,
+                self.pos - 1
+            ))),
+            None => Err(Error::Json(format!(
+                "Expected '{}' but got end of input",
+                expected
+            ))),
         }
     }
 
@@ -220,7 +231,10 @@ impl Parser {
             Some('[') => self.parse_array(),
             Some('{') => self.parse_object(),
             Some(c) if c == '-' || c.is_ascii_digit() => self.parse_number(),
-            Some(c) => Err(Error::Json(format!("Unexpected character '{}' at position {}", c, self.pos))),
+            Some(c) => Err(Error::Json(format!(
+                "Unexpected character '{}' at position {}",
+                c, self.pos
+            ))),
             None => Err(Error::Json("Unexpected end of input".to_string())),
         }
     }
@@ -252,35 +266,53 @@ impl Parser {
         loop {
             match self.consume() {
                 Some('"') => break,
-                Some('\\') => {
-                    match self.consume() {
-                        Some('"') => result.push('"'),
-                        Some('\\') => result.push('\\'),
-                        Some('/') => result.push('/'),
-                        Some('b') => result.push('\x08'),
-                        Some('f') => result.push('\x0C'),
-                        Some('n') => result.push('\n'),
-                        Some('r') => result.push('\r'),
-                        Some('t') => result.push('\t'),
-                        Some('u') => {
-                            let mut hex = String::new();
-                            for _ in 0..4 {
-                                match self.consume() {
-                                    Some(h) if h.is_ascii_hexdigit() => hex.push(h),
-                                    Some(c) => return Err(Error::Json(format!("Invalid hex digit '{}' in unicode escape", c))),
-                                    None => return Err(Error::Json("Unexpected end in unicode escape".to_string())),
+                Some('\\') => match self.consume() {
+                    Some('"') => result.push('"'),
+                    Some('\\') => result.push('\\'),
+                    Some('/') => result.push('/'),
+                    Some('b') => result.push('\x08'),
+                    Some('f') => result.push('\x0C'),
+                    Some('n') => result.push('\n'),
+                    Some('r') => result.push('\r'),
+                    Some('t') => result.push('\t'),
+                    Some('u') => {
+                        let mut hex = String::new();
+                        for _ in 0..4 {
+                            match self.consume() {
+                                Some(h) if h.is_ascii_hexdigit() => hex.push(h),
+                                Some(c) => {
+                                    return Err(Error::Json(format!(
+                                        "Invalid hex digit '{}' in unicode escape",
+                                        c
+                                    )));
+                                }
+                                None => {
+                                    return Err(Error::Json(
+                                        "Unexpected end in unicode escape".to_string(),
+                                    ));
                                 }
                             }
-                            let code_point = u32::from_str_radix(&hex, 16)
-                                .map_err(|e| Error::Json(format!("Invalid unicode escape: {}", e)))?;
-                            let ch = char::from_u32(code_point)
-                                .ok_or_else(|| Error::Json(format!("Invalid unicode code point: {}", code_point)))?;
-                            result.push(ch);
                         }
-                        Some(c) => return Err(Error::Json(format!("Invalid escape sequence '\\{}' at position {}", c, self.pos - 1))),
-                        None => return Err(Error::Json("Unexpected end of input in string escape".to_string())),
+                        let code_point = u32::from_str_radix(&hex, 16)
+                            .map_err(|e| Error::Json(format!("Invalid unicode escape: {}", e)))?;
+                        let ch = char::from_u32(code_point).ok_or_else(|| {
+                            Error::Json(format!("Invalid unicode code point: {}", code_point))
+                        })?;
+                        result.push(ch);
                     }
-                }
+                    Some(c) => {
+                        return Err(Error::Json(format!(
+                            "Invalid escape sequence '\\{}' at position {}",
+                            c,
+                            self.pos - 1
+                        )));
+                    }
+                    None => {
+                        return Err(Error::Json(
+                            "Unexpected end of input in string escape".to_string(),
+                        ));
+                    }
+                },
                 Some(c) => result.push(c),
                 None => return Err(Error::Json("Unexpected end of input in string".to_string())),
             }
@@ -297,20 +329,30 @@ impl Parser {
         }
         // integer part
         match self.peek() {
-            Some('0') => { self.pos += 1; }
+            Some('0') => {
+                self.pos += 1;
+            }
             Some(c) if c.is_ascii_digit() => {
                 while self.peek().is_some_and(|c| c.is_ascii_digit()) {
                     self.pos += 1;
                 }
             }
-            _ => return Err(Error::Json(format!("Invalid number at position {}", self.pos))),
+            _ => {
+                return Err(Error::Json(format!(
+                    "Invalid number at position {}",
+                    self.pos
+                )));
+            }
         }
         // optional fractional part
         if self.peek() == Some('.') {
             is_float = true;
             self.pos += 1;
             if !self.peek().is_some_and(|c| c.is_ascii_digit()) {
-                return Err(Error::Json(format!("Expected digit after '.' at position {}", self.pos)));
+                return Err(Error::Json(format!(
+                    "Expected digit after '.' at position {}",
+                    self.pos
+                )));
             }
             while self.peek().is_some_and(|c| c.is_ascii_digit()) {
                 self.pos += 1;
@@ -324,7 +366,10 @@ impl Parser {
                 self.pos += 1;
             }
             if !self.peek().is_some_and(|c| c.is_ascii_digit()) {
-                return Err(Error::Json(format!("Expected digit in exponent at position {}", self.pos)));
+                return Err(Error::Json(format!(
+                    "Expected digit in exponent at position {}",
+                    self.pos
+                )));
             }
             while self.peek().is_some_and(|c| c.is_ascii_digit()) {
                 self.pos += 1;
@@ -332,10 +377,14 @@ impl Parser {
         }
         let num_str: String = self.chars[start..self.pos].iter().collect();
         if is_float {
-            let n: f64 = num_str.parse().map_err(|e| Error::Json(format!("Invalid number '{}': {}", num_str, e)))?;
+            let n: f64 = num_str
+                .parse()
+                .map_err(|e| Error::Json(format!("Invalid number '{}': {}", num_str, e)))?;
             Ok(JsonValue::Number(Number::Float(n)))
         } else {
-            let n: i64 = num_str.parse().map_err(|e| Error::Json(format!("Invalid number '{}': {}", num_str, e)))?;
+            let n: i64 = num_str
+                .parse()
+                .map_err(|e| Error::Json(format!("Invalid number '{}': {}", num_str, e)))?;
             Ok(JsonValue::Number(Number::Int(n)))
         }
     }
@@ -353,9 +402,19 @@ impl Parser {
             items.push(val);
             self.skip_whitespace();
             match self.peek() {
-                Some(',') => { self.pos += 1; }
-                Some(']') => { self.pos += 1; break; }
-                Some(c) => return Err(Error::Json(format!("Expected ',' or ']' in array, got '{}' at position {}", c, self.pos))),
+                Some(',') => {
+                    self.pos += 1;
+                }
+                Some(']') => {
+                    self.pos += 1;
+                    break;
+                }
+                Some(c) => {
+                    return Err(Error::Json(format!(
+                        "Expected ',' or ']' in array, got '{}' at position {}",
+                        c, self.pos
+                    )));
+                }
                 None => return Err(Error::Json("Unexpected end of input in array".to_string())),
             }
         }
@@ -379,9 +438,19 @@ impl Parser {
             pairs.push((key, val));
             self.skip_whitespace();
             match self.peek() {
-                Some(',') => { self.pos += 1; }
-                Some('}') => { self.pos += 1; break; }
-                Some(c) => return Err(Error::Json(format!("Expected ',' or '}}' in object, got '{}' at position {}", c, self.pos))),
+                Some(',') => {
+                    self.pos += 1;
+                }
+                Some('}') => {
+                    self.pos += 1;
+                    break;
+                }
+                Some(c) => {
+                    return Err(Error::Json(format!(
+                        "Expected ',' or '}}' in object, got '{}' at position {}",
+                        c, self.pos
+                    )));
+                }
                 None => return Err(Error::Json("Unexpected end of input in object".to_string())),
             }
         }

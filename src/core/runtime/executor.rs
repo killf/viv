@@ -1,17 +1,15 @@
+use super::task::{JoinHandle, Task, TaskId, oneshot};
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Arc, mpsc};
 use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
 use std::time::Duration;
-use super::task::{Task, TaskId, JoinHandle, oneshot};
 
 /// Create a no-op Waker that does nothing on wake/clone/drop.
 pub fn noop_waker() -> Waker {
-    const VTABLE: RawWakerVTable = RawWakerVTable::new(
-        |p| RawWaker::new(p, &VTABLE),
-        |_| {}, |_| {}, |_| {},
-    );
+    const VTABLE: RawWakerVTable =
+        RawWakerVTable::new(|p| RawWaker::new(p, &VTABLE), |_| {}, |_| {}, |_| {});
     unsafe { Waker::from_raw(RawWaker::new(std::ptr::null(), &VTABLE)) }
 }
 
@@ -33,7 +31,12 @@ pub struct Executor {
 impl Executor {
     pub fn new() -> Self {
         let (tx, rx) = mpsc::channel();
-        Executor { tasks: HashMap::new(), ready_tx: tx, ready_rx: rx, next_id: 0 }
+        Executor {
+            tasks: HashMap::new(),
+            ready_tx: tx,
+            ready_rx: rx,
+            next_id: 0,
+        }
     }
 
     pub fn spawn<T>(&mut self, future: impl Future<Output = T> + Send + 'static) -> JoinHandle<T>
@@ -76,13 +79,19 @@ impl Executor {
         }
     }
 
-    pub fn is_idle(&self) -> bool { self.tasks.is_empty() }
+    pub fn is_idle(&self) -> bool {
+        self.tasks.is_empty()
+    }
 
-    pub fn sender(&self) -> mpsc::Sender<TaskId> { self.ready_tx.clone() }
+    pub fn sender(&self) -> mpsc::Sender<TaskId> {
+        self.ready_tx.clone()
+    }
 }
 
 impl Default for Executor {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// Block current thread on a future (no Send required).
@@ -100,9 +109,7 @@ pub fn block_on_local<T>(mut future: impl Future<Output = T> + Unpin) -> T {
 }
 
 /// Block current thread on a future (requires Send + 'static).
-pub fn block_on<T: Unpin + Send + 'static>(
-    future: impl Future<Output = T> + Send + 'static,
-) -> T {
+pub fn block_on<T: Unpin + Send + 'static>(future: impl Future<Output = T> + Send + 'static) -> T {
     let mut exec = Executor::new();
     let mut handle = exec.spawn(future);
     let waker = noop_waker();

@@ -12,7 +12,13 @@
 #[macro_export]
 macro_rules! log {
     ($level:expr, $msg:expr $(,)?) => {
-        $crate::log::log($level, $crate::log::extract_module(file!()), file!(), line!(), $msg)
+        $crate::log::log(
+            $level,
+            $crate::log::extract_module(file!()),
+            file!(),
+            line!(),
+            $msg,
+        )
     };
 }
 

@@ -36,15 +36,17 @@ fn parse_request_without_params() {
 
 #[test]
 fn parse_result_response() {
-    let json = JsonValue::parse(
-        r#"{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-03-26"}}"#,
-    )
-    .unwrap();
+    let json =
+        JsonValue::parse(r#"{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-03-26"}}"#)
+            .unwrap();
     let msg = Message::parse(&json).unwrap();
     match msg {
         Message::Response(Response::Result { id, result }) => {
             assert_eq!(id, 1);
-            assert_eq!(result.get("protocolVersion").unwrap().as_str().unwrap(), "2025-03-26");
+            assert_eq!(
+                result.get("protocolVersion").unwrap().as_str().unwrap(),
+                "2025-03-26"
+            );
         }
         other => panic!("expected Response::Result, got {:?}", other),
     }
@@ -88,10 +90,9 @@ fn parse_error_response_with_data() {
 
 #[test]
 fn parse_notification() {
-    let json = JsonValue::parse(
-        r#"{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}"#,
-    )
-    .unwrap();
+    let json =
+        JsonValue::parse(r#"{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}"#)
+            .unwrap();
     let msg = Message::parse(&json).unwrap();
     match msg {
         Message::Notification(notif) => {
@@ -104,8 +105,7 @@ fn parse_notification() {
 
 #[test]
 fn parse_notification_without_params() {
-    let json =
-        JsonValue::parse(r#"{"jsonrpc":"2.0","method":"notifications/cancelled"}"#).unwrap();
+    let json = JsonValue::parse(r#"{"jsonrpc":"2.0","method":"notifications/cancelled"}"#).unwrap();
     let msg = Message::parse(&json).unwrap();
     match msg {
         Message::Notification(notif) => {
@@ -224,7 +224,12 @@ fn response_result_to_json() {
     assert_eq!(json.get("jsonrpc").unwrap().as_str().unwrap(), "2.0");
     assert_eq!(json.get("id").unwrap().as_i64().unwrap(), 5);
     assert_eq!(
-        json.get("result").unwrap().get("ok").unwrap().as_bool().unwrap(),
+        json.get("result")
+            .unwrap()
+            .get("ok")
+            .unwrap()
+            .as_bool()
+            .unwrap(),
         true
     );
     assert!(json.get("error").is_none());
@@ -246,5 +251,8 @@ fn response_error_to_json() {
     assert!(json.get("result").is_none());
     let err = json.get("error").unwrap();
     assert_eq!(err.get("code").unwrap().as_i64().unwrap(), -32600);
-    assert_eq!(err.get("message").unwrap().as_str().unwrap(), "Invalid Request");
+    assert_eq!(
+        err.get("message").unwrap().as_str().unwrap(),
+        "Invalid Request"
+    );
 }

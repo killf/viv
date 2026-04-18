@@ -7,20 +7,34 @@ use viv::lsp::{LspManager, path_to_uri};
 
 #[test]
 fn path_to_uri_absolute() {
-    assert_eq!(path_to_uri("/home/user/project/src/main.rs"), "file:///home/user/project/src/main.rs");
+    assert_eq!(
+        path_to_uri("/home/user/project/src/main.rs"),
+        "file:///home/user/project/src/main.rs"
+    );
 }
 
 #[test]
 fn path_to_uri_already_has_scheme() {
-    assert_eq!(path_to_uri("file:///home/user/main.rs"), "file:///home/user/main.rs");
+    assert_eq!(
+        path_to_uri("file:///home/user/main.rs"),
+        "file:///home/user/main.rs"
+    );
 }
 
 #[test]
 fn path_to_uri_relative() {
     let result = path_to_uri("src/main.rs");
     // relative paths should be resolved to absolute with file:// prefix
-    assert!(result.starts_with("file://"), "expected file:// prefix, got: {}", result);
-    assert!(result.contains("src/main.rs"), "expected path in uri, got: {}", result);
+    assert!(
+        result.starts_with("file://"),
+        "expected file:// prefix, got: {}",
+        result
+    );
+    assert!(
+        result.contains("src/main.rs"),
+        "expected path in uri, got: {}",
+        result
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -109,7 +123,10 @@ fn server_for_file_absolute_path() {
     let config = LspConfig::parse(json).unwrap();
     let manager = LspManager::new(config);
 
-    assert_eq!(manager.server_name_for_file("/workspace/src/lib.rs"), Some("rust"));
+    assert_eq!(
+        manager.server_name_for_file("/workspace/src/lib.rs"),
+        Some("rust")
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -122,8 +139,8 @@ fn notify_did_change_noop_for_unopened_file() {
     let config = LspConfig::parse("{}").unwrap();
     let mut manager = LspManager::new(config);
 
-    let result = viv::core::runtime::block_on_local(
-        std::pin::pin!(manager.notify_did_change("/tmp/does_not_exist.rs"))
-    );
+    let result = viv::core::runtime::block_on_local(std::pin::pin!(
+        manager.notify_did_change("/tmp/does_not_exist.rs")
+    ));
     assert!(result.is_ok());
 }

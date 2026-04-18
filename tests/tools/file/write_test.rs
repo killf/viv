@@ -10,7 +10,10 @@ fn tempdir() -> std::path::PathBuf {
     p
 }
 fn nanos() -> u32 {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().subsec_nanos()
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .subsec_nanos()
 }
 
 #[test]
@@ -18,8 +21,10 @@ fn write_creates_file_with_content() {
     let dir = tempdir();
     let path = dir.join("out.txt");
     let input = JsonValue::parse(&format!(
-        r#"{{"file_path":"{}","content":"hello world"}}"#, path.display()
-    )).unwrap();
+        r#"{{"file_path":"{}","content":"hello world"}}"#,
+        path.display()
+    ))
+    .unwrap();
     poll_to_completion(WriteTool.execute(&input)).unwrap();
     assert_eq!(fs::read_to_string(&path).unwrap(), "hello world");
 }
@@ -29,8 +34,10 @@ fn write_creates_parent_directories() {
     let dir = tempdir();
     let path = dir.join("a/b/c.txt");
     let input = JsonValue::parse(&format!(
-        r#"{{"file_path":"{}","content":"hi"}}"#, path.display()
-    )).unwrap();
+        r#"{{"file_path":"{}","content":"hi"}}"#,
+        path.display()
+    ))
+    .unwrap();
     poll_to_completion(WriteTool.execute(&input)).unwrap();
     assert!(path.exists());
 }
@@ -41,8 +48,10 @@ fn write_overwrites_existing_file() {
     let path = dir.join("f.txt");
     fs::write(&path, "old").unwrap();
     let input = JsonValue::parse(&format!(
-        r#"{{"file_path":"{}","content":"new"}}"#, path.display()
-    )).unwrap();
+        r#"{{"file_path":"{}","content":"new"}}"#,
+        path.display()
+    ))
+    .unwrap();
     poll_to_completion(WriteTool.execute(&input)).unwrap();
     assert_eq!(fs::read_to_string(&path).unwrap(), "new");
 }

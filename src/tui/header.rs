@@ -26,8 +26,14 @@ impl HeaderWidget {
 
     pub fn from_path(cwd: &str, branch: Option<String>) -> Self {
         let cwd = if cwd.chars().count() > 30 {
-            let tail: String = cwd.chars().rev().take(29).collect::<String>()
-                .chars().rev().collect();
+            let tail: String = cwd
+                .chars()
+                .rev()
+                .take(29)
+                .collect::<String>()
+                .chars()
+                .rev()
+                .collect();
             format!("…{}", tail)
         } else {
             cwd.to_string()
@@ -45,7 +51,9 @@ pub fn parse_branch(head_content: &str) -> Option<String> {
 
 impl Widget for HeaderWidget {
     fn render(&self, area: Rect, buf: &mut Buffer) {
-        if area.is_empty() { return; }
+        if area.is_empty() {
+            return;
+        }
         let text = match &self.branch {
             Some(b) => format!("  {}  ⎇ {}", self.cwd, b),
             None => format!("  {}", self.cwd),

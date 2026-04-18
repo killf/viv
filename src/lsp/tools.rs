@@ -84,14 +84,8 @@ fn extract_file_line_col(input: &JsonValue) -> (String, u32, u32) {
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .to_string();
-    let line = input
-        .get("line")
-        .and_then(|v| v.as_i64())
-        .unwrap_or(0) as u32;
-    let col = input
-        .get("column")
-        .and_then(|v| v.as_i64())
-        .unwrap_or(0) as u32;
+    let line = input.get("line").and_then(|v| v.as_i64()).unwrap_or(0) as u32;
+    let col = input.get("column").and_then(|v| v.as_i64()).unwrap_or(0) as u32;
     (file, line, col)
 }
 
@@ -125,11 +119,7 @@ fn read_single_line(file: &str, line: u32) -> String {
         Ok(c) => c,
         Err(_) => return String::new(),
     };
-    content
-        .lines()
-        .nth(line as usize)
-        .unwrap_or("")
-        .to_string()
+    content.lines().nth(line as usize).unwrap_or("").to_string()
 }
 
 /// Format diagnostics for a given path into the output string.
@@ -189,7 +179,10 @@ impl Tool for LspDefinitionTool {
         let (file, line, col) = extract_file_line_col(input);
         Box::pin(AssertSend(async move {
             #[cfg(not(unix))]
-            { let _ = (&file, line, col); return platform_unsupported(); }
+            {
+                let _ = (&file, line, col);
+                return platform_unsupported();
+            }
 
             #[cfg(unix)]
             {
@@ -259,7 +252,10 @@ impl Tool for LspReferencesTool {
         let (file, line, col) = extract_file_line_col(input);
         Box::pin(AssertSend(async move {
             #[cfg(not(unix))]
-            { let _ = (&file, line, col); return platform_unsupported(); }
+            {
+                let _ = (&file, line, col);
+                return platform_unsupported();
+            }
 
             #[cfg(unix)]
             {
@@ -343,7 +339,10 @@ impl Tool for LspHoverTool {
         let (file, line, col) = extract_file_line_col(input);
         Box::pin(AssertSend(async move {
             #[cfg(not(unix))]
-            { let _ = (&file, line, col); return platform_unsupported(); }
+            {
+                let _ = (&file, line, col);
+                return platform_unsupported();
+            }
 
             #[cfg(unix)]
             {
@@ -401,9 +400,7 @@ impl Tool for LspDiagnosticsTool {
                         ("type".to_string(), JsonValue::Str("string".to_string())),
                         (
                             "description".to_string(),
-                            JsonValue::Str(
-                                "Optional file path to filter diagnostics".to_string(),
-                            ),
+                            JsonValue::Str("Optional file path to filter diagnostics".to_string()),
                         ),
                     ]),
                 )]),
@@ -421,7 +418,10 @@ impl Tool for LspDiagnosticsTool {
             .map(|s| s.to_string());
         Box::pin(AssertSend(async move {
             #[cfg(not(unix))]
-            { let _ = &file; return platform_unsupported(); }
+            {
+                let _ = &file;
+                return platform_unsupported();
+            }
 
             #[cfg(unix)]
             {

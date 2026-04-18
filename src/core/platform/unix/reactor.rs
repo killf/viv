@@ -1,7 +1,7 @@
+use crate::core::platform::types::RawHandle;
 use std::collections::HashMap;
 use std::task::Waker;
 use std::time::Duration;
-use crate::core::platform::types::RawHandle;
 
 unsafe extern "C" {
     fn epoll_create1(flags: i32) -> i32;
@@ -19,7 +19,10 @@ const EINTR: i32 = 4;
 
 #[repr(C, packed)]
 #[derive(Clone, Copy)]
-struct EpollEvent { events: u32, data: u64 }
+struct EpollEvent {
+    events: u32,
+    data: u64,
+}
 
 pub struct EpollReactor {
     epfd: i32,
@@ -31,16 +34,28 @@ pub struct EpollReactor {
 impl EpollReactor {
     pub fn new() -> crate::Result<Self> {
         let epfd = unsafe { epoll_create1(0) };
-        if epfd < 0 { return Err(crate::Error::Io(std::io::Error::last_os_error())); }
-        Ok(EpollReactor { epfd, wakers: HashMap::new(), token_to_fd: HashMap::new(), next_token: 1 })
+        if epfd < 0 {
+            return Err(crate::Error::Io(std::io::Error::last_os_error()));
+        }
+        Ok(EpollReactor {
+            epfd,
+            wakers: HashMap::new(),
+            token_to_fd: HashMap::new(),
+            next_token: 1,
+        })
     }
 
     pub fn register_read(&mut self, handle: RawHandle, waker: Waker) -> crate::Result<u64> {
         let token = self.next_token;
         self.next_token += 1;
-        let mut event = EpollEvent { events: EPOLLIN, data: token };
+        let mut event = EpollEvent {
+            events: EPOLLIN,
+            data: token,
+        };
         let ret = unsafe { epoll_ctl(self.epfd, EPOLL_CTL_ADD, handle, &mut event) };
-        if ret < 0 { return Err(crate::Error::Io(std::io::Error::last_os_error())); }
+        if ret < 0 {
+            return Err(crate::Error::Io(std::io::Error::last_os_error()));
+        }
         self.wakers.insert(token, waker);
         self.token_to_fd.insert(token, handle);
         Ok(token)
@@ -49,9 +64,14 @@ impl EpollReactor {
     pub fn register_write(&mut self, handle: RawHandle, waker: Waker) -> crate::Result<u64> {
         let token = self.next_token;
         self.next_token += 1;
-        let mut event = EpollEvent { events: EPOLLOUT, data: token };
+        let mut event = EpollEvent {
+            events: EPOLLOUT,
+            data: token,
+        };
         let ret = unsafe { epoll_ctl(self.epfd, EPOLL_CTL_ADD, handle, &mut event) };
-        if ret < 0 { return Err(crate::Error::Io(std::io::Error::last_os_error())); }
+        if ret < 0 {
+            return Err(crate::Error::Io(std::io::Error::last_os_error()));
+        }
         self.wakers.insert(token, waker);
         self.token_to_fd.insert(token, handle);
         Ok(token)
@@ -73,7 +93,9 @@ impl EpollReactor {
         let n = unsafe { epoll_wait(self.epfd, events.as_mut_ptr(), MAX_EVENTS as i32, ms) };
         if n < 0 {
             let errno = unsafe { *__errno_location() };
-            if errno == EINTR { return Ok(0); }
+            if errno == EINTR {
+                return Ok(0);
+            }
             return Err(crate::Error::Io(std::io::Error::from_raw_os_error(errno)));
         }
         let count = n as usize;
@@ -83,14 +105,20 @@ impl EpollReactor {
                 unsafe { epoll_ctl(self.epfd, EPOLL_CTL_DEL, fd, std::ptr::null_mut()) };
                 self.token_to_fd.remove(&token);
             }
-            if let Some(waker) = self.wakers.remove(&token) { waker.wake(); }
+            if let Some(waker) = self.wakers.remove(&token) {
+                waker.wake();
+            }
         }
         Ok(count)
     }
 
-    pub fn epoll_fd(&self) -> i32 { self.epfd }
+    pub fn epoll_fd(&self) -> i32 {
+        self.epfd
+    }
 }
 
 impl Drop for EpollReactor {
-    fn drop(&mut self) { unsafe { close(self.epfd) }; }
+    fn drop(&mut self) {
+        unsafe { close(self.epfd) };
+    }
 }

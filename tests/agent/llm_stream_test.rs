@@ -1,5 +1,5 @@
-use viv::llm::parse_agent_stream_pub;
 use viv::agent::message::ContentBlock;
+use viv::llm::parse_agent_stream_pub;
 
 #[test]
 fn parses_text_delta_from_sse() {

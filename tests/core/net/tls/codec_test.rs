@@ -54,7 +54,13 @@ fn encode_client_hello_contains_required_extensions() {
     let x25519_pub = [0x33; 32];
     let mut out = Vec::new();
 
-    codec::encode_client_hello(&random, &session_id, "test.example.org", &x25519_pub, &mut out);
+    codec::encode_client_hello(
+        &random,
+        &session_id,
+        "test.example.org",
+        &x25519_pub,
+        &mut out,
+    );
 
     // Extensions start after the fixed fields. Find them by looking for
     // known extension type bytes in the output.
@@ -66,7 +72,10 @@ fn encode_client_hello_contains_required_extensions() {
 
     // Key share extension should contain our public key
     let has_pubkey = out.windows(32).any(|w| w == &[0x33; 32]);
-    assert!(has_pubkey, "ClientHello should contain the X25519 public key");
+    assert!(
+        has_pubkey,
+        "ClientHello should contain the X25519 public key"
+    );
 
     // Supported versions extension should contain TLS 1.3 (0x0304)
     let has_tls13 = out.windows(2).any(|w| w == [0x03, 0x04]);
@@ -116,12 +125,15 @@ fn decode_server_hello_with_known_bytes() {
     // Handshake header: type=ServerHello(0x02), length TBD
     msg.push(codec::SERVER_HELLO);
     let len_pos = msg.len();
-    msg.push(0); msg.push(0); msg.push(0); // placeholder for length
+    msg.push(0);
+    msg.push(0);
+    msg.push(0); // placeholder for length
 
     let body_start = msg.len();
 
     // legacy_version: 0x0303
-    msg.push(0x03); msg.push(0x03);
+    msg.push(0x03);
+    msg.push(0x03);
 
     // random: 32 bytes
     let random = [0x55u8; 32];
@@ -131,25 +143,34 @@ fn decode_server_hello_with_known_bytes() {
     msg.push(0);
 
     // cipher_suite: TLS_AES_128_GCM_SHA256 = 0x1301
-    msg.push(0x13); msg.push(0x01);
+    msg.push(0x13);
+    msg.push(0x01);
 
     // compression_method: null
     msg.push(0x00);
 
     // Extensions
     let ext_start = msg.len();
-    msg.push(0); msg.push(0); // extensions length placeholder
+    msg.push(0);
+    msg.push(0); // extensions length placeholder
 
     // supported_versions extension (type=43)
-    msg.push(0x00); msg.push(0x2b); // type=43
-    msg.push(0x00); msg.push(0x02); // length=2
-    msg.push(0x03); msg.push(0x04); // TLS 1.3
+    msg.push(0x00);
+    msg.push(0x2b); // type=43
+    msg.push(0x00);
+    msg.push(0x02); // length=2
+    msg.push(0x03);
+    msg.push(0x04); // TLS 1.3
 
     // key_share extension (type=51)
-    msg.push(0x00); msg.push(0x33); // type=51
-    msg.push(0x00); msg.push(0x24); // length=36
-    msg.push(0x00); msg.push(0x1d); // group=x25519
-    msg.push(0x00); msg.push(0x20); // key_exchange length=32
+    msg.push(0x00);
+    msg.push(0x33); // type=51
+    msg.push(0x00);
+    msg.push(0x24); // length=36
+    msg.push(0x00);
+    msg.push(0x1d); // group=x25519
+    msg.push(0x00);
+    msg.push(0x20); // key_exchange length=32
     let server_pub = [0x77u8; 32];
     msg.extend_from_slice(&server_pub);
 
@@ -182,7 +203,9 @@ fn decode_finished_with_known_bytes() {
     let verify = [0xAB; 32];
     let mut msg = Vec::new();
     msg.push(codec::FINISHED);
-    msg.push(0x00); msg.push(0x00); msg.push(0x20); // length = 32
+    msg.push(0x00);
+    msg.push(0x00);
+    msg.push(0x20); // length = 32
     msg.extend_from_slice(&verify);
 
     let result = codec::decode_handshake(&msg).expect("decode should succeed");

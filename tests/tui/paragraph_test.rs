@@ -1,6 +1,6 @@
+use viv::core::terminal::buffer::{Buffer, Rect};
 use viv::tui::paragraph::*;
 use viv::tui::widget::Widget;
-use viv::core::terminal::buffer::{Rect, Buffer};
 
 #[test]
 fn single_line_renders() {
@@ -27,7 +27,8 @@ fn scroll_skips_lines() {
         Line::raw("line0"),
         Line::raw("line1"),
         Line::raw("line2"),
-    ]).scroll(1);
+    ])
+    .scroll(1);
     let mut buf = Buffer::empty(Rect::new(0, 0, 20, 5));
     p.render(Rect::new(0, 0, 20, 5), &mut buf);
     // line0 skipped, line1 at row 0
@@ -44,7 +45,10 @@ fn styled_spans() {
     let p = Paragraph::new(vec![line]);
     let mut buf = Buffer::empty(Rect::new(0, 0, 20, 5));
     p.render(Rect::new(0, 0, 20, 5), &mut buf);
-    assert_eq!(buf.get(0, 0).fg, Some(viv::core::terminal::style::Color::Ansi(31)));
+    assert_eq!(
+        buf.get(0, 0).fg,
+        Some(viv::core::terminal::style::Color::Ansi(31))
+    );
     assert_eq!(buf.get(0, 0).ch, 'r');
     assert_eq!(buf.get(4, 0).fg, None); // space after "red" is unstyled
 }

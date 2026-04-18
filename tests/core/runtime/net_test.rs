@@ -1,7 +1,7 @@
 use std::net::TcpListener;
 use std::thread;
-use viv::core::runtime::executor::block_on;
 use viv::core::net::async_tcp::AsyncTcpStream;
+use viv::core::runtime::executor::block_on;
 
 fn start_echo_server() -> u16 {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();

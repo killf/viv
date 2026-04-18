@@ -1,11 +1,14 @@
-use viv::tui::header::HeaderWidget;
-use viv::tui::widget::Widget;
 use viv::core::terminal::buffer::{Buffer, Rect};
 use viv::core::terminal::style::theme;
+use viv::tui::header::HeaderWidget;
+use viv::tui::widget::Widget;
 
 #[test]
 fn renders_cwd_without_branch() {
-    let w = HeaderWidget { cwd: "~/project".to_string(), branch: None };
+    let w = HeaderWidget {
+        cwd: "~/project".to_string(),
+        branch: None,
+    };
     let mut buf = Buffer::empty(Rect::new(0, 0, 40, 1));
     w.render(Rect::new(0, 0, 40, 1), &mut buf);
     // Check '~' appears at col 2 (two leading spaces)
@@ -14,7 +17,10 @@ fn renders_cwd_without_branch() {
 
 #[test]
 fn renders_branch_when_present() {
-    let w = HeaderWidget { cwd: "~/p".to_string(), branch: Some("main".to_string()) };
+    let w = HeaderWidget {
+        cwd: "~/p".to_string(),
+        branch: Some("main".to_string()),
+    };
     let mut buf = Buffer::empty(Rect::new(0, 0, 40, 1));
     w.render(Rect::new(0, 0, 40, 1), &mut buf);
     // Text should contain ⎇
@@ -31,7 +37,10 @@ fn truncates_long_cwd() {
 
 #[test]
 fn text_is_dim() {
-    let w = HeaderWidget { cwd: "~/p".to_string(), branch: None };
+    let w = HeaderWidget {
+        cwd: "~/p".to_string(),
+        branch: None,
+    };
     let mut buf = Buffer::empty(Rect::new(0, 0, 20, 1));
     w.render(Rect::new(0, 0, 20, 1), &mut buf);
     assert_eq!(buf.get(2, 0).fg, Some(theme::DIM));
