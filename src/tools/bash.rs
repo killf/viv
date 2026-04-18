@@ -15,7 +15,7 @@ impl Tool for BashTool {
     }
 
     fn description(&self) -> &str {
-        "Executes a given bash command and returns its output.\n\nIMPORTANT: Avoid using this tool to run `find`, `grep`, `cat`, `head`, `tail`, `sed`, `awk`, or `echo` commands — use the dedicated tools instead.\n\n- Quote file paths containing spaces with double quotes\n- Try to maintain current working directory using absolute paths\n- You may specify an optional timeout in milliseconds (up to 600000ms / 10 minutes)\n- Use run_in_background for fire-and-forget processes; no need for `&` at the end"
+        "Executes a given bash command and returns its output.\n\nIMPORTANT: Avoid using this tool to run `find`, `grep`, `cat`, `head`, `tail`, `sed`, `awk`, or `echo` commands — use the dedicated tools instead.\n\n- Quote file paths containing spaces with double quotes\n- Try to maintain current working directory using absolute paths and avoiding usage of `cd`\n- You may specify an optional timeout in milliseconds (up to 600000ms / 10 minutes). Default is 120000ms (2 minutes).\n- Use run_in_background for long-running processes\n- For git commands: prefer creating new commits rather than amending; never skip hooks (--no-verify)"
     }
 
     fn input_schema(&self) -> JsonValue {
@@ -25,8 +25,7 @@ impl Tool for BashTool {
                 "command":{"type":"string","description":"The command to execute"},
                 "timeout":{"type":"number","description":"Optional timeout in milliseconds (max 600000). Default: 120000."},
                 "description":{"type":"string","description":"Clear, concise description of what this command does in active voice."},
-                "run_in_background":{"type":"boolean","description":"Set to true to run the command in the background. Returns the PID. Default: false."},
-                "dangerouslyDisableSandbox":{"type":"boolean","description":"Set to true to run without sandboxing. Default: false."}
+                "run_in_background":{"type":"boolean","description":"Set to true to run the command in the background. Returns the PID. Default: false."}
             },
             "required":["command"]
         }"#).unwrap()

@@ -13,7 +13,7 @@ impl Tool for GrepTool {
     }
 
     fn description(&self) -> &str {
-        "A powerful search tool that supports full regex syntax (e.g., \"log.*Error\", \"function\\s+\\w+\").\n\n- Filter files with glob parameter (e.g., \"*.js\", \"**/*.tsx\") or type parameter (e.g., \"js\", \"py\", \"rust\")\n- Output modes: \"content\" shows matching lines, \"files_with_matches\" shows only file paths (default), \"count\" shows match counts\n- Use -A/-B/-C for context lines around matches\n- Pattern syntax uses extended regex (ERE)"
+        "A powerful search tool built on grep.\n\n- Supports full regex syntax (e.g., \"log.*Error\", \"function\\s+\\w+\")\n- Filter files with glob parameter (e.g., \"*.js\", \"**/*.tsx\") or type parameter (e.g., \"js\", \"py\", \"rust\")\n- Output modes: \"content\" shows matching lines, \"files_with_matches\" shows only file paths (default), \"count\" shows match counts\n- Use -A/-B/-C or context for context lines around matches\n- Pattern syntax: Uses extended regex (ERE)"
     }
 
     fn input_schema(&self) -> JsonValue {

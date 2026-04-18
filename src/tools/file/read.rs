@@ -12,7 +12,7 @@ impl Tool for ReadTool {
     }
 
     fn description(&self) -> &str {
-        "Reads a file from the local filesystem. You can access any file directly by using this tool.\n\nAssume this tool is able to read all files on the machine.\n\n- The file_path parameter must be an absolute path, not a relative path\n- By default, it reads up to 2000 lines starting from the beginning of the file\n- You can optionally specify a line offset and limit (especially handy for long files)\n- Results are returned using cat -n format, with line numbers starting at 1\n- For PDF files, provide the pages parameter to read specific page ranges (e.g., \"1-5\"). Maximum 20 pages per request."
+        "Reads a file from the local filesystem.\n\n- The file_path parameter must be an absolute path, not a relative path\n- By default, it reads up to 2000 lines starting from the beginning of the file\n- You can optionally specify a line offset and limit (especially handy for long files), but it's recommended to read the whole file by not providing these parameters\n- Results are returned using cat -n format, with line numbers starting at 1\n- This tool can read PDF files (.pdf) when the pages parameter is provided\n- For binary files, a message is returned instead of raw content\n- If you read a file that exists but has empty contents you will receive a warning"
     }
 
     fn input_schema(&self) -> JsonValue {

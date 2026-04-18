@@ -12,7 +12,7 @@ impl Tool for LsTool {
     }
 
     fn description(&self) -> &str {
-        "Lists files and directories in a given path. Directories are shown with a trailing slash. Entries are sorted alphabetically.\n\nPrefer Glob for pattern-based file discovery. Use LS when you want to see the full contents of a specific directory."
+        "Lists files and directories in a given path.\n\n- Directories are shown with a trailing slash\n- Entries are sorted alphabetically\n- This tool can only list directories, not read files. To read a file, use the Read tool\n- Prefer Glob for pattern-based file discovery. Use LS when you want to see the full contents of a specific directory"
     }
 
     fn input_schema(&self) -> JsonValue {

@@ -12,7 +12,7 @@ impl Tool for EditTool {
     }
 
     fn description(&self) -> &str {
-        "Performs exact string replacements in files.\n\n- You must use the Read tool at least once before editing a file\n- ALWAYS prefer editing existing files in the codebase. NEVER write new files unless explicitly required\n- The edit will FAIL if `old_string` is not unique in the file. Either provide a larger string with more surrounding context to make it unique or use `replace_all` to change every instance\n- Use `replace_all` for replacing and renaming strings across the file"
+        "Performs exact string replacements in files.\n\nUsage:\n- You must use your Read tool at least once in the conversation before editing. This tool will error if you attempt an edit without reading the file.\n- When editing text from Read tool output, ensure you preserve the exact indentation (tabs/spaces) as it appears AFTER the line number prefix.\n- ALWAYS prefer editing existing files in the codebase. NEVER write new files unless explicitly required.\n- The edit will FAIL if `old_string` is not unique in the file. Either provide a larger string with more surrounding context to make it unique or use `replace_all` to change every instance of `old_string`.\n- Use `replace_all` for replacing and renaming strings across the file."
     }
 
     fn input_schema(&self) -> JsonValue {
@@ -93,7 +93,7 @@ impl Tool for MultiEditTool {
     }
 
     fn description(&self) -> &str {
-        "Performs multiple exact string replacements in a single file atomically. All edits succeed or none are written.\n\nEach edit must have a unique `old_string` in the current state of the file (after prior edits in the sequence). Prefer this over multiple Edit calls when changing the same file."
+        "Performs multiple exact string replacements in a single file atomically.\n\nAll edits are applied in sequence. If any edit fails (old_string not found or not unique), none of the edits are written — the file remains unchanged.\n\nEach edit must have a unique `old_string` in the current state of the file (after prior edits in the sequence). Prefer this over multiple Edit calls when changing the same file."
     }
 
     fn input_schema(&self) -> JsonValue {

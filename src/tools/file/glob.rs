@@ -13,7 +13,7 @@ impl Tool for GlobTool {
     }
 
     fn description(&self) -> &str {
-        "Fast file pattern matching tool that works with any codebase size.\n\n- Supports glob patterns like \"**/*.js\" or \"src/**/*.ts\"\n- Returns matching file paths sorted by modification time\n- Use this tool when you need to find files by name patterns\n- When you are doing an open ended search that may require multiple rounds of globbing and grepping, use the Agent tool instead"
+        "Fast file pattern matching tool that works with any codebase size.\n\n- Supports glob patterns like \"**/*.js\" or \"src/**/*.ts\"\n- Returns matching file paths sorted by modification time (most recent first)\n- Automatically ignores .git/, node_modules/, and target/ directories\n- Use this tool when you need to find files by name patterns"
     }
 
     fn input_schema(&self) -> JsonValue {
