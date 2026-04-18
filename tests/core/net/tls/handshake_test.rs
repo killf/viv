@@ -218,7 +218,6 @@ fn server_hello_missing_key_share_rejected() {
     msg.push(0x00); // compression
 
     // Extensions: only supported_versions (no key_share!)
-    let ext_start = msg.len();
     msg.push(0x00);
     msg.push(0x05); // ext length
     msg.push(0x00); // supported_versions type
@@ -238,8 +237,6 @@ fn server_hello_missing_key_share_rejected() {
     let mut msg2 = Vec::new();
     msg2.push(codec::SERVER_HELLO);
     let body_start2 = 4; // after header
-
-    // placeholder for length
     msg2.push(0);
     msg2.push(0);
     msg2.push(0);
@@ -513,7 +510,7 @@ fn server_hello_wrong_version_rejected() {
 fn client_hello_added_to_transcript() {
     let mut hs = Handshake::new("example.com").unwrap();
 
-    let ch = hs.encode_client_hello().unwrap();
+    let _ch = hs.encode_client_hello().unwrap();
     let hash = hs.transcript.clone().finish();
 
     // The hash of the ClientHello should be non-zero
