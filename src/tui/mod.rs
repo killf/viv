@@ -11,6 +11,7 @@ pub mod markdown;
 pub mod message_style;
 pub mod paragraph;
 pub mod permission;
+pub mod qrcode;
 pub mod renderer;
 pub mod spinner;
 pub mod status;
