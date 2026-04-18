@@ -14,4 +14,5 @@ mod renderer_test;
 mod spinner_test;
 mod status_test;
 mod syntax_test;
+mod tool_call_test;
 mod widget_test;
