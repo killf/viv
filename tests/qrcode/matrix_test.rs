@@ -1,4 +1,5 @@
 use viv::qrcode::matrix::QrMatrix;
+use viv::qrcode;
 
 #[test]
 fn matrix_size_v1() {
@@ -96,4 +97,34 @@ fn alignment_pattern_v2() {
     // Ring around center should be white
     assert!(!m.get(17, 18));
     assert!(!m.get(19, 18));
+}
+
+// ── End-to-end tests via qrcode::encode() ────────────────────
+
+#[test]
+fn encode_hello_produces_valid_matrix() {
+    let matrix = qrcode::encode("HELLO").unwrap();
+    assert_eq!(matrix.size(), 21); // V1 for short text
+    // Finder patterns present
+    assert!(matrix.get(0, 0));
+    assert!(matrix.get(0, matrix.size() - 1));
+    assert!(matrix.get(matrix.size() - 1, 0));
+}
+
+#[test]
+fn encode_url_produces_valid_matrix() {
+    let matrix = qrcode::encode("https://example.com").unwrap();
+    assert!(matrix.size() >= 25); // needs at least V2
+}
+
+#[test]
+fn encode_empty_returns_error() {
+    assert!(qrcode::encode("").is_err());
+}
+
+#[test]
+fn encode_long_text_larger_version() {
+    let text = "a".repeat(100);
+    let matrix = qrcode::encode(&text).unwrap();
+    assert!(matrix.size() > 21);
 }
