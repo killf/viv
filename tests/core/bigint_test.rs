@@ -345,3 +345,64 @@ fn div_rem_large_divisor() {
     assert_eq!(r.cmp(&b), Ordering::Less);
     assert_eq!(q.mul(&b).add(&r), a);
 }
+
+#[test]
+fn modexp_zero_modulus_is_none() {
+    let a = BigUint::from_u64(5);
+    let e = BigUint::from_u64(3);
+    assert_eq!(a.modexp(&e, &BigUint::zero()), None);
+}
+
+#[test]
+fn modexp_modulus_one_is_zero() {
+    // Any x mod 1 == 0
+    let a = BigUint::from_u64(42);
+    let e = BigUint::from_u64(7);
+    let m = BigUint::one();
+    assert_eq!(a.modexp(&e, &m), Some(BigUint::zero()));
+}
+
+#[test]
+fn modexp_zero_exp_is_one() {
+    // x^0 mod m == 1 (for m > 1)
+    let a = BigUint::from_u64(42);
+    let e = BigUint::zero();
+    let m = BigUint::from_u64(97);
+    assert_eq!(a.modexp(&e, &m), Some(BigUint::one()));
+}
+
+#[test]
+fn modexp_base_zero_is_zero() {
+    // 0^e mod m == 0 (for e > 0)
+    let a = BigUint::zero();
+    let e = BigUint::from_u64(5);
+    let m = BigUint::from_u64(97);
+    assert_eq!(a.modexp(&e, &m), Some(BigUint::zero()));
+}
+
+#[test]
+fn modexp_2_pow_10_mod_1000() {
+    // 2^10 = 1024; 1024 mod 1000 = 24
+    let a = BigUint::from_u64(2);
+    let e = BigUint::from_u64(10);
+    let m = BigUint::from_u64(1000);
+    assert_eq!(a.modexp(&e, &m), Some(BigUint::from_u64(24)));
+}
+
+#[test]
+fn modexp_3_pow_7_mod_11() {
+    // 3^7 = 2187; 2187 mod 11 = 9
+    let a = BigUint::from_u64(3);
+    let e = BigUint::from_u64(7);
+    let m = BigUint::from_u64(11);
+    assert_eq!(a.modexp(&e, &m), Some(BigUint::from_u64(9)));
+}
+
+#[test]
+fn modexp_fermat_little_theorem() {
+    // For prime p, a^(p-1) mod p == 1.
+    let a = BigUint::from_u64(5);
+    let e = BigUint::from_u64(96);
+    let m = BigUint::from_u64(97);
+    assert_eq!(a.modexp(&e, &m), Some(BigUint::one()));
+}

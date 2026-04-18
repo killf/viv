@@ -210,6 +210,41 @@ impl BigUint {
         normalize(&mut r.limbs);
         Some((q, r))
     }
+
+    /// Modular exponentiation: `self^exp mod modulus`.
+    /// Returns `None` if `modulus` is zero. Left-to-right binary
+    /// square-and-multiply.
+    pub fn modexp(&self, exp: &Self, modulus: &Self) -> Option<Self> {
+        if modulus.is_zero() {
+            return None;
+        }
+        if modulus == &Self::one() {
+            return Some(Self::zero());
+        }
+        if exp.is_zero() {
+            return Some(Self::one());
+        }
+
+        // Reduce base mod modulus once up front.
+        let (_, base_mod) = self.div_rem(modulus)?;
+
+        let mut result = Self::one();
+        let exp_bits = exp.bit_len();
+        for i in (0..exp_bits).rev() {
+            // Square
+            result = result.mul(&result);
+            let (_, r) = result.div_rem(modulus)?;
+            result = r;
+            // Multiply by base if exponent bit i is set
+            let bit = (exp.limbs[i / 64] >> (i % 64)) & 1;
+            if bit == 1 {
+                result = result.mul(&base_mod);
+                let (_, r) = result.div_rem(modulus)?;
+                result = r;
+            }
+        }
+        Some(result)
+    }
 }
 
 /// Shift `limbs` left by one bit in place.
