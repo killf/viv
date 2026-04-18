@@ -1,3 +1,215 @@
 pub mod client;
 pub mod config;
+pub mod tools;
 pub mod types;
+
+use std::collections::{HashMap, HashSet};
+use std::path::Path;
+
+use crate::mcp::transport::stdio::{Framing, StdioTransport};
+use crate::{Error, Result};
+use client::LspClient;
+use config::LspConfig;
+
+type LspStdioClient = LspClient<StdioTransport>;
+
+// ---------------------------------------------------------------------------
+// LspManager
+// ---------------------------------------------------------------------------
+
+/// Manages LSP server lifecycle with lazy loading.
+///
+/// Each server is keyed by name (from config). Servers are started on demand
+/// when a file is first accessed via [`get_or_start`].
+pub struct LspManager {
+    config: LspConfig,
+    /// `None` = not yet started, `Some(client)` = running.
+    servers: HashMap<String, Option<LspStdioClient>>,
+    opened_files: HashSet<String>,
+}
+
+impl LspManager {
+    /// Create a new manager; all servers start in the unstarted (`None`) state.
+    pub fn new(config: LspConfig) -> Self {
+        let mut servers = HashMap::new();
+        for (name, _) in &config.servers {
+            servers.insert(name.clone(), None);
+        }
+        LspManager { config, servers, opened_files: HashSet::new() }
+    }
+
+    /// Returns `true` if no servers are configured.
+    pub fn is_empty(&self) -> bool {
+        self.servers.is_empty()
+    }
+
+    /// Return the server name responsible for the given file, based on its extension.
+    ///
+    /// Returns `None` if no configured server handles this file type.
+    pub fn server_name_for_file(&self, file: &str) -> Option<&str> {
+        let ext = extension_with_dot(file)?;
+        self.config.server_for_extension(ext)
+    }
+
+    /// Return a mutable reference to the started client for the given file.
+    ///
+    /// If the server has not been started yet it will be started now.
+    /// Returns an error if no server is configured for this file type.
+    pub async fn get_or_start(&mut self, file: &str) -> Result<&mut LspStdioClient> {
+        let name = self
+            .server_name_for_file(file)
+            .ok_or_else(|| Error::Lsp {
+                server: "<none>".to_string(),
+                message: format!("no LSP server configured for file: {}", file),
+            })?
+            .to_string();
+
+        // Start the server if not yet running.
+        if self.servers.get(&name).map(|v| v.is_none()).unwrap_or(false) {
+            self.start_server(&name).await?;
+        }
+
+        self.servers
+            .get_mut(&name)
+            .and_then(|opt| opt.as_mut())
+            .ok_or_else(|| Error::Lsp {
+                server: name.clone(),
+                message: "failed to start LSP server".to_string(),
+            })
+    }
+
+    /// Spawn a new LSP server process and perform the initialize handshake.
+    pub async fn start_server(&mut self, name: &str) -> Result<()> {
+        let server_cfg = self
+            .config
+            .servers
+            .iter()
+            .find(|(n, _)| n == name)
+            .map(|(_, cfg)| cfg)
+            .ok_or_else(|| Error::Lsp {
+                server: name.to_string(),
+                message: format!("no configuration for server '{}'", name),
+            })?;
+
+        let args: Vec<&str> = server_cfg.args.iter().map(|s| s.as_str()).collect();
+        let env: HashMap<String, String> = server_cfg.env.iter().cloned().collect();
+
+        let transport = StdioTransport::spawn_with_framing(
+            &server_cfg.command,
+            &args,
+            &env,
+            Framing::ContentLength,
+        )?;
+
+        let mut client = LspClient::new(transport, name);
+
+        let cwd = std::env::current_dir()
+            .map_err(Error::Io)?
+            .to_string_lossy()
+            .into_owned();
+
+        client.initialize(&cwd).await?;
+
+        if let Some(slot) = self.servers.get_mut(name) {
+            *slot = Some(client);
+        }
+
+        Ok(())
+    }
+
+    /// Ensure a file is open in the appropriate LSP server.
+    ///
+    /// Reads the file from disk, sends `textDocument/didOpen`, and records it
+    /// so subsequent calls are no-ops.
+    pub async fn ensure_file_open(&mut self, file: &str) -> Result<()> {
+        if self.opened_files.contains(file) {
+            return Ok(());
+        }
+
+        let content = std::fs::read_to_string(file).map_err(Error::Io)?;
+        let uri = path_to_uri(file);
+        let lang = language_id_from_path(file).to_string();
+
+        let client = self.get_or_start(file).await?;
+        client.did_open(&uri, &lang, &content).await?;
+
+        self.opened_files.insert(file.to_string());
+        Ok(())
+    }
+
+    /// Gracefully shut down all started servers.
+    pub async fn shutdown_all(&mut self) {
+        for (_name, slot) in self.servers.iter_mut() {
+            if let Some(client) = slot.as_mut() {
+                let _ = client.shutdown().await;
+            }
+            *slot = None;
+        }
+        self.opened_files.clear();
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Public helper functions
+// ---------------------------------------------------------------------------
+
+/// Convert a relative or absolute path to a `file://` URI.
+pub fn path_to_uri(path: &str) -> String {
+    if path.starts_with("file://") {
+        return path.to_string();
+    }
+
+    if path.starts_with('/') {
+        return format!("file://{}", path);
+    }
+
+    // Relative path — resolve against cwd.
+    let absolute = std::env::current_dir()
+        .map(|d| d.join(path).to_string_lossy().into_owned())
+        .unwrap_or_else(|_| path.to_string());
+
+    format!("file://{}", absolute)
+}
+
+// ---------------------------------------------------------------------------
+// Private helpers
+// ---------------------------------------------------------------------------
+
+/// Return the extension of `path` including the leading dot (e.g. `".rs"`), or
+/// `None` when the path has no extension.
+fn extension_with_dot(path: &str) -> Option<&str> {
+    let p = Path::new(path);
+    let ext = p.extension()?.to_str()?;
+    // Walk back in the original `path` string to find the dot.
+    let dot_pos = path.rfind(&format!(".{}", ext))?;
+    Some(&path[dot_pos..dot_pos + 1 + ext.len()])
+}
+
+/// Map a file path to an LSP language identifier.
+fn language_id_from_path(path: &str) -> &str {
+    let p = Path::new(path);
+    match p.extension().and_then(|e| e.to_str()).unwrap_or("") {
+        "rs" => "rust",
+        "py" => "python",
+        "js" | "mjs" | "cjs" => "javascript",
+        "ts" | "mts" | "cts" => "typescript",
+        "tsx" => "typescriptreact",
+        "jsx" => "javascriptreact",
+        "go" => "go",
+        "c" | "h" => "c",
+        "cpp" | "cc" | "cxx" | "hpp" | "hxx" => "cpp",
+        "java" => "java",
+        "rb" => "ruby",
+        "sh" | "bash" => "shellscript",
+        "json" => "json",
+        "yaml" | "yml" => "yaml",
+        "toml" => "toml",
+        "md" => "markdown",
+        "html" => "html",
+        "css" => "css",
+        "scss" | "sass" => "scss",
+        "lua" => "lua",
+        "zig" => "zig",
+        _ => "plaintext",
+    }
+}
