@@ -22,6 +22,8 @@ pub enum Error {
     Mcp { server: String, message: String },
     /// LSP runtime errors
     Lsp { server: String, message: String },
+    /// QR code generation errors
+    Qr(String),
 }
 
 impl fmt::Display for Error {
@@ -37,6 +39,7 @@ impl fmt::Display for Error {
             Error::JsonRpc { code, message } => write!(f, "JSON-RPC error {}: {}", code, message),
             Error::Mcp { server, message } => write!(f, "MCP error [{}]: {}", server, message),
             Error::Lsp { server, message } => write!(f, "LSP error [{}]: {}", server, message),
+            Error::Qr(msg) => write!(f, "QR code error: {}", msg),
         }
     }
 }
