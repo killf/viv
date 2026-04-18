@@ -1,0 +1,191 @@
+pub struct LangProfile {
+    pub name: &'static str,
+    pub keywords: &'static [&'static str],
+    pub line_comments: &'static [&'static str],
+    pub block_comment: Option<(&'static str, &'static str)>,
+    pub string_quotes: &'static [char],
+    pub raw_string: Option<&'static str>,
+    pub triple_quote: bool,
+    pub template_literal: bool,
+    pub type_starts_upper: bool,
+    pub lifetime_prefix: bool,
+    pub attribute_prefix: Option<char>,
+}
+
+pub static RUST_PROFILE: LangProfile = LangProfile {
+    name: "rust",
+    keywords: &[
+        "fn", "let", "mut", "pub", "struct", "enum", "impl", "trait", "use", "mod", "async",
+        "await", "self", "Self", "crate", "super", "where", "type", "const", "static", "ref",
+        "match", "if", "else", "for", "while", "loop", "break", "continue", "return", "in",
+        "unsafe", "extern", "move", "dyn", "as", "true", "false",
+    ],
+    line_comments: &["//"],
+    block_comment: Some(("/*", "*/")),
+    string_quotes: &['"'],
+    raw_string: Some("r\""),
+    triple_quote: false,
+    template_literal: false,
+    type_starts_upper: true,
+    lifetime_prefix: true,
+    attribute_prefix: Some('#'),
+};
+
+pub static PYTHON_PROFILE: LangProfile = LangProfile {
+    name: "python",
+    keywords: &[
+        "def", "class", "import", "from", "as", "with", "try", "except", "raise", "lambda",
+        "yield", "if", "elif", "else", "for", "while", "break", "continue", "return", "in",
+        "not", "and", "or", "is", "None", "True", "False", "pass", "del", "global", "nonlocal",
+        "assert", "async", "await",
+    ],
+    line_comments: &["#"],
+    block_comment: None,
+    string_quotes: &['"', '\''],
+    raw_string: None,
+    triple_quote: true,
+    template_literal: false,
+    type_starts_upper: false,
+    lifetime_prefix: false,
+    attribute_prefix: Some('@'),
+};
+
+pub static JS_PROFILE: LangProfile = LangProfile {
+    name: "javascript",
+    keywords: &[
+        "function", "const", "let", "var", "export", "default", "import", "async", "await",
+        "typeof", "if", "else", "for", "while", "do", "switch", "case", "break", "continue",
+        "return", "in", "of", "new", "this", "class", "extends", "super", "try", "catch",
+        "finally", "throw", "yield", "true", "false", "null", "undefined", "void", "delete",
+        "instanceof",
+    ],
+    line_comments: &["//"],
+    block_comment: Some(("/*", "*/")),
+    string_quotes: &['"', '\''],
+    raw_string: None,
+    triple_quote: false,
+    template_literal: true,
+    type_starts_upper: true,
+    lifetime_prefix: false,
+    attribute_prefix: None,
+};
+
+pub static GO_PROFILE: LangProfile = LangProfile {
+    name: "go",
+    keywords: &[
+        "func", "package", "import", "type", "struct", "interface", "map", "chan", "select",
+        "if", "else", "for", "range", "switch", "case", "default", "break", "continue", "return",
+        "go", "defer", "var", "const", "true", "false", "nil",
+    ],
+    line_comments: &["//"],
+    block_comment: Some(("/*", "*/")),
+    string_quotes: &['"', '`'],
+    raw_string: None,
+    triple_quote: false,
+    template_literal: false,
+    type_starts_upper: true,
+    lifetime_prefix: false,
+    attribute_prefix: None,
+};
+
+pub static JAVA_C_PROFILE: LangProfile = LangProfile {
+    name: "java/c",
+    keywords: &[
+        "class", "interface", "extends", "implements", "abstract", "final", "static", "void",
+        "if", "else", "for", "while", "do", "switch", "case", "break", "continue", "return",
+        "new", "this", "super", "try", "catch", "finally", "throw", "throws", "public", "private",
+        "protected", "import", "package", "true", "false", "null", "int", "float", "double",
+        "char", "boolean", "long", "short", "byte", "struct", "enum", "const",
+    ],
+    line_comments: &["//"],
+    block_comment: Some(("/*", "*/")),
+    string_quotes: &['"', '\''],
+    raw_string: None,
+    triple_quote: false,
+    template_literal: false,
+    type_starts_upper: true,
+    lifetime_prefix: false,
+    attribute_prefix: Some('@'),
+};
+
+pub static SHELL_PROFILE: LangProfile = LangProfile {
+    name: "shell",
+    keywords: &[
+        "if", "then", "elif", "else", "fi", "for", "while", "do", "done", "case", "esac", "in",
+        "function", "local", "export", "return", "exit", "echo", "read", "true", "false",
+    ],
+    line_comments: &["#"],
+    block_comment: None,
+    string_quotes: &['"', '\''],
+    raw_string: None,
+    triple_quote: false,
+    template_literal: false,
+    type_starts_upper: false,
+    lifetime_prefix: false,
+    attribute_prefix: None,
+};
+
+pub static JSON_PROFILE: LangProfile = LangProfile {
+    name: "json",
+    keywords: &["true", "false", "null"],
+    line_comments: &[],
+    block_comment: None,
+    string_quotes: &['"'],
+    raw_string: None,
+    triple_quote: false,
+    template_literal: false,
+    type_starts_upper: false,
+    lifetime_prefix: false,
+    attribute_prefix: None,
+};
+
+pub static YAML_TOML_PROFILE: LangProfile = LangProfile {
+    name: "yaml/toml",
+    keywords: &["true", "false", "null", "yes", "no", "on", "off"],
+    line_comments: &["#"],
+    block_comment: None,
+    string_quotes: &['"', '\''],
+    raw_string: None,
+    triple_quote: false,
+    template_literal: false,
+    type_starts_upper: false,
+    lifetime_prefix: false,
+    attribute_prefix: None,
+};
+
+pub static GENERIC_PROFILE: LangProfile = LangProfile {
+    name: "generic",
+    keywords: &[
+        "if", "else", "for", "while", "return", "break", "continue", "match", "switch", "case",
+        "fn", "function", "def", "class", "struct", "enum", "impl", "trait", "import", "from",
+        "const", "let", "var", "pub", "async", "await", "true", "false", "null",
+    ],
+    line_comments: &["//"],
+    block_comment: Some(("/*", "*/")),
+    string_quotes: &['"', '\''],
+    raw_string: None,
+    triple_quote: false,
+    template_literal: false,
+    type_starts_upper: true,
+    lifetime_prefix: false,
+    attribute_prefix: None,
+};
+
+pub fn select_profile(language: Option<&str>) -> &'static LangProfile {
+    let lang = match language {
+        Some(l) => l,
+        None => return &GENERIC_PROFILE,
+    };
+
+    match lang.to_lowercase().as_str() {
+        "rust" | "rs" => &RUST_PROFILE,
+        "python" | "py" => &PYTHON_PROFILE,
+        "javascript" | "js" | "typescript" | "ts" | "jsx" | "tsx" => &JS_PROFILE,
+        "go" | "golang" => &GO_PROFILE,
+        "java" | "c" | "cpp" | "c++" | "csharp" | "cs" => &JAVA_C_PROFILE,
+        "bash" | "sh" | "shell" | "zsh" => &SHELL_PROFILE,
+        "json" => &JSON_PROFILE,
+        "yaml" | "yml" | "toml" => &YAML_TOML_PROFILE,
+        _ => &GENERIC_PROFILE,
+    }
+}
