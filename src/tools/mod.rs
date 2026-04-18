@@ -78,6 +78,7 @@ impl ToolRegistry {
         use crate::tools::todo::{TodoReadTool, TodoWriteTool};
         use crate::tools::notebook::NotebookEditTool;
         use crate::tools::search::WebSearchTool;
+        use crate::tools::sub_agent::SubAgentTool;
         use crate::tools::web::WebFetchTool;
 
         let todo_path = std::path::PathBuf::from(".viv/todo.json");
@@ -92,9 +93,10 @@ impl ToolRegistry {
         reg.register(Box::new(LsTool));
         reg.register(Box::new(TodoWriteTool::new(todo_path.clone())));
         reg.register(Box::new(TodoReadTool::new(todo_path)));
-        reg.register(Box::new(WebFetchTool::new(llm)));
+        reg.register(Box::new(WebFetchTool::new(llm.clone())));
         reg.register(Box::new(NotebookEditTool));
         reg.register(Box::new(WebSearchTool));
+        reg.register(Box::new(SubAgentTool::new(llm)));
         reg
     }
 }
@@ -103,6 +105,7 @@ pub mod bash;
 pub mod file;
 pub mod notebook;
 pub mod search;
+pub mod sub_agent;
 pub mod todo;
 pub mod web;
 

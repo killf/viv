@@ -75,6 +75,44 @@ pub struct Agent {
 }
 
 impl Agent {
+    /// Create a sub-agent for running delegated tasks.
+    ///
+    /// Unlike `new()`, this skips `LLMConfig::from_env()`, MCP/LSP initialization, and memory loading.
+    /// The sub-agent shares the parent's LLM client and uses a temporary memory directory.
+    pub async fn new_sub(
+        config: AgentConfig,
+        endpoint: crate::bus::channel::AgentEndpoint,
+        llm: Arc<LLMClient>,
+    ) -> Result<Self> {
+        let tools = ToolRegistry::default_tools_without("Agent", Arc::clone(&llm));
+
+        let mcp_config = McpConfig { servers: vec![] };
+        let mcp = Arc::new(Mutex::new(McpManager::from_config(&mcp_config).await));
+        let lsp_config = LspConfig { servers: vec![] };
+        let lsp = Arc::new(Mutex::new(LspManager::new(lsp_config)));
+
+        let memory_dir = config.memory_dir.clone();
+        let store = Arc::new(MemoryStore::new(memory_dir)?);
+        let index = Arc::new(Mutex::new(MemoryIndex::load(&store)?));
+
+        Ok(Agent {
+            messages: vec![],
+            prompt_cache: PromptCache::default(),
+            llm,
+            store,
+            index,
+            tools,
+            permissions: PermissionManager::default(),
+            config,
+            input_tokens: 0,
+            output_tokens: 0,
+            event_rx: endpoint.rx,
+            msg_tx: endpoint.tx,
+            mcp,
+            lsp,
+        })
+    }
+
     pub async fn new(
         config: AgentConfig,
         event_rx: AsyncReceiver<AgentEvent>,
@@ -238,6 +276,7 @@ impl Agent {
         Ok(())
     }
 
+    #[allow(clippy::await_holding_lock)]
     async fn agentic_loop(&mut self, system: SystemPrompt) -> Result<()> {
         let tools_json = self.tools.to_api_json();
 
@@ -272,7 +311,21 @@ impl Agent {
             let tool_uses = stream_result.tool_uses;
             let mut tool_results = Vec::new();
 
+            // Partition tool calls: Agent tools run concurrently, others run serially
+            let mut normal_uses = Vec::new();
+            let mut agent_uses = Vec::new();
             for tu in &tool_uses {
+                if let ContentBlock::ToolUse { name, .. } = tu {
+                    if name == "Agent" {
+                        agent_uses.push(tu);
+                    } else {
+                        normal_uses.push(tu);
+                    }
+                }
+            }
+
+            // Execute normal tools serially (they may have dependencies on each other)
+            for tu in &normal_uses {
                 if let ContentBlock::ToolUse { id, name, input } = tu {
                     let allowed = self.check_permission(name, input).await?;
 
@@ -313,6 +366,135 @@ impl Agent {
                         content: vec![ContentBlock::Text(content)],
                         is_error,
                     });
+                }
+            }
+
+            // Execute Agent tools concurrently using join_all
+            if !agent_uses.is_empty() {
+                use crate::core::runtime::join_all;
+
+                // Check permissions first (serially, since check_permission borrows &mut self)
+                let mut approved: Vec<(&ContentBlock, bool)> = Vec::new();
+                for tu in &agent_uses {
+                    if let ContentBlock::ToolUse { name, input, .. } = tu {
+                        let allowed = self.check_permission(name, input).await?;
+                        approved.push((tu, allowed));
+                    }
+                }
+
+                // Build futures for approved agent calls
+                type AgentResult = (String, String, std::result::Result<String, crate::Error>);
+                type AgentFuture =
+                    std::pin::Pin<Box<dyn std::future::Future<Output = AgentResult> + Send>>;
+                let mut futures: Vec<AgentFuture> = Vec::new();
+                let mut denied_results: Vec<AgentResult> =
+                    Vec::new();
+
+                for (tu, allowed) in &approved {
+                    if let ContentBlock::ToolUse { id, name, input } = tu {
+                        if *allowed {
+                            let tool = self.tools.get(name);
+                            match tool {
+                                None => {
+                                    denied_results.push((
+                                        id.clone(),
+                                        name.clone(),
+                                        Err(crate::Error::Tool(format!("unknown tool: {}", name))),
+                                    ));
+                                }
+                                Some(tool) => {
+                                    let msg_tx = self.msg_tx.clone();
+                                    let id = id.clone();
+                                    let name = name.clone();
+                                    let input = input.clone();
+                                    let formatted = format_tool_input(&input);
+                                    let fut = tool.execute(&input);
+                                    let _ = msg_tx.send(AgentMessage::ToolStart {
+                                        name: name.clone(),
+                                        input: formatted,
+                                    });
+                                    // SAFETY: tool.execute returns Pin<Box<dyn Future + Send + '_>>,
+                                    // but lifetime is tied to `tool` which lives in self.tools.
+                                    // The tool registry won't be modified during execution.
+                                    // We need to erase the lifetime for join_all.
+                                    type ErasedFut = std::pin::Pin<
+                                        Box<
+                                            dyn std::future::Future<
+                                                    Output = std::result::Result<String, crate::Error>,
+                                                > + Send
+                                                + 'static,
+                                        >,
+                                    >;
+                                    let fut: ErasedFut = unsafe {
+                                        std::mem::transmute(fut)
+                                    };
+                                    futures.push(Box::pin(async move {
+                                        let result = fut.await;
+                                        (id, name, result)
+                                    }));
+                                }
+                            }
+                        } else {
+                            denied_results.push((
+                                id.clone(),
+                                name.clone(),
+                                Err(crate::Error::Tool("permission denied".into())),
+                            ));
+                        }
+                    }
+                }
+
+                // Collect denied results first
+                for (id, name, result) in denied_results {
+                    let (content, is_error) = match &result {
+                        Ok(out) => {
+                            let _ = self.msg_tx.send(AgentMessage::ToolEnd {
+                                name: name.clone(),
+                                output: out.chars().take(200).collect(),
+                            });
+                            (out.clone(), false)
+                        }
+                        Err(e) => {
+                            let _ = self.msg_tx.send(AgentMessage::ToolError {
+                                name: name.clone(),
+                                error: e.to_string(),
+                            });
+                            (e.to_string(), true)
+                        }
+                    };
+                    tool_results.push(ContentBlock::ToolResult {
+                        tool_use_id: id,
+                        content: vec![ContentBlock::Text(content)],
+                        is_error,
+                    });
+                }
+
+                // Run approved agent tools concurrently
+                if !futures.is_empty() {
+                    let results = join_all(futures).await;
+                    for (id, name, result) in results {
+                        let (content, is_error) = match &result {
+                            Ok(out) => {
+                                let _ = self.msg_tx.send(AgentMessage::ToolEnd {
+                                    name: name.clone(),
+                                    output: out.chars().take(200).collect(),
+                                });
+                                (out.clone(), false)
+                            }
+                            Err(e) => {
+                                let _ = self.msg_tx.send(AgentMessage::ToolError {
+                                    name: name.clone(),
+                                    error: e.to_string(),
+                                });
+                                (e.to_string(), true)
+                            }
+                        };
+                        tool_results.push(ContentBlock::ToolResult {
+                            tool_use_id: id,
+                            content: vec![ContentBlock::Text(content)],
+                            is_error,
+                        });
+                    }
                 }
             }
 
