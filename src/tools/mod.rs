@@ -47,19 +47,24 @@ impl ToolRegistry {
     }
 
     pub fn to_api_json(&self) -> String {
-        let tools: Vec<String> = self
+        let tools: Vec<JsonValue> = self
             .tools
             .iter()
             .map(|t| {
-                format!(
-                    "{{\"name\":{},\"description\":{},\"input_schema\":{}}}",
-                    JsonValue::Str(t.name().into()),
-                    JsonValue::Str(t.description().into()),
-                    t.input_schema(),
-                )
+                JsonValue::Object(vec![
+                    ("name".into(), JsonValue::Str(t.name().into())),
+                    ("description".into(), JsonValue::Str(t.description().into())),
+                    ("input_schema".into(), t.input_schema()),
+                ])
             })
             .collect();
-        format!("[{}]", tools.join(","))
+        format!("{}", JsonValue::Array(tools))
+    }
+
+    pub fn default_tools_without(exclude: &str, llm: std::sync::Arc<crate::llm::LLMClient>) -> Self {
+        let mut reg = Self::default_tools(llm);
+        reg.tools.retain(|t| t.name() != exclude);
+        reg
     }
 
     pub fn default_tools(llm: std::sync::Arc<crate::llm::LLMClient>) -> Self {

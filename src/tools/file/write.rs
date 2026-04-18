@@ -8,11 +8,11 @@ pub struct WriteTool;
 
 impl Tool for WriteTool {
     fn name(&self) -> &str {
-        "FileWrite"
+        "Write"
     }
 
     fn description(&self) -> &str {
-        "Writes a file to the local filesystem.\n\n- This tool will overwrite the existing file if there is one at the provided path\n- If this is an existing file, you MUST use the FileRead tool first to read the file's contents\n- NEVER create documentation files (*.md) or README files unless explicitly requested\n- Prefer the FileEdit tool for modifying existing files — only use this tool to create new files or for complete rewrites"
+        "Writes a file to the local filesystem.\n\n- This tool will overwrite the existing file if there is one at the provided path\n- If this is an existing file, you MUST use the Read tool first to read the file's contents\n- NEVER create documentation files (*.md) or README files unless explicitly requested\n- Prefer the Edit tool for modifying existing files — only use this tool to create new files or for complete rewrites"
     }
 
     fn input_schema(&self) -> JsonValue {

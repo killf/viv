@@ -8,7 +8,7 @@ pub struct ReadTool;
 
 impl Tool for ReadTool {
     fn name(&self) -> &str {
-        "FileRead"
+        "Read"
     }
 
     fn description(&self) -> &str {

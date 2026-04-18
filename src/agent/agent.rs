@@ -319,7 +319,7 @@ impl Agent {
             // After all tool results are collected, notify LSP of any file changes.
             for tu in &tool_uses {
                 if let ContentBlock::ToolUse { name, input, .. } = tu {
-                    if matches!(name.as_str(), "FileEdit" | "FileWrite" | "MultiEdit") {
+                    if matches!(name.as_str(), "Edit" | "Write" | "MultiEdit") {
                         if let Some(path) = input
                             .get("file_path")
                             .and_then(|v| v.as_str())

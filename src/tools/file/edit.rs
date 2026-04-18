@@ -8,11 +8,11 @@ pub struct EditTool;
 
 impl Tool for EditTool {
     fn name(&self) -> &str {
-        "FileEdit"
+        "Edit"
     }
 
     fn description(&self) -> &str {
-        "Performs exact string replacements in files.\n\n- You must use the FileRead tool at least once before editing a file\n- ALWAYS prefer editing existing files in the codebase. NEVER write new files unless explicitly required\n- The edit will FAIL if `old_string` is not unique in the file. Either provide a larger string with more surrounding context to make it unique or use `replace_all` to change every instance\n- Use `replace_all` for replacing and renaming strings across the file"
+        "Performs exact string replacements in files.\n\n- You must use the Read tool at least once before editing a file\n- ALWAYS prefer editing existing files in the codebase. NEVER write new files unless explicitly required\n- The edit will FAIL if `old_string` is not unique in the file. Either provide a larger string with more surrounding context to make it unique or use `replace_all` to change every instance\n- Use `replace_all` for replacing and renaming strings across the file"
     }
 
     fn input_schema(&self) -> JsonValue {
@@ -93,7 +93,7 @@ impl Tool for MultiEditTool {
     }
 
     fn description(&self) -> &str {
-        "Performs multiple exact string replacements in a single file atomically. All edits succeed or none are written.\n\nEach edit must have a unique `old_string` in the current state of the file (after prior edits in the sequence). Prefer this over multiple FileEdit calls when changing the same file."
+        "Performs multiple exact string replacements in a single file atomically. All edits succeed or none are written.\n\nEach edit must have a unique `old_string` in the current state of the file (after prior edits in the sequence). Prefer this over multiple Edit calls when changing the same file."
     }
 
     fn input_schema(&self) -> JsonValue {
