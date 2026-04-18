@@ -1,16 +1,18 @@
 // TLS 1.3 cryptographic primitives
 //
-// getrandom() — fills a buffer with random bytes via Linux getrandom syscall.
-
-use std::arch::asm;
+// getrandom() — fills a buffer with cryptographically secure random bytes.
 
 pub mod aes_gcm;
 pub mod sha256;
 pub mod x25519;
 
-/// Fill `buf` with cryptographically secure random bytes using the
-/// Linux `getrandom(2)` syscall (nr 318 on x86_64).
+/// Fill `buf` with cryptographically secure random bytes.
+///
+/// On Linux: uses the `getrandom(2)` syscall (nr 318 on x86_64).
+/// On Windows: uses `BCryptGenRandom` from bcrypt.dll.
+#[cfg(unix)]
 pub fn getrandom(buf: &mut [u8]) -> crate::Result<()> {
+    use std::arch::asm;
     let ret: i64;
     unsafe {
         asm!(
@@ -26,6 +28,33 @@ pub fn getrandom(buf: &mut [u8]) -> crate::Result<()> {
     }
     if ret < 0 {
         Err(crate::Error::Tls("getrandom syscall failed".into()))
+    } else {
+        Ok(())
+    }
+}
+
+#[cfg(windows)]
+pub fn getrandom(buf: &mut [u8]) -> crate::Result<()> {
+    #[link(name = "bcrypt")]
+    unsafe extern "system" {
+        fn BCryptGenRandom(
+            h_algorithm: *mut u8,
+            pb_buffer: *mut u8,
+            cb_buffer: u32,
+            dw_flags: u32,
+        ) -> i32;
+    }
+    const BCRYPT_USE_SYSTEM_PREFERRED_RNG: u32 = 0x00000002;
+    let status = unsafe {
+        BCryptGenRandom(
+            std::ptr::null_mut(),
+            buf.as_mut_ptr(),
+            buf.len() as u32,
+            BCRYPT_USE_SYSTEM_PREFERRED_RNG,
+        )
+    };
+    if status != 0 {
+        Err(crate::Error::Tls("BCryptGenRandom failed".into()))
     } else {
         Ok(())
     }
