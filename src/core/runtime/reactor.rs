@@ -1,9 +1,7 @@
-use std::collections::HashMap;
-use std::os::unix::io::RawFd;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::task::Waker;
 use std::time::Duration;
-use super::super::event::Epoll;
+use crate::core::platform::{PlatformReactor, RawHandle};
 
 static REACTOR: OnceLock<Arc<Mutex<Reactor>>> = OnceLock::new();
 
@@ -12,64 +10,34 @@ pub fn reactor() -> Arc<Mutex<Reactor>> {
 }
 
 pub struct Reactor {
-    epoll: Epoll,
-    wakers: HashMap<u64, Waker>,      // token → Waker
-    token_to_fd: HashMap<u64, RawFd>, // token → fd（用于 remove 时调用 epoll.remove）
-    next_token: u64,
+    inner: PlatformReactor,
 }
 
 impl Reactor {
     fn new() -> Self {
         Reactor {
-            epoll: Epoll::new().expect("reactor epoll_create"),
-            wakers: HashMap::new(),
-            token_to_fd: HashMap::new(),
-            next_token: 1,
+            inner: PlatformReactor::new().expect("reactor init"),
         }
     }
 
-    /// 注册 fd 可读事件，返回 token（后续用于 remove）
-    pub fn register_readable(&mut self, fd: RawFd, waker: Waker) -> u64 {
-        let token = self.next_token;
-        self.next_token += 1;
-        self.epoll.add(fd, token).expect("epoll add");
-        self.wakers.insert(token, waker);
-        self.token_to_fd.insert(token, fd);
-        token
+    pub fn register_readable(&mut self, handle: RawHandle, waker: Waker) -> u64 {
+        self.inner.register_read(handle, waker).expect("register_read")
     }
 
-    /// 注册 fd 可写事件，返回 token
-    pub fn register_writable(&mut self, fd: RawFd, waker: Waker) -> u64 {
-        let token = self.next_token;
-        self.next_token += 1;
-        self.epoll.add_writable(fd, token).expect("epoll add_writable");
-        self.wakers.insert(token, waker);
-        self.token_to_fd.insert(token, fd);
-        token
+    pub fn register_writable(&mut self, handle: RawHandle, waker: Waker) -> u64 {
+        self.inner.register_write(handle, waker).expect("register_write")
     }
 
-    /// 注销 token（fd 不再等待）
     pub fn remove(&mut self, token: u64) {
-        if let Some(&fd) = self.token_to_fd.get(&token) {
-            self.epoll.remove(fd).ok();
-        }
-        self.wakers.remove(&token);
-        self.token_to_fd.remove(&token);
+        self.inner.deregister(token).ok();
     }
 
-    /// 等待 I/O 事件，超时后返回。唤醒已就绪的 Waker。
     pub fn wait(&mut self, timeout: Duration) {
-        let ms = timeout.as_millis().min(i32::MAX as u128) as i32;
-        if let Ok(tokens) = self.epoll.wait(ms) {
-            for token in tokens {
-                if let Some(&fd) = self.token_to_fd.get(&token) {
-                    self.epoll.remove(fd).ok();
-                    self.token_to_fd.remove(&token);
-                }
-                if let Some(waker) = self.wakers.remove(&token) {
-                    waker.wake();
-                }
-            }
-        }
+        self.inner.poll(timeout).ok();
+    }
+
+    /// Access the underlying platform reactor.
+    pub fn platform(&self) -> &PlatformReactor {
+        &self.inner
     }
 }
