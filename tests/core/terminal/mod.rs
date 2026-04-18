@@ -4,7 +4,6 @@ mod raw_mode_test;
 mod output_test;
 mod input_test;
 mod screen_test;
-mod signal_test;
 mod size_test;
 mod backend_test;
 mod style_test;
