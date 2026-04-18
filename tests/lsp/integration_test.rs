@@ -60,6 +60,7 @@ fn references_tool_errors_when_no_server_configured() {
     assert!(result.is_err());
 }
 
+#[cfg(unix)]
 #[test]
 fn diagnostics_tool_returns_empty_when_no_servers_running() {
     let config = LspConfig::parse("{}").unwrap();
