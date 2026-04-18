@@ -169,7 +169,11 @@ fn call_tool() {
 
     let transport = MockTransport::new(vec![success(1, result)]);
     let mut client = McpClient::new(transport);
-    let args = JsonValue::Object(vec![("path".into(), JsonValue::Str("/tmp/test".into()))]);
+    let test_path = std::env::temp_dir()
+        .join("viv_test")
+        .to_string_lossy()
+        .into_owned();
+    let args = JsonValue::Object(vec![("path".into(), JsonValue::Str(test_path))]);
 
     let result = block_on(async move { client.call_tool("read_file", &args).await.unwrap() });
     assert!(!result.is_error);

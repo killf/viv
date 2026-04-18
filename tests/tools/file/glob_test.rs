@@ -4,6 +4,10 @@ use viv::tools::Tool;
 use viv::tools::file::glob::GlobTool;
 use viv::tools::poll_to_completion;
 
+fn json_path(p: &std::path::Path) -> String {
+    p.display().to_string().replace('\\', "\\\\")
+}
+
 fn tempdir() -> std::path::PathBuf {
     let p = std::env::temp_dir().join(format!("viv_glob_{}", nanos()));
     fs::create_dir_all(&p).unwrap();
@@ -24,7 +28,7 @@ fn glob_star_matches_extension() {
     fs::write(dir.join("c.txt"), "").unwrap();
     let input = JsonValue::parse(&format!(
         r#"{{"pattern":"*.rs","path":"{}"}}"#,
-        dir.display()
+        json_path(&dir)
     ))
     .unwrap();
     let result = poll_to_completion(GlobTool.execute(&input)).unwrap();
@@ -42,7 +46,7 @@ fn glob_double_star_recurses() {
     fs::write(dir.join("top.rs"), "").unwrap();
     let input = JsonValue::parse(&format!(
         r#"{{"pattern":"**/*.rs","path":"{}"}}"#,
-        dir.display()
+        json_path(&dir)
     ))
     .unwrap();
     let result = poll_to_completion(GlobTool.execute(&input)).unwrap();

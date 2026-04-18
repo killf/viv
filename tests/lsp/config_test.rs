@@ -73,9 +73,17 @@ fn empty_config() {
     assert!(config.servers.is_empty());
 }
 
+fn nonexistent_path(name: &str) -> String {
+    std::env::temp_dir()
+        .join(format!("viv_test_nonexistent_{}", name))
+        .join("settings.json")
+        .to_string_lossy()
+        .into_owned()
+}
+
 #[test]
 fn load_nonexistent_file() {
-    let config = LspConfig::load("/tmp/viv_test_nonexistent_lsp_8675309/settings.json").unwrap();
+    let config = LspConfig::load(&nonexistent_path("lsp_8675309")).unwrap();
     assert!(config.servers.is_empty());
 }
 

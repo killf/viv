@@ -4,6 +4,10 @@ use viv::tools::Tool;
 use viv::tools::file::edit::{EditTool, MultiEditTool};
 use viv::tools::poll_to_completion;
 
+fn json_path(p: &std::path::Path) -> String {
+    p.display().to_string().replace('\\', "\\\\")
+}
+
 fn tempdir() -> std::path::PathBuf {
     let p = std::env::temp_dir().join(format!("viv_edit_{}", nanos()));
     fs::create_dir_all(&p).unwrap();
@@ -23,7 +27,7 @@ fn edit_replaces_unique_string() {
     fs::write(&path, "hello world").unwrap();
     let input = JsonValue::parse(&format!(
         r#"{{"file_path":"{}","old_string":"world","new_string":"rust"}}"#,
-        path.display()
+        json_path(&path)
     ))
     .unwrap();
     poll_to_completion(EditTool.execute(&input)).unwrap();
@@ -37,7 +41,7 @@ fn edit_fails_when_old_string_not_found() {
     fs::write(&path, "hello world").unwrap();
     let input = JsonValue::parse(&format!(
         r#"{{"file_path":"{}","old_string":"missing","new_string":"x"}}"#,
-        path.display()
+        json_path(&path)
     ))
     .unwrap();
     assert!(poll_to_completion(EditTool.execute(&input)).is_err());
@@ -50,7 +54,7 @@ fn edit_fails_when_old_string_not_unique() {
     fs::write(&path, "a a a").unwrap();
     let input = JsonValue::parse(&format!(
         r#"{{"file_path":"{}","old_string":"a","new_string":"b"}}"#,
-        path.display()
+        json_path(&path)
     ))
     .unwrap();
     assert!(poll_to_completion(EditTool.execute(&input)).is_err());
@@ -63,7 +67,7 @@ fn edit_replace_all_replaces_every_occurrence() {
     fs::write(&path, "a a a").unwrap();
     let input = JsonValue::parse(&format!(
         r#"{{"file_path":"{}","old_string":"a","new_string":"b","replace_all":true}}"#,
-        path.display()
+        json_path(&path)
     ))
     .unwrap();
     poll_to_completion(EditTool.execute(&input)).unwrap();
@@ -77,7 +81,7 @@ fn multi_edit_applies_edits_in_order() {
     fs::write(&path, "hello world foo").unwrap();
     let input = JsonValue::parse(&format!(
         r#"{{"file_path":"{}","edits":[{{"old_string":"hello","new_string":"hi"}},{{"old_string":"foo","new_string":"bar"}}]}}"#,
-        path.display()
+        json_path(&path)
     )).unwrap();
     poll_to_completion(MultiEditTool.execute(&input)).unwrap();
     assert_eq!(fs::read_to_string(&path).unwrap(), "hi world bar");

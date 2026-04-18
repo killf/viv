@@ -4,6 +4,10 @@ use viv::tools::Tool;
 use viv::tools::file::grep::GrepTool;
 use viv::tools::poll_to_completion;
 
+fn json_path(p: &std::path::Path) -> String {
+    p.display().to_string().replace('\\', "\\\\")
+}
+
 fn tempdir() -> std::path::PathBuf {
     let p = std::env::temp_dir().join(format!("viv_grep_{}", nanos()));
     fs::create_dir_all(&p).unwrap();
@@ -24,7 +28,7 @@ fn grep_files_with_matches_default_mode() {
     fs::write(dir.join("c.txt"), "nothing here").unwrap();
     let input = JsonValue::parse(&format!(
         r#"{{"pattern":"world","path":"{}"}}"#,
-        dir.display()
+        json_path(&dir)
     ))
     .unwrap();
     let result = poll_to_completion(GrepTool.execute(&input)).unwrap();
@@ -39,7 +43,7 @@ fn grep_content_mode_shows_matching_lines() {
     fs::write(dir.join("a.txt"), "line1\nfoo bar\nline3").unwrap();
     let input = JsonValue::parse(&format!(
         r#"{{"pattern":"foo","path":"{}","output_mode":"content"}}"#,
-        dir.display()
+        json_path(&dir)
     ))
     .unwrap();
     let result = poll_to_completion(GrepTool.execute(&input)).unwrap();
@@ -54,7 +58,7 @@ fn grep_glob_filter_limits_files() {
     fs::write(dir.join("b.txt"), "fn main() {}").unwrap();
     let input = JsonValue::parse(&format!(
         r#"{{"pattern":"main","path":"{}","glob":"*.rs"}}"#,
-        dir.display()
+        json_path(&dir)
     ))
     .unwrap();
     let result = poll_to_completion(GrepTool.execute(&input)).unwrap();

@@ -123,10 +123,14 @@ fn definition_tool_no_server_returns_error() {
     let mgr = empty_manager();
     let tool = LspDefinitionTool::new(mgr);
 
+    let test_path = std::env::temp_dir()
+        .join("viv_test.rs")
+        .to_string_lossy()
+        .into_owned();
     let input = JsonValue::Object(vec![
         (
             "file".to_string(),
-            JsonValue::Str("/tmp/test.rs".to_string()),
+            JsonValue::Str(test_path),
         ),
         (
             "line".to_string(),
