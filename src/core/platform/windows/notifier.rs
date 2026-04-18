@@ -37,3 +37,6 @@ impl Drop for EventNotifier {
         unsafe { ffi::CloseHandle(self.event) };
     }
 }
+
+// SAFETY: Event HANDLEs are thread-safe in Windows.
+unsafe impl Send for EventNotifier {}

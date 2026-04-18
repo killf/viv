@@ -6,18 +6,26 @@ pub mod types;
 
 use crate::Error;
 use crate::core::json::JsonValue;
+#[cfg(unix)]
 use client::McpClient;
 use config::{McpConfig, ServerConfig};
+#[cfg(unix)]
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
+#[cfg(unix)]
 use transport::stdio::StdioTransport;
 use types::*;
 
 // ── McpClientKind ────────────────────────────────────────────────────────────
 
 enum McpClientKind {
+    #[cfg(unix)]
     Stdio(McpClient<StdioTransport>),
+    /// Placeholder so the enum is never empty on any platform.
+    /// Unreachable at runtime — only exists to satisfy exhaustiveness checks.
+    #[cfg(not(unix))]
+    _Placeholder,
 }
 
 impl McpClientKind {
@@ -27,7 +35,10 @@ impl McpClientKind {
         args: &'a JsonValue,
     ) -> Pin<Box<dyn Future<Output = crate::Result<ToolCallResult>> + Send + 'a>> {
         match self {
+            #[cfg(unix)]
             McpClientKind::Stdio(c) => Box::pin(c.call_tool(name, args)),
+            #[cfg(not(unix))]
+            _ => { let _ = (name, args); unreachable!() }
         }
     }
 
@@ -36,7 +47,10 @@ impl McpClientKind {
         uri: &'a str,
     ) -> Pin<Box<dyn Future<Output = crate::Result<ResourceContent>> + Send + 'a>> {
         match self {
+            #[cfg(unix)]
             McpClientKind::Stdio(c) => Box::pin(c.read_resource(uri)),
+            #[cfg(not(unix))]
+            _ => { let _ = uri; unreachable!() }
         }
     }
 
@@ -46,13 +60,19 @@ impl McpClientKind {
         args: &'a JsonValue,
     ) -> Pin<Box<dyn Future<Output = crate::Result<PromptMessages>> + Send + 'a>> {
         match self {
+            #[cfg(unix)]
             McpClientKind::Stdio(c) => Box::pin(c.get_prompt(name, args)),
+            #[cfg(not(unix))]
+            _ => { let _ = (name, args); unreachable!() }
         }
     }
 
     fn close(&mut self) -> Pin<Box<dyn Future<Output = crate::Result<()>> + Send + '_>> {
         match self {
+            #[cfg(unix)]
             McpClientKind::Stdio(c) => Box::pin(c.shutdown()),
+            #[cfg(not(unix))]
+            _ => unreachable!(),
         }
     }
 }
@@ -97,6 +117,7 @@ impl McpManager {
         McpManager { servers }
     }
 
+    #[cfg(unix)]
     async fn connect_server(name: &str, config: &ServerConfig) -> crate::Result<McpServerHandle> {
         let mut client_kind = match config {
             ServerConfig::Stdio { command, args, env } => {
@@ -139,6 +160,14 @@ impl McpManager {
             resources,
             prompts,
             client: client_kind,
+        })
+    }
+
+    #[cfg(not(unix))]
+    async fn connect_server(name: &str, _config: &ServerConfig) -> crate::Result<McpServerHandle> {
+        Err(Error::Mcp {
+            server: name.to_string(),
+            message: "MCP transport is not yet supported on this platform".to_string(),
         })
     }
 

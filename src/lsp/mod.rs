@@ -6,12 +6,14 @@ pub mod types;
 use std::collections::HashMap;
 use std::path::Path;
 
+#[cfg(unix)]
 use crate::mcp::transport::stdio::{Framing, StdioTransport};
 use crate::{Error, Result};
+#[cfg(unix)]
 use client::LspClient;
 use config::LspConfig;
 
-
+#[cfg(unix)]
 type LspStdioClient = LspClient<StdioTransport>;
 
 // ---------------------------------------------------------------------------
@@ -21,6 +23,7 @@ type LspStdioClient = LspClient<StdioTransport>;
 /// Tracks an open document's version and the LSP client that owns it.
 struct OpenDocument {
     /// Server name this document is open in.
+    #[allow(dead_code)]
     server_name: String,
     /// Monotonically increasing version. Starts at 1 on `didOpen`, incremented on each `didChange`.
     version: i32,
@@ -33,7 +36,10 @@ struct OpenDocument {
 pub struct LspManager {
     config: LspConfig,
     /// `None` = not yet started, `Some(client)` = running.
-    servers: HashMap<String, Option<LspStdioClient>>,
+    #[cfg(unix)]
+    pub servers: HashMap<String, Option<LspStdioClient>>,
+    #[cfg(not(unix))]
+    pub servers: HashMap<String, ()>,
     open_documents: HashMap<String, OpenDocument>,
 }
 
@@ -42,7 +48,10 @@ impl LspManager {
     pub fn new(config: LspConfig) -> Self {
         let mut servers = HashMap::new();
         for (name, _) in &config.servers {
+            #[cfg(unix)]
             servers.insert(name.clone(), None);
+            #[cfg(not(unix))]
+            servers.insert(name.clone(), ());
         }
         LspManager { config, servers, open_documents: HashMap::new() }
     }
@@ -64,6 +73,7 @@ impl LspManager {
     ///
     /// If the server has not been started yet it will be started now.
     /// Returns an error if no server is configured for this file type.
+    #[cfg(unix)]
     pub async fn get_or_start(&mut self, file: &str) -> Result<&mut LspStdioClient> {
         let name = self
             .server_name_for_file(file)
@@ -87,7 +97,17 @@ impl LspManager {
             })
     }
 
+    /// Stub for non-unix — LSP over stdio is not yet supported.
+    #[cfg(not(unix))]
+    pub async fn get_or_start(&mut self, _file: &str) -> Result<&mut ()> {
+        Err(Error::Lsp {
+            server: "<none>".to_string(),
+            message: "LSP over stdio is not yet supported on this platform".to_string(),
+        })
+    }
+
     /// Spawn a new LSP server process and perform the initialize handshake.
+    #[cfg(unix)]
     pub async fn start_server(&mut self, name: &str) -> Result<()> {
         let server_cfg = self
             .config
@@ -130,6 +150,7 @@ impl LspManager {
     ///
     /// Reads the file from disk, sends `textDocument/didOpen`, and records it
     /// so subsequent calls are no-ops.
+    #[cfg(unix)]
     pub async fn ensure_file_open(&mut self, file: &str) -> Result<()> {
         let uri = path_to_uri(file);
         if self.open_documents.contains_key(&uri) {
@@ -151,8 +172,18 @@ impl LspManager {
         Ok(())
     }
 
+    /// Stub for non-unix — LSP over stdio is not yet supported.
+    #[cfg(not(unix))]
+    pub async fn ensure_file_open(&mut self, _file: &str) -> Result<()> {
+        Err(Error::Lsp {
+            server: "<none>".to_string(),
+            message: "LSP over stdio is not yet supported on this platform".to_string(),
+        })
+    }
+
     /// Gracefully shut down all started servers.
     pub async fn shutdown_all(&mut self) {
+        #[cfg(unix)]
         for (name, slot) in self.servers.iter_mut() {
             if let Some(client) = slot.as_mut() {
                 if let Err(e) = client.shutdown().await {
@@ -169,6 +200,7 @@ impl LspManager {
     /// Reads the current file content from disk, increments the version, and sends
     /// `textDocument/didChange`. If the file has not been opened via `ensure_file_open`
     /// this is a no-op.
+    #[cfg(unix)]
     pub async fn notify_did_change(&mut self, file: &str) -> Result<()> {
         let uri = path_to_uri(file);
 
@@ -198,6 +230,12 @@ impl LspManager {
 
         client.notify_did_change(&uri_clone, &content, version).await?;
         Ok(())
+    }
+
+    /// Stub for non-unix — LSP over stdio is not yet supported.
+    #[cfg(not(unix))]
+    pub async fn notify_did_change(&mut self, _file: &str) -> Result<()> {
+        Ok(()) // no-op on non-unix
     }
 }
 

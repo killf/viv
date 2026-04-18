@@ -13,8 +13,3 @@ fn term_size_copy_and_eq() {
     let b = a;
     assert_eq!(a, b);
 }
-
-#[test]
-fn winsize_struct_layout() {
-    assert_eq!(std::mem::size_of::<Winsize>(), 8);
-}

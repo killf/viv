@@ -142,7 +142,7 @@ impl EventLoop {
                 }
                 TOKEN_SIGNAL => {
                     self.resize.drain();
-                    let (cols, rows) = self.terminal.size();
+                    let (rows, cols) = self.terminal.size()?;
                     events.push(Event::Resize(TermSize { rows, cols }));
                 }
                 _ => {}

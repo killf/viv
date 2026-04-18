@@ -177,13 +177,13 @@ impl UnixTerminal {
         Ok(())
     }
 
-    pub fn size(&self) -> (u16, u16) {
+    pub fn size(&self) -> crate::Result<(u16, u16)> {
         let mut ws = Winsize { ws_row: 0, ws_col: 0, ws_xpixel: 0, ws_ypixel: 0 };
         let ret = unsafe { ioctl(1, TIOCGWINSZ, &mut ws) };
         if ret == 0 && ws.ws_col > 0 && ws.ws_row > 0 {
-            (ws.ws_col, ws.ws_row)
+            Ok((ws.ws_row, ws.ws_col))
         } else {
-            (80, 24) // fallback
+            Ok((24, 80)) // fallback
         }
     }
 

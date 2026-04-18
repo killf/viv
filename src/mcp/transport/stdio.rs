@@ -1,13 +1,22 @@
+#[cfg(unix)]
 use std::collections::HashMap;
+#[cfg(unix)]
 use std::future::Future;
+#[cfg(unix)]
 use std::pin::Pin;
+#[cfg(unix)]
 use std::process::{Child, Command, Stdio};
+#[cfg(unix)]
 use std::task::{Context, Poll};
 
+#[cfg(unix)]
 use crate::core::json::JsonValue;
+#[cfg(unix)]
 use crate::core::platform::RawHandle;
+#[cfg(unix)]
 use crate::core::runtime::reactor::reactor;
 
+#[cfg(unix)]
 use super::Transport;
 
 // ── Unix FFI and helpers ────────────────────────────────────────────────────
@@ -138,11 +147,13 @@ impl Framing {
 
 // ── WaitReadable future ──────────────────────────────────────────────────────
 
+#[cfg(unix)]
 struct WaitReadable {
     fd: RawHandle,
     token: Option<u64>,
 }
 
+#[cfg(unix)]
 impl Future for WaitReadable {
     type Output = crate::Result<()>;
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -157,6 +168,7 @@ impl Future for WaitReadable {
     }
 }
 
+#[cfg(unix)]
 impl Drop for WaitReadable {
     fn drop(&mut self) {
         if let Some(t) = self.token.take() {
@@ -165,6 +177,7 @@ impl Drop for WaitReadable {
     }
 }
 
+#[cfg(unix)]
 fn wait_readable(fd: RawHandle) -> WaitReadable {
     WaitReadable { fd, token: None }
 }
@@ -181,6 +194,7 @@ fn wait_readable(fd: RawHandle) -> WaitReadable {
 /// Use [`StdioTransport::spawn`] for standard newline-delimited MCP servers,
 /// or [`StdioTransport::spawn_with_framing`] when a different framing is
 /// required (e.g. LSP servers that use `Content-Length` headers).
+#[cfg(unix)]
 pub struct StdioTransport {
     child: Child,
     stdin_fd: RawHandle,
@@ -189,6 +203,7 @@ pub struct StdioTransport {
     framing: Framing,
 }
 
+#[cfg(unix)]
 impl StdioTransport {
     /// Spawn a child process for MCP communication using [`Framing::Newline`].
     ///
@@ -245,6 +260,7 @@ impl StdioTransport {
     }
 }
 
+#[cfg(unix)]
 impl Transport for StdioTransport {
     fn send(&mut self, msg: JsonValue) -> Pin<Box<dyn Future<Output = crate::Result<()>> + Send + '_>> {
         Box::pin(async move {

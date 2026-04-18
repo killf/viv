@@ -1,6 +1,5 @@
 use std::io::Write as IoWrite;
-use super::size::{TermSize, terminal_size};
-use super::raw_mode::RawMode;
+use super::size::TermSize;
 use crate::core::platform::PlatformTerminal;
 
 /// ANSI sequence to switch to the terminal's alternate screen buffer
@@ -27,12 +26,19 @@ pub trait Backend {
 
 // ── LinuxBackend ──────────────────────────────────────────────────────────────
 
+#[cfg(unix)]
+use super::raw_mode::RawMode;
+#[cfg(unix)]
+use super::size::terminal_size;
+
+#[cfg(unix)]
 pub struct LinuxBackend {
     stdout: std::io::Stdout,
     raw_mode: Option<RawMode>,
     in_alt_screen: bool,
 }
 
+#[cfg(unix)]
 impl LinuxBackend {
     pub fn new() -> Self {
         LinuxBackend {
@@ -43,12 +49,14 @@ impl LinuxBackend {
     }
 }
 
+#[cfg(unix)]
 impl Default for LinuxBackend {
     fn default() -> Self {
         Self::new()
     }
 }
 
+#[cfg(unix)]
 impl Drop for LinuxBackend {
     fn drop(&mut self) {
         // Always restore the main screen before dropping raw mode, so the
@@ -62,6 +70,7 @@ impl Drop for LinuxBackend {
     }
 }
 
+#[cfg(unix)]
 impl Backend for LinuxBackend {
     fn size(&self) -> crate::Result<TermSize> {
         terminal_size()
@@ -158,7 +167,7 @@ impl Drop for CrossBackend {
 
 impl Backend for CrossBackend {
     fn size(&self) -> crate::Result<TermSize> {
-        let (cols, rows) = self.terminal.size();
+        let (rows, cols) = self.terminal.size()?;
         Ok(TermSize { rows, cols })
     }
 

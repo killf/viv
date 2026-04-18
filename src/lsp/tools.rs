@@ -4,6 +4,7 @@
 #![allow(clippy::await_holding_lock)]
 
 use super::LspManager;
+#[cfg(unix)]
 use super::path_to_uri;
 use crate::core::json::JsonValue;
 use crate::core::runtime::AssertSend;
@@ -16,6 +17,15 @@ use std::sync::{Arc, Mutex};
 // ---------------------------------------------------------------------------
 // Helper functions
 // ---------------------------------------------------------------------------
+
+/// Returns a platform-unsupported error on non-unix platforms.
+#[cfg(not(unix))]
+fn platform_unsupported() -> crate::Result<String> {
+    Err(crate::Error::Lsp {
+        server: "<none>".to_string(),
+        message: "LSP over stdio is not yet supported on this platform".to_string(),
+    })
+}
 
 /// Shared input schema for tools that take file, line, and column.
 fn file_line_col_schema() -> JsonValue {
@@ -86,6 +96,7 @@ fn extract_file_line_col(input: &JsonValue) -> (String, u32, u32) {
 }
 
 /// Read N lines before and after the given line from a file on disk.
+#[cfg(unix)]
 fn read_context_lines(file: &str, line: u32, context: u32) -> String {
     let content = match std::fs::read_to_string(file) {
         Ok(c) => c,
@@ -108,6 +119,7 @@ fn read_context_lines(file: &str, line: u32, context: u32) -> String {
 }
 
 /// Read a single line from a file on disk.
+#[cfg(unix)]
 fn read_single_line(file: &str, line: u32) -> String {
     let content = match std::fs::read_to_string(file) {
         Ok(c) => c,
@@ -176,28 +188,34 @@ impl Tool for LspDefinitionTool {
     ) -> Pin<Box<dyn Future<Output = crate::Result<String>> + Send + '_>> {
         let (file, line, col) = extract_file_line_col(input);
         Box::pin(AssertSend(async move {
-            let mut mgr = self.manager.lock().unwrap();
-            mgr.ensure_file_open(&file).await?;
-            let uri = path_to_uri(&file);
-            let client = mgr.get_or_start(&file).await?;
-            let locations = client.definition(&uri, line, col).await?;
+            #[cfg(not(unix))]
+            { let _ = (&file, line, col); return platform_unsupported(); }
 
-            if locations.is_empty() {
-                return Ok("No definition found.".to_string());
-            }
+            #[cfg(unix)]
+            {
+                let mut mgr = self.manager.lock().unwrap();
+                mgr.ensure_file_open(&file).await?;
+                let uri = path_to_uri(&file);
+                let client = mgr.get_or_start(&file).await?;
+                let locations = client.definition(&uri, line, col).await?;
 
-            let mut output = String::new();
-            for loc in &locations {
-                let path = loc.file_path();
-                let def_line = loc.range.start.line;
-                let def_col = loc.range.start.character;
-                output.push_str(&format!("{}:{}:{}\n", path, def_line, def_col));
-                let context = read_context_lines(path, def_line, 2);
-                if !context.is_empty() {
-                    output.push_str(&context);
+                if locations.is_empty() {
+                    return Ok("No definition found.".to_string());
                 }
+
+                let mut output = String::new();
+                for loc in &locations {
+                    let path = loc.file_path();
+                    let def_line = loc.range.start.line;
+                    let def_col = loc.range.start.character;
+                    output.push_str(&format!("{}:{}:{}\n", path, def_line, def_col));
+                    let context = read_context_lines(path, def_line, 2);
+                    if !context.is_empty() {
+                        output.push_str(&context);
+                    }
+                }
+                Ok(output)
             }
-            Ok(output)
         }))
     }
 
@@ -240,42 +258,48 @@ impl Tool for LspReferencesTool {
     ) -> Pin<Box<dyn Future<Output = crate::Result<String>> + Send + '_>> {
         let (file, line, col) = extract_file_line_col(input);
         Box::pin(AssertSend(async move {
-            let mut mgr = self.manager.lock().unwrap();
-            mgr.ensure_file_open(&file).await?;
-            let uri = path_to_uri(&file);
-            let client = mgr.get_or_start(&file).await?;
-            let locations = client.references(&uri, line, col).await?;
+            #[cfg(not(unix))]
+            { let _ = (&file, line, col); return platform_unsupported(); }
 
-            if locations.is_empty() {
-                return Ok("No references found.".to_string());
-            }
+            #[cfg(unix)]
+            {
+                let mut mgr = self.manager.lock().unwrap();
+                mgr.ensure_file_open(&file).await?;
+                let uri = path_to_uri(&file);
+                let client = mgr.get_or_start(&file).await?;
+                let locations = client.references(&uri, line, col).await?;
 
-            let total = locations.len();
-            let truncated = locations.len() > 20;
-            let shown = locations.iter().take(20);
-
-            let mut output = format!("Found {} reference(s):\n", total);
-            for loc in shown {
-                let path = loc.file_path();
-                let ref_line = loc.range.start.line;
-                let ref_col = loc.range.start.character;
-                let code = read_single_line(path, ref_line);
-                if code.is_empty() {
-                    output.push_str(&format!("{}:{}:{}\n", path, ref_line, ref_col));
-                } else {
-                    output.push_str(&format!(
-                        "{}:{}:{}: {}\n",
-                        path,
-                        ref_line,
-                        ref_col,
-                        code.trim()
-                    ));
+                if locations.is_empty() {
+                    return Ok("No references found.".to_string());
                 }
+
+                let total = locations.len();
+                let truncated = locations.len() > 20;
+                let shown = locations.iter().take(20);
+
+                let mut output = format!("Found {} reference(s):\n", total);
+                for loc in shown {
+                    let path = loc.file_path();
+                    let ref_line = loc.range.start.line;
+                    let ref_col = loc.range.start.character;
+                    let code = read_single_line(path, ref_line);
+                    if code.is_empty() {
+                        output.push_str(&format!("{}:{}:{}\n", path, ref_line, ref_col));
+                    } else {
+                        output.push_str(&format!(
+                            "{}:{}:{}: {}\n",
+                            path,
+                            ref_line,
+                            ref_col,
+                            code.trim()
+                        ));
+                    }
+                }
+                if truncated {
+                    output.push_str(&format!("... ({} more not shown)\n", total - 20));
+                }
+                Ok(output)
             }
-            if truncated {
-                output.push_str(&format!("... ({} more not shown)\n", total - 20));
-            }
-            Ok(output)
         }))
     }
 
@@ -318,15 +342,21 @@ impl Tool for LspHoverTool {
     ) -> Pin<Box<dyn Future<Output = crate::Result<String>> + Send + '_>> {
         let (file, line, col) = extract_file_line_col(input);
         Box::pin(AssertSend(async move {
-            let mut mgr = self.manager.lock().unwrap();
-            mgr.ensure_file_open(&file).await?;
-            let uri = path_to_uri(&file);
-            let client = mgr.get_or_start(&file).await?;
-            let result = client.hover(&uri, line, col).await?;
+            #[cfg(not(unix))]
+            { let _ = (&file, line, col); return platform_unsupported(); }
 
-            match result {
-                Some(hover) => Ok(hover.contents),
-                None => Ok("No hover information available.".to_string()),
+            #[cfg(unix)]
+            {
+                let mut mgr = self.manager.lock().unwrap();
+                mgr.ensure_file_open(&file).await?;
+                let uri = path_to_uri(&file);
+                let client = mgr.get_or_start(&file).await?;
+                let result = client.hover(&uri, line, col).await?;
+
+                match result {
+                    Some(hover) => Ok(hover.contents),
+                    None => Ok("No hover information available.".to_string()),
+                }
             }
         }))
     }
@@ -390,32 +420,38 @@ impl Tool for LspDiagnosticsTool {
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
         Box::pin(AssertSend(async move {
-            let mut mgr = self.manager.lock().unwrap();
-            let mut output = String::new();
+            #[cfg(not(unix))]
+            { let _ = &file; return platform_unsupported(); }
 
-            if let Some(ref path) = file {
-                // Ensure the file is open so diagnostics are available.
-                mgr.ensure_file_open(path).await?;
-                let uri = path_to_uri(path);
-                let client = mgr.get_or_start(path).await?;
-                let diags = client.diagnostics(&uri);
-                format_diagnostics(&mut output, path, &diags);
-            } else {
-                // Collect all diagnostics across all running servers.
-                for (_name, slot) in mgr.servers.iter() {
-                    if let Some(client) = slot.as_ref() {
-                        for (uri, diags) in client.all_diagnostics() {
-                            let path = uri.strip_prefix("file://").unwrap_or(uri);
-                            format_diagnostics(&mut output, path, diags);
+            #[cfg(unix)]
+            {
+                let mut mgr = self.manager.lock().unwrap();
+                let mut output = String::new();
+
+                if let Some(ref path) = file {
+                    // Ensure the file is open so diagnostics are available.
+                    mgr.ensure_file_open(path).await?;
+                    let uri = path_to_uri(path);
+                    let client = mgr.get_or_start(path).await?;
+                    let diags = client.diagnostics(&uri);
+                    format_diagnostics(&mut output, path, &diags);
+                } else {
+                    // Collect all diagnostics across all running servers.
+                    for (_name, slot) in mgr.servers.iter() {
+                        if let Some(client) = slot.as_ref() {
+                            for (uri, diags) in client.all_diagnostics() {
+                                let path = uri.strip_prefix("file://").unwrap_or(uri);
+                                format_diagnostics(&mut output, path, diags);
+                            }
                         }
                     }
                 }
-            }
 
-            if output.is_empty() {
-                output.push_str("No diagnostics.");
+                if output.is_empty() {
+                    output.push_str("No diagnostics.");
+                }
+                Ok(output)
             }
-            Ok(output)
         }))
     }
 

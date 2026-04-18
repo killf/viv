@@ -75,6 +75,7 @@ pub struct WINDOW_BUFFER_SIZE_RECORD {
 }
 
 #[repr(C)]
+#[derive(Clone, Copy)]
 pub struct INPUT_RECORD {
     pub event_type: u16,
     pub _padding: u16,

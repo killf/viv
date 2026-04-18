@@ -76,3 +76,7 @@ impl Drop for IocpReactor {
         unsafe { ffi::CloseHandle(self.port) };
     }
 }
+
+// SAFETY: HANDLE (IOCP port) is thread-safe — Windows guarantees
+// completion port handles can be used from any thread.
+unsafe impl Send for IocpReactor {}

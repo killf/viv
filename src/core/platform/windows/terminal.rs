@@ -131,6 +131,9 @@ impl Drop for WinTerminal {
     }
 }
 
+// SAFETY: Console HANDLEs are thread-safe in Windows.
+unsafe impl Send for WinTerminal {}
+
 pub struct WinResizeListener {
     input_handle: HANDLE,
 }
@@ -146,7 +149,10 @@ impl WinResizeListener {
         self.input_handle
     }
 
-    pub fn drain(&self) -> crate::Result<()> {
-        Ok(())
+    pub fn drain(&self) {
+        // Nothing to drain on Windows — resize events come through ReadConsoleInput.
     }
 }
+
+// SAFETY: Console HANDLEs are thread-safe in Windows.
+unsafe impl Send for WinResizeListener {}
