@@ -8,6 +8,9 @@ use crate::bus::{AgentEvent, AgentMessage};
 use crate::core::json::JsonValue;
 use crate::core::runtime::channel::AsyncReceiver;
 use crate::llm::{LLMClient, LLMConfig, ModelTier};
+use crate::lsp::LspManager;
+use crate::lsp::config::LspConfig;
+use crate::lsp::tools::{LspDefinitionTool, LspReferencesTool, LspHoverTool, LspDiagnosticsTool};
 use crate::mcp::McpManager;
 use crate::mcp::config::McpConfig;
 use crate::mcp::tools::{
@@ -68,6 +71,7 @@ pub struct Agent {
     event_rx: AsyncReceiver<AgentEvent>,
     msg_tx: Sender<AgentMessage>,
     mcp: Arc<Mutex<McpManager>>,
+    lsp: Arc<Mutex<LspManager>>,
 }
 
 impl Agent {
@@ -110,6 +114,16 @@ impl Agent {
         tools.register(Box::new(ListMcpPromptsTool::new(mcp.clone())));
         tools.register(Box::new(GetMcpPromptTool::new(mcp.clone())));
 
+        // Load LSP config (reuse same settings.json)
+        let lsp_config = LspConfig::load(".viv/settings.json")?;
+        let lsp = Arc::new(Mutex::new(LspManager::new(lsp_config)));
+
+        // Register LSP tools
+        tools.register(Box::new(LspDefinitionTool::new(lsp.clone())));
+        tools.register(Box::new(LspReferencesTool::new(lsp.clone())));
+        tools.register(Box::new(LspHoverTool::new(lsp.clone())));
+        tools.register(Box::new(LspDiagnosticsTool::new(lsp.clone())));
+
         let _ = msg_tx.send(AgentMessage::Ready { model: model_name });
 
         Ok(Agent {
@@ -126,6 +140,7 @@ impl Agent {
             event_rx,
             msg_tx,
             mcp,
+            lsp,
         })
     }
 
@@ -163,6 +178,11 @@ impl Agent {
         drop(mgr);
         for mut handle in servers {
             let _ = handle.shutdown().await;
+        }
+        // Shutdown LSP servers
+        {
+            let mut lsp_mgr = self.lsp.lock().unwrap();
+            lsp_mgr.shutdown_all().await;
         }
         let _ = self.msg_tx.send(AgentMessage::Evolved);
         Ok(())
