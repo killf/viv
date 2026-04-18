@@ -143,8 +143,7 @@ fn notify_did_change_noop_for_unopened_file() {
         .join("viv_test_does_not_exist.rs")
         .to_string_lossy()
         .into_owned();
-    let result = viv::core::runtime::block_on_local(std::pin::pin!(
-        manager.notify_did_change(&nonexistent)
-    ));
+    let result =
+        viv::core::runtime::block_on_local(std::pin::pin!(manager.notify_did_change(&nonexistent)));
     assert!(result.is_ok());
 }

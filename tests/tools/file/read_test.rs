@@ -15,13 +15,16 @@ fn nanos() -> u32 {
         .unwrap()
         .subsec_nanos()
 }
+fn json_path(p: &std::path::Path) -> String {
+    p.display().to_string().replace('\\', "\\\\")
+}
 
 #[test]
 fn read_returns_content_with_line_numbers() {
     let dir = tempdir();
     let path = dir.join("f.txt");
     fs::write(&path, "alpha\nbeta\ngamma\n").unwrap();
-    let input = JsonValue::parse(&format!(r#"{{"file_path":"{}"}}"#, path.display())).unwrap();
+    let input = JsonValue::parse(&format!(r#"{{"file_path":"{}"}}"#, json_path(&path))).unwrap();
     let result = poll_to_completion(ReadTool.execute(&input)).unwrap();
     assert!(result.contains("alpha"));
     assert!(result.contains("beta"));
@@ -35,7 +38,7 @@ fn read_with_offset_skips_lines() {
     fs::write(&path, "a\nb\nc\n").unwrap();
     let input = JsonValue::parse(&format!(
         r#"{{"file_path":"{}","offset":2,"limit":1}}"#,
-        path.display()
+        json_path(&path)
     ))
     .unwrap();
     let result = poll_to_completion(ReadTool.execute(&input)).unwrap();

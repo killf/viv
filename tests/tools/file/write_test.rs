@@ -15,6 +15,9 @@ fn nanos() -> u32 {
         .unwrap()
         .subsec_nanos()
 }
+fn json_path(p: &std::path::Path) -> String {
+    p.display().to_string().replace('\\', "\\\\")
+}
 
 #[test]
 fn write_creates_file_with_content() {
@@ -22,7 +25,7 @@ fn write_creates_file_with_content() {
     let path = dir.join("out.txt");
     let input = JsonValue::parse(&format!(
         r#"{{"file_path":"{}","content":"hello world"}}"#,
-        path.display()
+        json_path(&path)
     ))
     .unwrap();
     poll_to_completion(WriteTool.execute(&input)).unwrap();
@@ -35,7 +38,7 @@ fn write_creates_parent_directories() {
     let path = dir.join("a/b/c.txt");
     let input = JsonValue::parse(&format!(
         r#"{{"file_path":"{}","content":"hi"}}"#,
-        path.display()
+        json_path(&path)
     ))
     .unwrap();
     poll_to_completion(WriteTool.execute(&input)).unwrap();
@@ -49,7 +52,7 @@ fn write_overwrites_existing_file() {
     fs::write(&path, "old").unwrap();
     let input = JsonValue::parse(&format!(
         r#"{{"file_path":"{}","content":"new"}}"#,
-        path.display()
+        json_path(&path)
     ))
     .unwrap();
     poll_to_completion(WriteTool.execute(&input)).unwrap();

@@ -128,10 +128,7 @@ fn definition_tool_no_server_returns_error() {
         .to_string_lossy()
         .into_owned();
     let input = JsonValue::Object(vec![
-        (
-            "file".to_string(),
-            JsonValue::Str(test_path),
-        ),
+        ("file".to_string(), JsonValue::Str(test_path)),
         (
             "line".to_string(),
             JsonValue::Number(viv::core::json::Number::Int(0)),

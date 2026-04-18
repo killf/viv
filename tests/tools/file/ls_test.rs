@@ -15,13 +15,16 @@ fn nanos() -> u32 {
         .unwrap()
         .subsec_nanos()
 }
+fn json_path(p: &std::path::Path) -> String {
+    p.display().to_string().replace('\\', "\\\\")
+}
 
 #[test]
 fn ls_shows_files_in_directory() {
     let dir = tempdir();
     fs::write(dir.join("a.txt"), "").unwrap();
     fs::write(dir.join("b.txt"), "").unwrap();
-    let input = JsonValue::parse(&format!(r#"{{"path":"{}"}}"#, dir.display())).unwrap();
+    let input = JsonValue::parse(&format!(r#"{{"path":"{}"}}"#, json_path(&dir))).unwrap();
     let result = poll_to_completion(LsTool.execute(&input)).unwrap();
     assert!(result.contains("a.txt"));
     assert!(result.contains("b.txt"));
@@ -31,7 +34,7 @@ fn ls_shows_files_in_directory() {
 fn ls_directories_have_trailing_slash() {
     let dir = tempdir();
     fs::create_dir(dir.join("subdir")).unwrap();
-    let input = JsonValue::parse(&format!(r#"{{"path":"{}"}}"#, dir.display())).unwrap();
+    let input = JsonValue::parse(&format!(r#"{{"path":"{}"}}"#, json_path(&dir))).unwrap();
     let result = poll_to_completion(LsTool.execute(&input)).unwrap();
     assert!(result.contains("subdir/"));
 }
