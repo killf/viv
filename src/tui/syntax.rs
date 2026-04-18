@@ -1,4 +1,4 @@
-use crate::tui::lang_profiles::{select_profile, LangProfile};
+use crate::tui::lang_profiles::{LangProfile, select_profile};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TokenKind {
@@ -40,7 +40,10 @@ pub fn tokenize(line: &str, language: Option<&str>) -> Vec<Token> {
             while i < chars.len() && chars[i].is_whitespace() {
                 i += 1;
             }
-            tokens.push(Token::new(TokenKind::Plain, chars[start..i].iter().collect()));
+            tokens.push(Token::new(
+                TokenKind::Plain,
+                chars[start..i].iter().collect(),
+            ));
             continue;
         }
 
@@ -94,7 +97,9 @@ pub fn tokenize(line: &str, language: Option<&str>) -> Vec<Token> {
         }
 
         // Numbers
-        if chars[i].is_ascii_digit() || (chars[i] == '.' && i + 1 < chars.len() && chars[i + 1].is_ascii_digit()) {
+        if chars[i].is_ascii_digit()
+            || (chars[i] == '.' && i + 1 < chars.len() && chars[i + 1].is_ascii_digit())
+        {
             let tok = consume_number(&chars, i);
             i += tok.text.chars().count();
             tokens.push(tok);
@@ -376,7 +381,10 @@ fn consume_identifier(chars: &[char], i: usize, profile: &LangProfile) -> Token 
     let word: std::string::String = chars[i..j].iter().collect();
 
     // Check if followed by '(' → Function
-    let next_non_space = chars[j..].iter().position(|c| !c.is_whitespace()).map(|k| j + k);
+    let next_non_space = chars[j..]
+        .iter()
+        .position(|c| !c.is_whitespace())
+        .map(|k| j + k);
     if let Some(next) = next_non_space {
         if chars[next] == '(' {
             return Token::new(TokenKind::Function, word);
@@ -403,8 +411,8 @@ fn consume_identifier(chars: &[char], i: usize, profile: &LangProfile) -> Token 
 fn try_operator(chars: &[char], i: usize) -> Option<Token> {
     // Multi-char operators (longest match first)
     let multi = [
-        "->", "=>", "::", "==", "!=", "<=", ">=", "&&", "||", "<<", ">>", "+=", "-=", "*=",
-        "/=", "%=", "&=", "|=", "^=", "..",
+        "->", "=>", "::", "==", "!=", "<=", ">=", "&&", "||", "<<", ">>", "+=", "-=", "*=", "/=",
+        "%=", "&=", "|=", "^=", "..",
     ];
     for op in &multi {
         let op_chars: Vec<char> = op.chars().collect();
@@ -414,7 +422,9 @@ fn try_operator(chars: &[char], i: usize) -> Option<Token> {
     }
 
     // Single-char operators
-    let single = ['=', '+', '-', '*', '/', '<', '>', '!', '&', '|', '^', '%', '~', ':'];
+    let single = [
+        '=', '+', '-', '*', '/', '<', '>', '!', '&', '|', '^', '%', '~', ':',
+    ];
     if single.contains(&chars[i]) {
         return Some(Token::new(TokenKind::Operator, chars[i].to_string()));
     }

@@ -89,7 +89,10 @@ fn tokenize_python_hash_not_comment_in_rust() {
     let tokens = tokenize("#[test]", Some("rust"));
     // In rust, '#[...]' is an attribute, not a comment
     let comment_tok = tokens.iter().find(|t| t.kind == TokenKind::Comment);
-    assert!(comment_tok.is_none(), "#[test] in rust should not be a Comment");
+    assert!(
+        comment_tok.is_none(),
+        "#[test] in rust should not be a Comment"
+    );
     let attr_tok = tokens.iter().find(|t| t.kind == TokenKind::Attribute);
     assert!(attr_tok.is_some(), "#[test] in rust should be an Attribute");
 }
@@ -105,7 +108,10 @@ fn tokenize_block_comment() {
 fn tokenize_python_triple_quote() {
     let tokens = tokenize("\"\"\"docstring\"\"\"", Some("python"));
     let string_tok = tokens.iter().find(|t| t.kind == TokenKind::String);
-    assert!(string_tok.is_some(), "should have a String token for triple-quoted string");
+    assert!(
+        string_tok.is_some(),
+        "should have a String token for triple-quoted string"
+    );
     assert_eq!(string_tok.unwrap().text, "\"\"\"docstring\"\"\"");
 }
 
@@ -113,6 +119,9 @@ fn tokenize_python_triple_quote() {
 fn tokenize_js_template_literal() {
     let tokens = tokenize("`hello`", Some("javascript"));
     let string_tok = tokens.iter().find(|t| t.kind == TokenKind::String);
-    assert!(string_tok.is_some(), "should have a String token for template literal");
+    assert!(
+        string_tok.is_some(),
+        "should have a String token for template literal"
+    );
     assert_eq!(string_tok.unwrap().text, "`hello`");
 }

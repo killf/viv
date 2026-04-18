@@ -3,23 +3,25 @@ use std::sync::mpsc::Receiver;
 use crate::bus::{AgentEvent, AgentMessage};
 use crate::core::runtime::channel::NotifySender;
 use crate::core::terminal::backend::{Backend, CrossBackend};
-use crate::core::terminal::buffer::char_width;
+use crate::core::terminal::buffer::Rect;
 use crate::core::terminal::events::{Event, EventLoop};
 use crate::core::terminal::input::KeyEvent;
 use crate::core::terminal::style::theme;
 use crate::tui::block::{Block, BorderSides, BorderStyle};
+use crate::tui::code_block::CodeBlockWidget;
+use crate::tui::content::{ContentBlock, MarkdownNode, MarkdownParseBuffer};
+use crate::tui::conversation::ConversationState;
+use crate::tui::focus::{FocusManager, UIMode};
 use crate::tui::header::HeaderWidget;
 use crate::tui::input::InputWidget;
 use crate::tui::layout::{Constraint, Direction, Layout};
-use crate::tui::message_style::{
-    format_assistant_message, format_error_message, format_user_message, format_welcome,
-};
-use crate::tui::paragraph::{Line, Paragraph, Span};
-use crate::tui::permission::{render_permission_pending, render_permission_result};
+use crate::tui::markdown::MarkdownBlockWidget;
+use crate::tui::message_style::format_welcome;
 use crate::tui::renderer::Renderer;
 use crate::tui::spinner::{Spinner, random_verb};
 use crate::tui::status::StatusWidget;
-use crate::tui::widget::Widget;
+use crate::tui::tool_call::{ToolCallState, ToolCallWidget, ToolStatus, extract_input_summary};
+use crate::tui::widget::{StatefulWidget, Widget};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // UiAction
@@ -39,8 +41,6 @@ pub struct TerminalUI {
     backend: CrossBackend,
     renderer: Renderer,
     editor: LineEditor,
-    history_lines: Vec<Line>,
-    scroll: u16,
     model_name: String,
     input_tokens: u64,
     output_tokens: u64,
@@ -49,15 +49,21 @@ pub struct TerminalUI {
     spinner: Spinner,
     spinner_start: Option<std::time::Instant>,
     spinner_verb: String,
-    response_line_idx: Option<usize>,
-    current_response: String,
-    /// (line_idx, tool_name, input_summary) — stored when PermissionRequest arrives
+
+    // ── Widget-based conversation model ─────────────────────────────────
+    blocks: Vec<ContentBlock>,
+    parse_buffer: MarkdownParseBuffer,
+    conversation_state: ConversationState,
+    tool_states: Vec<ToolCallState>,
+    focus: FocusManager,
+    tool_seq: usize,
+
+    /// (block_idx, tool_name, input_summary) -- stored when PermissionRequest arrives
     pending_permission: Option<(usize, String, String)>,
     /// Set to true after Ctrl+D sends AgentEvent::Quit. While true, we keep the
     /// UI running and wait for AgentMessage::Evolved so the user sees the
     /// "evolving memories" spinner instead of a silent freeze.
     quitting: bool,
-    quitting_line_idx: Option<usize>,
     quitting_start: Option<std::time::Instant>,
 }
 
@@ -80,10 +86,34 @@ impl TerminalUI {
         let renderer = Renderer::new(size);
 
         let header = HeaderWidget::from_env();
-        let history_lines: Vec<Line> = vec![
-            format_welcome(&header.cwd, header.branch.as_deref()),
-            Line::raw(""),
-        ];
+
+        // Build the welcome message as a ContentBlock
+        let welcome_line = format_welcome(&header.cwd, header.branch.as_deref());
+        let welcome_text = welcome_line
+            .spans
+            .iter()
+            .map(|s| s.text.as_str())
+            .collect::<String>();
+
+        let mut blocks = Vec::new();
+        let mut conversation_state = ConversationState::new();
+
+        // Push welcome as a Markdown block (plain text paragraph)
+        let welcome_nodes = vec![MarkdownNode::Paragraph {
+            spans: vec![crate::tui::content::InlineSpan::Text(welcome_text)],
+        }];
+        blocks.push(ContentBlock::Markdown {
+            nodes: welcome_nodes.clone(),
+        });
+        conversation_state.append_item_height(1);
+
+        // Empty line separator
+        blocks.push(ContentBlock::Markdown {
+            nodes: vec![MarkdownNode::Paragraph {
+                spans: vec![crate::tui::content::InlineSpan::Text(String::new())],
+            }],
+        });
+        conversation_state.append_item_height(1);
 
         let seed = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -97,8 +127,6 @@ impl TerminalUI {
             backend,
             renderer,
             editor: LineEditor::new(),
-            history_lines,
-            scroll: 0,
             model_name: String::new(),
             input_tokens: 0,
             output_tokens: 0,
@@ -107,11 +135,14 @@ impl TerminalUI {
             spinner: Spinner::new(),
             spinner_start: None,
             spinner_verb,
-            response_line_idx: None,
-            current_response: String::new(),
+            blocks,
+            parse_buffer: MarkdownParseBuffer::new(),
+            conversation_state,
+            tool_states: Vec::new(),
+            focus: FocusManager::new(),
+            tool_seq: 0,
             pending_permission: None,
             quitting: false,
-            quitting_line_idx: None,
             quitting_start: None,
         })
     }
@@ -129,7 +160,7 @@ impl TerminalUI {
                         self.handle_agent_message(msg);
                         dirty = true;
                         if is_evolved {
-                            // Agent finished the pre-shutdown evolve step —
+                            // Agent finished the pre-shutdown evolve step --
                             // safe to tear down the TUI and return.
                             self.cleanup()?;
                             return Ok(());
@@ -137,54 +168,21 @@ impl TerminalUI {
                     }
                     Err(std::sync::mpsc::TryRecvError::Empty) => break,
                     Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-                        // Agent thread dropped — exit cleanly
+                        // Agent thread dropped -- exit cleanly
                         self.cleanup()?;
                         return Ok(());
                     }
                 }
             }
 
-            // Animate spinner while busy and no real response yet
-            if self.busy
-                && self.current_response.is_empty()
-                && let Some(idx) = self.response_line_idx
-            {
-                let elapsed = self
-                    .spinner_start
-                    .map(|s| s.elapsed().as_millis() as u64)
-                    .unwrap_or(0);
-                self.history_lines.truncate(idx);
-                self.history_lines.push(Line::from_spans(vec![
-                    Span::styled(
-                        format!("{} ", self.spinner.frame_at(elapsed)),
-                        theme::CLAUDE,
-                        false,
-                    ),
-                    Span::styled(format!("{}\u{2026}", self.spinner_verb), theme::DIM, false),
-                ]));
+            // Animate spinner while busy
+            if self.busy && self.spinner_start.is_some() {
                 dirty = true;
             }
 
             // Animate the shutdown spinner while waiting for the agent to
             // finish `evolve()` after Ctrl+D.
-            if self.quitting
-                && let (Some(start), Some(idx)) = (self.quitting_start, self.quitting_line_idx)
-            {
-                let elapsed = start.elapsed().as_millis() as u64;
-                self.history_lines.truncate(idx);
-                self.history_lines.push(Line::from_spans(vec![
-                        Span::styled(
-                            format!("{} ", self.spinner.frame_at(elapsed)),
-                            theme::CLAUDE,
-                            false,
-                        ),
-                        Span::styled(
-                            "\u{8fdb}\u{5316}\u{8bb0}\u{5fc6}\u{4e2d}\u{2026} (Ctrl+C \u{5f3a}\u{5236}\u{9000}\u{51fa})"
-                                .to_string(),
-                            theme::DIM,
-                            false,
-                        ),
-                    ]));
+            if self.quitting && self.quitting_start.is_some() {
                 dirty = true;
             }
 
@@ -222,7 +220,7 @@ impl TerminalUI {
                     Event::Key(key) => {
                         dirty = true;
                         if self.quitting {
-                            // Shutdown in progress — only Ctrl+C force-exits;
+                            // Shutdown in progress -- only Ctrl+C force-exits;
                             // every other key is swallowed so the user can't
                             // fire off new input while the agent is evolving.
                             if key == KeyEvent::CtrlC {
@@ -242,8 +240,13 @@ impl TerminalUI {
                     }
                     Event::Resize(new_size) => {
                         self.renderer.resize(new_size);
-                        self.scroll =
-                            compute_max_scroll(&self.history_lines, &self.renderer, &self.editor);
+                        // Recalculate all block heights (width changed -> word wrap changes)
+                        let width = new_size.cols;
+                        for (i, block) in self.blocks.iter().enumerate() {
+                            let h = block_height_with_width(block, width);
+                            self.conversation_state.set_item_height(i, h);
+                        }
+                        self.conversation_state.auto_scroll();
                         dirty = true;
                     }
                     Event::Tick => {}
@@ -265,76 +268,108 @@ impl TerminalUI {
                     .unwrap_or(0);
                 self.spinner_verb = random_verb(seed).to_string();
                 self.spinner_start = Some(std::time::Instant::now());
-                self.current_response = String::new();
                 self.busy = true;
-
-                // Push spinner placeholder line
-                self.history_lines.push(Line::from_spans(vec![
-                    Span::styled(
-                        format!("{} ", self.spinner.frame_at(0)),
-                        theme::CLAUDE,
-                        false,
-                    ),
-                    Span::styled(format!("{}\u{2026}", self.spinner_verb), theme::DIM, false),
-                ]));
-                self.response_line_idx = Some(self.history_lines.len() - 1);
-                self.scroll = compute_max_scroll(&self.history_lines, &self.renderer, &self.editor);
             }
 
             AgentMessage::TextChunk(s) => {
-                self.current_response.push_str(&s);
-
-                if let Some(idx) = self.response_line_idx {
-                    // Replace spinner / previous content with the rendered message
-                    let rendered = format_assistant_message(&self.current_response);
-                    let new_len = idx + rendered.len();
-                    self.history_lines.truncate(idx);
-                    self.history_lines.extend(rendered);
-
-                    // response_line_idx stays pointing at the first line of the response
-                    // but we don't move it; trailing lines grow forward.
-                    // Keep scroll at bottom.
-                    let _ = new_len; // suppress unused warning
+                let new_blocks = self.parse_buffer.push(&s);
+                for block in new_blocks {
+                    let h = self.block_height(&block);
+                    self.blocks.push(block);
+                    self.conversation_state.append_item_height(h);
                 }
-                self.scroll = compute_max_scroll(&self.history_lines, &self.renderer, &self.editor);
+                // If no new blocks were emitted but content is growing in the
+                // parse buffer, update the last markdown block's height if it
+                // was recently appended and the parse buffer produced an update.
+                self.conversation_state.auto_scroll();
             }
 
             AgentMessage::Status(s) => {
-                self.history_lines
-                    .push(Line::from_spans(vec![Span::styled(s, theme::DIM, false)]));
-                self.scroll = compute_max_scroll(&self.history_lines, &self.renderer, &self.editor);
+                // Render status as a dim markdown paragraph
+                let nodes = vec![MarkdownNode::Paragraph {
+                    spans: vec![crate::tui::content::InlineSpan::Text(s)],
+                }];
+                self.blocks.push(ContentBlock::Markdown { nodes });
+                self.conversation_state.append_item_height(1);
+                self.conversation_state.auto_scroll();
             }
 
             AgentMessage::ToolStart { name, input } => {
-                let summary = if input.is_empty() {
-                    format!("  \u{25b6} {}", name)
-                } else {
-                    format!("  \u{25b6} {}({})", name, input)
-                };
-                self.history_lines.push(Line::from_spans(vec![Span::styled(
-                    summary,
-                    theme::DIM,
-                    false,
-                )]));
-                self.scroll = compute_max_scroll(&self.history_lines, &self.renderer, &self.editor);
+                let _id = self.tool_seq;
+                self.tool_seq += 1;
+                self.blocks.push(ContentBlock::ToolCall {
+                    id: _id,
+                    name,
+                    input,
+                    output: None,
+                    error: None,
+                });
+                self.tool_states.push(ToolCallState::new_running());
+                self.conversation_state.append_item_height(1); // folded = 1 line
+                self.conversation_state.auto_scroll();
             }
 
-            AgentMessage::ToolEnd { .. } => {
-                // Output already visible via TextChunk — no-op
+            AgentMessage::ToolEnd { name: _, output } => {
+                // Find the most recent Running tool call (reverse search)
+                if let Some(idx) = self
+                    .tool_states
+                    .iter()
+                    .rposition(|s| matches!(s.status, ToolStatus::Running))
+                {
+                    let summary = format!("{} chars", output.len());
+                    self.tool_states[idx] = ToolCallState::new_success(summary);
+                    // Update the ContentBlock's output field
+                    let mut tc_idx = 0;
+                    for block in &mut self.blocks {
+                        if let ContentBlock::ToolCall { output: o, .. } = block {
+                            if tc_idx == idx {
+                                *o = Some(output);
+                                break;
+                            }
+                            tc_idx += 1;
+                        }
+                    }
+                }
             }
 
-            AgentMessage::ToolError { name, error } => {
-                let msg = format!("tool error [{}]: {}", name, error);
-                self.history_lines.extend(format_error_message(&msg));
-                self.scroll = compute_max_scroll(&self.history_lines, &self.renderer, &self.editor);
+            AgentMessage::ToolError { name: _, error } => {
+                // Find the most recent Running tool call (reverse search)
+                if let Some(idx) = self
+                    .tool_states
+                    .iter()
+                    .rposition(|s| matches!(s.status, ToolStatus::Running))
+                {
+                    let msg = if error.len() > 60 {
+                        format!("{}...", &error[..60])
+                    } else {
+                        error.clone()
+                    };
+                    self.tool_states[idx] = ToolCallState::new_error(msg);
+                    // Update the ContentBlock's error field
+                    let mut tc_idx = 0;
+                    for block in &mut self.blocks {
+                        if let ContentBlock::ToolCall { error: e, .. } = block {
+                            if tc_idx == idx {
+                                *e = Some(error);
+                                break;
+                            }
+                            tc_idx += 1;
+                        }
+                    }
+                }
             }
 
             AgentMessage::PermissionRequest { tool, input } => {
-                self.history_lines
-                    .push(render_permission_pending(&tool, &input));
-                let idx = self.history_lines.len() - 1;
+                // Store the permission prompt as a Markdown block
+                let prompt_text = format!("  \u{25c6} {}({}) [y/n]", tool, input);
+                let nodes = vec![MarkdownNode::Paragraph {
+                    spans: vec![crate::tui::content::InlineSpan::Text(prompt_text)],
+                }];
+                self.blocks.push(ContentBlock::Markdown { nodes });
+                let idx = self.blocks.len() - 1;
+                self.conversation_state.append_item_height(1);
                 self.pending_permission = Some((idx, tool, input));
-                self.scroll = compute_max_scroll(&self.history_lines, &self.renderer, &self.editor);
+                self.conversation_state.auto_scroll();
             }
 
             AgentMessage::Tokens { input, output } => {
@@ -343,21 +378,39 @@ impl TerminalUI {
             }
 
             AgentMessage::Done => {
+                // Flush remaining parse buffer
+                let remaining = self.parse_buffer.flush();
+                for block in remaining {
+                    let h = self.block_height(&block);
+                    self.blocks.push(block);
+                    self.conversation_state.append_item_height(h);
+                }
                 self.busy = false;
-                self.response_line_idx = None;
-                self.history_lines.push(Line::raw(""));
-                self.scroll = compute_max_scroll(&self.history_lines, &self.renderer, &self.editor);
+                self.spinner_start = None;
+
+                // Empty line separator
+                let nodes = vec![MarkdownNode::Paragraph {
+                    spans: vec![crate::tui::content::InlineSpan::Text(String::new())],
+                }];
+                self.blocks.push(ContentBlock::Markdown { nodes });
+                self.conversation_state.append_item_height(1);
+                self.conversation_state.auto_scroll();
             }
 
             AgentMessage::Evolved => {
-                // No-op — UI exits via Quit
+                // No-op -- UI exits via Quit
             }
 
             AgentMessage::Error(e) => {
-                self.history_lines
-                    .extend(format_error_message(&format!("error: {}", e)));
+                let msg = format!("\u{25cf} error: {}", e);
+                let nodes = vec![MarkdownNode::Paragraph {
+                    spans: vec![crate::tui::content::InlineSpan::Text(msg)],
+                }];
+                self.blocks.push(ContentBlock::Markdown { nodes });
+                self.conversation_state.append_item_height(1);
                 self.busy = false;
-                self.scroll = compute_max_scroll(&self.history_lines, &self.renderer, &self.editor);
+                self.spinner_start = None;
+                self.conversation_state.auto_scroll();
             }
         }
     }
@@ -369,18 +422,72 @@ impl TerminalUI {
                 KeyEvent::Char('y') | KeyEvent::Char('Y') => true,
                 KeyEvent::Char('n') | KeyEvent::Char('N') => false,
                 _ => {
-                    // Not a valid response — put pending_permission back and ignore
+                    // Not a valid response -- put pending_permission back and ignore
                     self.pending_permission = Some((idx, tool, input));
                     return None;
                 }
             };
-            self.history_lines[idx] = render_permission_result(&tool, &input, allowed);
-            self.scroll = compute_max_scroll(&self.history_lines, &self.renderer, &self.editor);
+            // Replace the permission block with the result
+            let result_text = if allowed {
+                format!("  \u{2713} Allowed  {} ({})", tool, input)
+            } else {
+                format!("  \u{2717} Denied   {} ({})", tool, input)
+            };
+            let nodes = vec![MarkdownNode::Paragraph {
+                spans: vec![crate::tui::content::InlineSpan::Text(result_text)],
+            }];
+            if idx < self.blocks.len() {
+                self.blocks[idx] = ContentBlock::Markdown { nodes };
+            }
             let _ = self.event_tx.send(AgentEvent::PermissionResponse(allowed));
             return None;
         }
 
-        // ── Mode 2: Busy — Ctrl+C interrupts the agent; every other key
+        // ── Mode 2: Browse mode ─────────────────────────────────────────────
+        if self.focus.mode() == UIMode::Browse {
+            match key {
+                KeyEvent::Escape => {
+                    self.focus.exit_browse();
+                }
+                KeyEvent::Up | KeyEvent::Char('k') => {
+                    self.conversation_state.scroll_up(1);
+                }
+                KeyEvent::Down | KeyEvent::Char('j') => {
+                    self.conversation_state.scroll_down(1);
+                }
+                KeyEvent::Char('g') => {
+                    self.conversation_state.scroll_to_top();
+                }
+                KeyEvent::Char('G') => {
+                    self.conversation_state.scroll_to_bottom();
+                }
+                KeyEvent::Char('n') => {
+                    self.focus.next();
+                }
+                KeyEvent::Enter => {
+                    let focus_idx = self.focus.focus_index();
+                    if focus_idx < self.tool_states.len() {
+                        self.tool_states[focus_idx].toggle_fold();
+                        // Recalculate height for the affected block
+                        self.recalculate_tool_block_height(focus_idx);
+                        self.conversation_state.auto_scroll();
+                    }
+                }
+                _ => {}
+            }
+            return None;
+        }
+
+        // ── Escape -> enter Browse mode (if tool calls exist) ───────────────
+        if key == KeyEvent::Escape && !self.busy {
+            let tc_count = self.tool_states.len();
+            if tc_count > 0 {
+                self.focus.enter_browse(tc_count);
+                return None;
+            }
+        }
+
+        // ── Mode 3: Busy -- Ctrl+C interrupts the agent; every other key
         // falls through to the editor so the user can type (and even queue
         // a submission) while the AI is still streaming its response.
         if self.busy && key == KeyEvent::CtrlC {
@@ -388,14 +495,15 @@ impl TerminalUI {
             return None;
         }
 
-        // ── Mode 3: Normal editing (busy or idle) ───────────────────────────
+        // ── Mode 4: Normal editing (busy or idle) ───────────────────────────
         let action = self.editor.handle_key(key);
         match action {
             EditAction::Submit(line) => {
                 if !line.trim().is_empty() {
-                    self.history_lines.push(format_user_message(&line));
-                    self.scroll =
-                        compute_max_scroll(&self.history_lines, &self.renderer, &self.editor);
+                    self.blocks
+                        .push(ContentBlock::UserMessage { text: line.clone() });
+                    self.conversation_state.append_item_height(1);
+                    self.conversation_state.auto_scroll();
                     let _ = self.event_tx.send(AgentEvent::Input(line));
                 }
             }
@@ -418,14 +526,95 @@ impl TerminalUI {
         let chunks = main_layout(input_height).split(area);
         // chunks: [0]=header, [1]=conversation, [2]=input, [3]=status
 
+        // Conversation area -- update viewport height before rendering
+        let conv_area = chunks[1];
+        self.conversation_state.viewport_height = conv_area.height;
+
+        // Collect rendering instructions into a temporary list to avoid
+        // holding &mut self.renderer at the same time as &mut self.tool_states.
+        let visible = self.conversation_state.visible_items();
+        let show_spinner = self.busy && self.spinner_start.is_some();
+        let spinner_frame = if show_spinner || self.quitting {
+            let elapsed = self
+                .spinner_start
+                .or(self.quitting_start)
+                .map(|s| s.elapsed().as_millis() as u64)
+                .unwrap_or(0);
+            Some(self.spinner.frame_at(elapsed))
+        } else {
+            None
+        };
+        let spinner_verb = self.spinner_verb.clone();
+
         let buf = self.renderer.buffer_mut();
 
         // Header bar
         self.header.render(chunks[0], buf);
 
-        // Conversation history
-        let paragraph = Paragraph::new(self.history_lines.clone()).scroll(self.scroll);
-        paragraph.render(chunks[1], buf);
+        // Render the quitting spinner if in quitting mode
+        if self.quitting {
+            if let Some(frame) = &spinner_frame {
+                let y = conv_area.y + conv_area.height.saturating_sub(1);
+                buf.set_str(
+                    conv_area.x,
+                    y,
+                    &format!("{} ", frame),
+                    Some(theme::CLAUDE),
+                    false,
+                );
+                buf.set_str(
+                    conv_area.x + 2,
+                    y,
+                    "\u{8fdb}\u{5316}\u{8bb0}\u{5fc6}\u{4e2d}\u{2026} (Ctrl+C \u{5f3a}\u{5236}\u{9000}\u{51fa})",
+                    Some(theme::DIM),
+                    false,
+                );
+            }
+        } else {
+            let mut tool_visual_idx: usize = 0;
+
+            for vi in &visible {
+                if vi.index >= self.blocks.len() {
+                    break;
+                }
+                let block_area = Rect::new(
+                    conv_area.x,
+                    conv_area.y + vi.viewport_y,
+                    conv_area.width.saturating_sub(1), // 1 col for scrollbar
+                    vi.visible_rows,
+                );
+                render_block(
+                    &self.blocks[vi.index],
+                    block_area,
+                    buf,
+                    &mut tool_visual_idx,
+                    &self.focus,
+                    &mut self.tool_states,
+                );
+            }
+
+            // Render spinner at the bottom of the conversation area when busy
+            if show_spinner && let Some(frame) = &spinner_frame {
+                let y = conv_area.y + conv_area.height.saturating_sub(1);
+                buf.set_str(
+                    conv_area.x,
+                    y,
+                    &format!("{} ", frame),
+                    Some(theme::CLAUDE),
+                    false,
+                );
+                buf.set_str(
+                    conv_area.x + 2,
+                    y,
+                    &format!("{}\u{2026}", spinner_verb),
+                    Some(theme::DIM),
+                    false,
+                );
+            }
+
+            // Scrollbar
+            self.conversation_state.render_scrollbar(conv_area, buf);
+        }
 
         // Input box: top + bottom rounded borders only, dim gray
         let input_block = Block::new()
@@ -435,7 +624,7 @@ impl TerminalUI {
         let input_inner = input_block.inner(chunks[2]);
         input_block.render(chunks[2], buf);
 
-        // Input widget with ❯ prompt (Claude orange)
+        // Input widget with > prompt (Claude orange)
         let editor_content = self.editor.content();
         let input_widget =
             InputWidget::new(&editor_content, self.editor.cursor_offset(), "\u{276F} ")
@@ -451,6 +640,37 @@ impl TerminalUI {
         status.render(chunks[3], buf);
     }
 
+    fn block_height(&self, block: &ContentBlock) -> u16 {
+        let width = self.renderer.area().width;
+        block_height_with_width(block, width)
+    }
+
+    /// Recalculate the height of the block corresponding to tool call at `tool_idx`.
+    fn recalculate_tool_block_height(&mut self, tool_idx: usize) {
+        // Find the block index for the Nth ToolCall
+        let mut tc_count = 0;
+        for (block_idx, block) in self.blocks.iter().enumerate() {
+            if let ContentBlock::ToolCall { input, .. } = block {
+                if tc_count == tool_idx {
+                    let h = if let Some(state) = self.tool_states.get(tool_idx) {
+                        if state.folded {
+                            1
+                        } else {
+                            // header row + input block (lines + 2 borders)
+                            let content_lines = input.split('\n').count() as u16;
+                            1 + content_lines + 2
+                        }
+                    } else {
+                        1
+                    };
+                    self.conversation_state.set_item_height(block_idx, h);
+                    return;
+                }
+                tc_count += 1;
+            }
+        }
+    }
+
     fn cleanup(&mut self) -> crate::Result<()> {
         // Restore the terminal's default cursor style (DECSCUSR reset).
         self.backend.write(b"\x1b[0 q")?;
@@ -461,20 +681,17 @@ impl TerminalUI {
         Ok(())
     }
 
-    /// Enter shutdown state after Ctrl+D: record the spinner anchor and keep
+    /// Enter shutdown state after Ctrl+D: record the spinner start and keep
     /// the UI alive so the run loop keeps pumping the message channel until
     /// the agent signals `Evolved`.
     fn enter_quitting_mode(&mut self) {
         self.quitting = true;
         self.quitting_start = Some(std::time::Instant::now());
-        self.history_lines.push(Line::raw(""));
-        self.quitting_line_idx = Some(self.history_lines.len() - 1);
-        self.scroll = compute_max_scroll(&self.history_lines, &self.renderer, &self.editor);
     }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Layout helpers (copied verbatim from repl.rs)
+// Layout helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Build the main vertical layout: header (1) + conversation (Fill) + input (dynamic) + status (1).
@@ -489,50 +706,56 @@ fn main_layout(input_height: u16) -> Layout {
     ])
 }
 
-/// Compute the maximum scroll offset so the last line of history is visible
-/// at the bottom of the conversation area.
-fn compute_max_scroll(history_lines: &[Line], renderer: &Renderer, editor: &LineEditor) -> u16 {
-    let area = renderer.area();
-    let input_height = (editor.line_count() as u16 + 2).clamp(3, 8);
-    let chunks = main_layout(input_height).split(area);
-    let conv_height = chunks[1].height as usize;
-    let conv_width = chunks[1].width as usize;
-
-    if conv_width == 0 || conv_height == 0 {
-        return 0;
-    }
-
-    let mut total_rows: usize = 0;
-    for line in history_lines {
-        let wrapped = count_wrapped_rows(line, conv_width);
-        total_rows += wrapped;
-    }
-
-    if total_rows > conv_height {
-        (total_rows - conv_height) as u16
-    } else {
-        0
+/// Compute a block's height given an explicit width.
+fn block_height_with_width(block: &ContentBlock, width: u16) -> u16 {
+    match block {
+        ContentBlock::UserMessage { .. } => 1,
+        ContentBlock::Markdown { nodes } => MarkdownBlockWidget::height(nodes, width),
+        ContentBlock::CodeBlock { code, .. } => CodeBlockWidget::height(code, width),
+        ContentBlock::ToolCall { .. } => 1, // folded by default
     }
 }
 
-/// Count how many physical rows a Line will occupy after word-wrapping to `width`.
-fn count_wrapped_rows(line: &Line, width: usize) -> usize {
-    if width == 0 {
-        return 0;
+/// Render a single content block into the buffer. Free function to avoid
+/// borrowing the entire TerminalUI while we hold &mut Buffer.
+fn render_block(
+    block: &ContentBlock,
+    area: Rect,
+    buf: &mut crate::core::terminal::buffer::Buffer,
+    tool_idx: &mut usize,
+    focus: &FocusManager,
+    tool_states: &mut [ToolCallState],
+) {
+    if area.is_empty() {
+        return;
     }
-
-    let total_width: usize = line
-        .spans
-        .iter()
-        .flat_map(|s| s.text.chars())
-        .map(|c| char_width(c) as usize)
-        .sum();
-
-    if total_width == 0 {
-        return 1; // empty line still takes one row
+    match block {
+        ContentBlock::UserMessage { text } => {
+            buf.set_str(area.x, area.y, "> ", Some(theme::CLAUDE), false);
+            let text_x = area.x + 2;
+            if text_x < area.x + area.width {
+                buf.set_str(text_x, area.y, text, Some(theme::TEXT), false);
+            }
+        }
+        ContentBlock::Markdown { nodes } => {
+            let widget = MarkdownBlockWidget::new(nodes);
+            widget.render(area, buf);
+        }
+        ContentBlock::CodeBlock { language, code } => {
+            let widget = CodeBlockWidget::new(code, language.as_deref());
+            widget.render(area, buf);
+        }
+        ContentBlock::ToolCall { name, input, .. } => {
+            let current_tool_idx = *tool_idx;
+            let summary = extract_input_summary(name, input);
+            let focused = focus.is_focused(current_tool_idx);
+            let widget = ToolCallWidget::new(name, &summary, input).focused(focused);
+            if let Some(state) = tool_states.get_mut(current_tool_idx) {
+                widget.render(area, buf, state);
+            }
+            *tool_idx += 1;
+        }
     }
-
-    total_width.div_ceil(width)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

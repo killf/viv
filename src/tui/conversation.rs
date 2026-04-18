@@ -71,7 +71,11 @@ impl ConversationState {
 
     /// Recompute total_height from scratch from item_heights.
     pub fn recalculate_total(&mut self) {
-        self.total_height = self.item_heights.iter().copied().fold(0u16, |acc, h| acc.saturating_add(h));
+        self.total_height = self
+            .item_heights
+            .iter()
+            .copied()
+            .fold(0u16, |acc, h| acc.saturating_add(h));
     }
 
     /// If auto_follow is enabled, scroll to the bottom.
@@ -175,8 +179,10 @@ impl ConversationState {
         let bar_height = area.height as u32;
 
         // Compute thumb size and position (with integer arithmetic to avoid float)
-        let thumb_size = ((self.viewport_height as u32 * bar_height) / self.total_height as u32).max(1) as u16;
-        let thumb_pos = ((self.scroll_offset as u32 * bar_height) / self.total_height as u32) as u16;
+        let thumb_size =
+            ((self.viewport_height as u32 * bar_height) / self.total_height as u32).max(1) as u16;
+        let thumb_pos =
+            ((self.scroll_offset as u32 * bar_height) / self.total_height as u32) as u16;
 
         let thumb_color = Color::Rgb(180, 180, 180);
         let track_color = Color::Rgb(60, 60, 60);

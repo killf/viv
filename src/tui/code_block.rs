@@ -1,7 +1,7 @@
 use crate::core::terminal::buffer::{Buffer, Rect};
 use crate::core::terminal::style::Color;
 use crate::tui::block::{Block, BorderStyle};
-use crate::tui::syntax::{tokenize, TokenKind};
+use crate::tui::syntax::{TokenKind, tokenize};
 use crate::tui::widget::Widget;
 
 pub struct CodeBlockWidget<'a> {
