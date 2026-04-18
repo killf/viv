@@ -1,1 +1,212 @@
-// TLS 1.3 handshake (placeholder)
+// TLS 1.3 client handshake state machine
+//
+// Drives the handshake from ClientHello through to application keys.
+// The caller (TlsStream) reads records and feeds handshake messages
+// to `handle_message`.
+
+use super::codec::{self, HandshakeMessage};
+use super::crypto::sha256::{Sha256, hmac_sha256};
+use super::crypto::x25519;
+use super::key_schedule::KeySchedule;
+use super::record::RecordLayer;
+
+// ── State ──────────────────────────────────────────────────────────
+
+#[derive(Debug, PartialEq)]
+enum State {
+    ExpectServerHello,
+    ExpectEncryptedExtensions,
+    ExpectCertificate,
+    ExpectCertificateVerify,
+    ExpectFinished,
+    Complete,
+}
+
+// ── Handshake result ───────────────────────────────────────────────
+
+pub enum HandshakeResult {
+    Continue,
+    Complete,
+}
+
+// ── Handshake ──────────────────────────────────────────────────────
+
+pub struct Handshake {
+    state: State,
+    pub transcript: Sha256,
+    pub key_schedule: KeySchedule,
+    x25519_secret: [u8; 32],
+    x25519_public: [u8; 32],
+    server_name: String,
+    random: [u8; 32],
+    session_id: [u8; 32],
+}
+
+impl Handshake {
+    /// Create a new handshake. Generates X25519 keypair and random values.
+    pub fn new(server_name: &str) -> crate::Result<Self> {
+        let (secret, public) = x25519::keypair()?;
+
+        let mut random = [0u8; 32];
+        super::crypto::getrandom(&mut random)?;
+
+        let mut session_id = [0u8; 32];
+        super::crypto::getrandom(&mut session_id)?;
+
+        Ok(Self {
+            state: State::ExpectServerHello,
+            transcript: Sha256::new(),
+            key_schedule: KeySchedule::new(),
+            x25519_secret: secret,
+            x25519_public: public,
+            server_name: server_name.to_string(),
+            random,
+            session_id,
+        })
+    }
+
+    /// Encode the ClientHello message and add it to the transcript.
+    /// Returns the raw handshake message bytes (to be sent as a plaintext record).
+    pub fn encode_client_hello(&mut self) -> crate::Result<Vec<u8>> {
+        let mut msg = Vec::new();
+        codec::encode_client_hello(
+            &self.random,
+            &self.session_id,
+            &self.server_name,
+            &self.x25519_public,
+            &mut msg,
+        );
+        self.transcript.update(&msg);
+        Ok(msg)
+    }
+
+    /// Process a single handshake message. `msg_bytes` is the raw bytes
+    /// starting from the handshake header (type + 3-byte length).
+    ///
+    /// For the Finished message, transcript handling is special:
+    /// verify using hash BEFORE adding msg_bytes, then add.
+    pub fn handle_message(
+        &mut self,
+        msg_bytes: &[u8],
+        record: &mut RecordLayer,
+    ) -> crate::Result<HandshakeResult> {
+        let msg = codec::decode_handshake(msg_bytes)?;
+
+        match (&self.state, msg) {
+            // ── ServerHello ────────────────────────────────────────
+            (State::ExpectServerHello, HandshakeMessage::ServerHello(sh)) => {
+                // Add ServerHello to transcript
+                self.transcript.update(msg_bytes);
+
+                // Verify cipher suite
+                if sh.cipher_suite != 0x1301 {
+                    return Err(crate::Error::Tls(format!(
+                        "unsupported cipher suite: 0x{:04x}", sh.cipher_suite
+                    )));
+                }
+
+                // Compute shared secret
+                let shared = x25519::shared_secret(
+                    &self.x25519_secret,
+                    &sh.x25519_public,
+                );
+
+                // Derive handshake secrets
+                let hello_hash = self.transcript.clone().finish();
+                let (client_hs_keys, server_hs_keys) =
+                    self.key_schedule.derive_handshake_secrets(&shared, &hello_hash);
+
+                // Install server handshake decrypter
+                record.install_decrypter(server_hs_keys.key, server_hs_keys.iv);
+
+                // Save client handshake keys for later (used when sending Finished)
+                // We install the client encrypter now so we can send Finished encrypted
+                record.install_encrypter(client_hs_keys.key, client_hs_keys.iv);
+
+                self.state = State::ExpectEncryptedExtensions;
+                Ok(HandshakeResult::Continue)
+            }
+
+            // ── EncryptedExtensions ────────────────────────────────
+            (State::ExpectEncryptedExtensions, HandshakeMessage::EncryptedExtensions) => {
+                self.transcript.update(msg_bytes);
+                self.state = State::ExpectCertificate;
+                Ok(HandshakeResult::Continue)
+            }
+
+            // ── Certificate ────────────────────────────────────────
+            (State::ExpectCertificate, HandshakeMessage::Certificate(_certs)) => {
+                self.transcript.update(msg_bytes);
+                // TODO: verify certificate chain (x509.rs stub)
+                self.state = State::ExpectCertificateVerify;
+                Ok(HandshakeResult::Continue)
+            }
+
+            // ── CertificateVerify ──────────────────────────────────
+            (State::ExpectCertificateVerify, HandshakeMessage::CertificateVerify { .. }) => {
+                self.transcript.update(msg_bytes);
+                // TODO: verify signature against certificate public key
+                self.state = State::ExpectFinished;
+                Ok(HandshakeResult::Continue)
+            }
+
+            // ── Finished ───────────────────────────────────────────
+            (State::ExpectFinished, HandshakeMessage::Finished { verify_data }) => {
+                // CRITICAL: snapshot transcript BEFORE adding Finished message
+                let transcript_before = self.transcript.clone().finish();
+
+                // Verify server Finished
+                let server_finished_key = self.key_schedule.server_finished_key();
+                let expected = hmac_sha256(&server_finished_key, &transcript_before);
+
+                // Constant-time comparison
+                let mut diff = 0u8;
+                for i in 0..32 {
+                    diff |= verify_data[i] ^ expected[i];
+                }
+                if diff != 0 {
+                    return Err(crate::Error::Tls("server Finished verify failed".into()));
+                }
+
+                // Now add Finished to transcript (needed for app key derivation)
+                self.transcript.update(msg_bytes);
+
+                self.state = State::Complete;
+                Ok(HandshakeResult::Complete)
+            }
+
+            // ── Unexpected state/message ───────────────────────────
+            _ => Err(crate::Error::Tls(format!(
+                "unexpected handshake message in state {:?}", self.state
+            ))),
+        }
+    }
+
+    /// Encode the client Finished message. Call after handle_message
+    /// returns Complete.
+    pub fn encode_client_finished(&mut self) -> Vec<u8> {
+        // verify_data = HMAC(client_finished_key, transcript_hash)
+        let transcript_hash = self.transcript.clone().finish();
+        let client_finished_key = self.key_schedule.client_finished_key();
+        let verify_data = hmac_sha256(&client_finished_key, &transcript_hash);
+
+        let mut msg = Vec::new();
+        let vd: [u8; 32] = verify_data;
+        codec::encode_finished(&vd, &mut msg);
+
+        // Add client Finished to transcript
+        self.transcript.update(&msg);
+
+        msg
+    }
+
+    /// Derive and install application traffic keys on the record layer.
+    /// Call after sending client Finished.
+    pub fn install_app_keys(&mut self, record: &mut RecordLayer) {
+        let handshake_hash = self.transcript.clone().finish();
+        let (client_app, server_app) =
+            self.key_schedule.derive_app_secrets(&handshake_hash);
+        record.install_encrypter(client_app.key, client_app.iv);
+        record.install_decrypter(server_app.key, server_app.iv);
+    }
+}
