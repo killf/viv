@@ -119,6 +119,30 @@ impl BigUint {
         normalize(&mut out);
         BigUint { limbs: out }
     }
+
+    /// Subtraction: `self - other`. Returns `None` if `self < other`.
+    pub fn checked_sub(&self, other: &Self) -> Option<Self> {
+        if self.cmp(other) == Ordering::Less {
+            return None;
+        }
+        let n = self.limbs.len();
+        let mut out = Vec::with_capacity(n);
+        let mut borrow: i64 = 0;
+        for i in 0..n {
+            let a = self.limbs[i] as i128;
+            let b = other.limbs.get(i).copied().unwrap_or(0) as i128;
+            let diff = a - b - (borrow as i128);
+            if diff < 0 {
+                out.push((diff + (1i128 << 64)) as u64);
+                borrow = 1;
+            } else {
+                out.push(diff as u64);
+                borrow = 0;
+            }
+        }
+        normalize(&mut out);
+        Some(BigUint { limbs: out })
+    }
 }
 
 /// Strip trailing zero limbs so `BigUint` invariants hold.

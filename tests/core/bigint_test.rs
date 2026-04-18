@@ -176,3 +176,47 @@ fn add_different_widths() {
     let sum = a.add(&b);
     assert_eq!(sum.to_bytes_be(9), vec![1, 0, 0, 0, 0, 0, 0, 0, 3]);
 }
+
+#[test]
+fn sub_equal_is_zero() {
+    let a = BigUint::from_u64(42);
+    assert_eq!(a.checked_sub(&a), Some(BigUint::zero()));
+}
+
+#[test]
+fn sub_simple() {
+    let a = BigUint::from_u64(50);
+    let b = BigUint::from_u64(8);
+    assert_eq!(a.checked_sub(&b), Some(BigUint::from_u64(42)));
+}
+
+#[test]
+fn sub_underflow_returns_none() {
+    let a = BigUint::from_u64(5);
+    let b = BigUint::from_u64(10);
+    assert_eq!(a.checked_sub(&b), None);
+}
+
+#[test]
+fn sub_zero_identity() {
+    let a = BigUint::from_u64(42);
+    assert_eq!(a.checked_sub(&BigUint::zero()), Some(a));
+}
+
+#[test]
+fn sub_borrow_cross_limb() {
+    // 2^64 - 1 = u64::MAX
+    let a = BigUint::from_bytes_be(&[1, 0, 0, 0, 0, 0, 0, 0, 0]);
+    let b = BigUint::one();
+    let diff = a.checked_sub(&b).unwrap();
+    assert_eq!(diff, BigUint::from_u64(u64::MAX));
+}
+
+#[test]
+fn sub_normalizes_result() {
+    // 2^64 - (2^64 - 1) = 1
+    let a = BigUint::from_bytes_be(&[1, 0, 0, 0, 0, 0, 0, 0, 0]);
+    let b = BigUint::from_u64(u64::MAX);
+    let diff = a.checked_sub(&b).unwrap();
+    assert_eq!(diff, BigUint::one());
+}
