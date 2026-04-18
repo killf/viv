@@ -1,5 +1,6 @@
 mod backend_test;
 mod buffer_test;
+#[cfg(unix)]
 mod events_test;
 mod input_test;
 mod output_test;
