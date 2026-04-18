@@ -1,4 +1,5 @@
 mod block_test;
+mod content_test;
 mod header_test;
 mod input_test;
 mod layout_test;
