@@ -1,3 +1,4 @@
+pub mod channel;
 pub mod terminal;
 
 /// UI 线程 → Agent 线程
