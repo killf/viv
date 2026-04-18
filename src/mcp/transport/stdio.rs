@@ -162,12 +162,16 @@ impl Future for WaitReadable {
             self.token = None;
             return Poll::Ready(Ok(()));
         }
-        let t = reactor()
-            .lock()
-            .unwrap()
-            .register_readable(self.fd, cx.waker().clone());
-        self.token = Some(t);
-        Poll::Pending
+        let r = reactor();
+        match crate::core::sync::lock_or_recover(&r)
+            .register_readable(self.fd, cx.waker().clone())
+        {
+            Ok(t) => {
+                self.token = Some(t);
+                Poll::Pending
+            }
+            Err(e) => Poll::Ready(Err(e)),
+        }
     }
 }
 
@@ -175,7 +179,8 @@ impl Future for WaitReadable {
 impl Drop for WaitReadable {
     fn drop(&mut self) {
         if let Some(t) = self.token.take() {
-            reactor().lock().unwrap().remove(t);
+            let r = reactor();
+            crate::core::sync::lock_or_recover(&r).remove(t);
         }
     }
 }

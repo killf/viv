@@ -175,7 +175,10 @@ impl LspManager {
         // Record the open document with version=1.
         let server_name = self
             .server_name_for_file(file)
-            .expect("file has a configured LSP server")
+            .ok_or_else(|| Error::Lsp {
+                server: "<none>".to_string(),
+                message: format!("no configured LSP server for {}", file),
+            })?
             .to_string();
         self.open_documents.insert(
             uri,

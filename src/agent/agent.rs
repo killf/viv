@@ -5,6 +5,7 @@ use crate::agent::prompt::{SystemPrompt, build_system_prompt};
 use crate::bus::{AgentEvent, AgentMessage};
 use crate::core::json::JsonValue;
 use crate::core::runtime::channel::AsyncReceiver;
+use crate::core::sync::lock_or_recover;
 use crate::llm::{LLMClient, LLMConfig, ModelTier};
 use crate::lsp::LspManager;
 use crate::lsp::config::LspConfig;
@@ -140,7 +141,7 @@ impl Agent {
 
         // Register MCP tool proxies
         {
-            let mgr = mcp.lock().unwrap();
+            let mgr = lock_or_recover(&mcp);
             for handle in &mgr.servers {
                 for tool in &handle.tools {
                     tools.register(Box::new(McpToolProxy::new(
@@ -225,7 +226,7 @@ impl Agent {
     async fn shutdown(&mut self) -> Result<()> {
         self.evolve().await?;
         // Take servers out of mutex to avoid holding guard across awaits
-        let mut mgr = self.mcp.lock().unwrap();
+        let mut mgr = lock_or_recover(&self.mcp);
         let servers = std::mem::take(&mut mgr.servers);
         drop(mgr);
         for mut handle in servers {
@@ -233,7 +234,7 @@ impl Agent {
         }
         // Shutdown LSP servers
         {
-            let mut lsp_mgr = self.lsp.lock().unwrap();
+            let mut lsp_mgr = lock_or_recover(&self.lsp);
             lsp_mgr.shutdown_all().await;
         }
         let _ = self.msg_tx.send(AgentMessage::Evolved);
@@ -246,7 +247,7 @@ impl Agent {
         let _ = self.msg_tx.send(AgentMessage::Thinking);
 
         let memories = {
-            let idx = self.index.lock().unwrap();
+            let idx = lock_or_recover(&self.index);
             let results = retrieve_relevant(
                 &text,
                 &idx,
@@ -522,7 +523,7 @@ impl Agent {
                             .and_then(|v| v.as_str())
                             .map(|s| s.to_string())
                         {
-                            let mut mgr = self.lsp.lock().unwrap();
+                            let mut mgr = lock_or_recover(&self.lsp);
                             // Safe: single-threaded runtime, guard does not cross threads.
                             #[allow(clippy::await_holding_lock)]
                             if let Err(e) = mgr.notify_did_change(&path).await {
@@ -585,7 +586,7 @@ impl Agent {
 
     #[allow(clippy::await_holding_lock)]
     async fn evolve(&mut self) -> Result<()> {
-        let mut idx = self.index.lock().unwrap();
+        let mut idx = lock_or_recover(&self.index);
         evolve_from_session(&self.messages, &self.store, &mut idx, &self.llm).await?;
         Ok(())
     }

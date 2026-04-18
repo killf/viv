@@ -134,13 +134,13 @@ impl TlsStream {
         // 4. Send client Finished (encrypted with handshake keys)
         let finished_msg = hs.encode_client_finished();
         let mut finished_record = Vec::new();
-        record.write_encrypted(HANDSHAKE, &finished_msg, &mut finished_record);
+        record.write_encrypted(HANDSHAKE, &finished_msg, &mut finished_record)?;
         tcp_stream
             .write_all(&finished_record)
             .map_err(crate::Error::Io)?;
 
         // 5. Install application keys
-        hs.install_app_keys(&mut record);
+        hs.install_app_keys(&mut record)?;
 
         Ok(TlsStream {
             tcp: tcp_stream,
@@ -224,7 +224,8 @@ impl Write for TlsStream {
         let to_send = core::cmp::min(buf.len(), chunk_size);
         let mut encrypted = Vec::new();
         self.record
-            .write_encrypted(codec::APPLICATION_DATA, &buf[..to_send], &mut encrypted);
+            .write_encrypted(codec::APPLICATION_DATA, &buf[..to_send], &mut encrypted)
+            .map_err(|e| io::Error::other(format!("{e}")))?;
         self.tcp.write_all(&encrypted)?;
         Ok(to_send)
     }
@@ -236,14 +237,15 @@ impl Write for TlsStream {
 
 impl Drop for TlsStream {
     fn drop(&mut self) {
-        // Send close_notify alert
+        // Send close_notify alert (best-effort; ignore all errors)
         let mut alert_record = Vec::new();
-        self.record.write_encrypted(
-            ALERT,
-            &[1, 0], // warning(1), close_notify(0)
-            &mut alert_record,
-        );
-        let _ = self.tcp.write_all(&alert_record);
+        if self
+            .record
+            .write_encrypted(ALERT, &[1, 0], &mut alert_record)
+            .is_ok()
+        {
+            let _ = self.tcp.write_all(&alert_record);
+        }
     }
 }
 
@@ -356,11 +358,11 @@ impl AsyncTlsStream {
         // 4. Send client Finished
         let finished_msg = hs.encode_client_finished();
         let mut finished_record = Vec::new();
-        record.write_encrypted(HANDSHAKE, &finished_msg, &mut finished_record);
+        record.write_encrypted(HANDSHAKE, &finished_msg, &mut finished_record)?;
         async_write_all(&mut tcp, fd, &finished_record).await?;
 
         // 5. Install app keys
-        hs.install_app_keys(&mut record);
+        hs.install_app_keys(&mut record)?;
 
         Ok(AsyncTlsStream {
             tcp,
@@ -438,7 +440,7 @@ impl AsyncTlsStream {
             let end = core::cmp::min(offset + chunk_size, buf.len());
             let mut encrypted = Vec::new();
             self.record
-                .write_encrypted(codec::APPLICATION_DATA, &buf[offset..end], &mut encrypted);
+                .write_encrypted(codec::APPLICATION_DATA, &buf[offset..end], &mut encrypted)?;
             async_write_all(&mut self.tcp, fd, &encrypted).await?;
             offset = end;
         }
@@ -448,14 +450,18 @@ impl AsyncTlsStream {
 
 impl Drop for AsyncTlsStream {
     fn drop(&mut self) {
-        // Best-effort close_notify via std::io::Write (portable, no inline asm)
+        // Best-effort close_notify (ignore all errors)
         let mut alert_record = Vec::new();
-        self.record
-            .write_encrypted(ALERT, &[1, 0], &mut alert_record);
-        self.tcp.inner_mut().set_nonblocking(false).ok();
-        let stream = self.tcp.inner_mut();
-        let _ = std::io::Write::write_all(stream, &alert_record);
-        let _ = std::io::Write::flush(stream);
+        if self
+            .record
+            .write_encrypted(ALERT, &[1, 0], &mut alert_record)
+            .is_ok()
+        {
+            self.tcp.inner_mut().set_nonblocking(false).ok();
+            let stream = self.tcp.inner_mut();
+            let _ = std::io::Write::write_all(stream, &alert_record);
+            let _ = std::io::Write::flush(stream);
+        }
     }
 }
 

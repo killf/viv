@@ -16,7 +16,7 @@ impl Tool for EditTool {
     }
 
     fn input_schema(&self) -> JsonValue {
-        JsonValue::parse(r#"{
+        crate::tools::parse_schema(r#"{
             "type":"object",
             "properties":{
                 "file_path":{"type":"string","description":"The absolute path to the file to modify"},
@@ -25,7 +25,7 @@ impl Tool for EditTool {
                 "replace_all":{"type":"boolean","description":"Replace all occurrences of old_string (default false)"}
             },
             "required":["file_path","old_string","new_string"]
-        }"#).unwrap()
+        }"#)
     }
 
     fn execute(
@@ -97,7 +97,7 @@ impl Tool for MultiEditTool {
     }
 
     fn input_schema(&self) -> JsonValue {
-        JsonValue::parse(r#"{
+        crate::tools::parse_schema(r#"{
             "type":"object",
             "properties":{
                 "file_path":{"type":"string","description":"The absolute path to the file to modify"},
@@ -116,7 +116,7 @@ impl Tool for MultiEditTool {
                 }
             },
             "required":["file_path","edits"]
-        }"#).unwrap()
+        }"#)
     }
 
     fn execute(

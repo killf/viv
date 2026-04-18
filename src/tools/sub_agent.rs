@@ -30,10 +30,9 @@ impl Tool for SubAgentTool {
     }
 
     fn input_schema(&self) -> JsonValue {
-        JsonValue::parse(
+        crate::tools::parse_schema(
             r#"{"type":"object","properties":{"prompt":{"type":"string","description":"The task for the sub-agent to perform"},"model":{"type":"string","description":"Model tier: fast, medium, or slow. Default: fast"},"max_iterations":{"type":"number","description":"Maximum agentic loop iterations. Default: 20"}},"required":["prompt"]}"#,
         )
-        .unwrap()
     }
 
     fn execute(
@@ -74,7 +73,7 @@ async fn run_sub_agent(
 ) -> crate::Result<String> {
     use crate::agent::agent::{AgentConfig, PermissionMode};
 
-    let (handle, endpoint) = agent_channel();
+    let (handle, endpoint) = agent_channel()?;
 
     let memory_dir = std::env::temp_dir().join(format!("viv_sub_{}", std::process::id()));
 

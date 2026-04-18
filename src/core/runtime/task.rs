@@ -1,3 +1,4 @@
+use crate::core::sync::lock_or_recover;
 use std::future::Future;
 use std::mem;
 use std::pin::Pin;
@@ -30,7 +31,7 @@ pub fn oneshot<T>() -> (OneshotSender<T>, OneshotReceiver<T>) {
 impl<T> OneshotSender<T> {
     pub fn send(self, value: T) {
         let waker = {
-            let mut inner = self.0.lock().unwrap();
+            let mut inner = lock_or_recover(&self.0);
             inner.value = Some(value);
             inner.waker.take()
         }; // lock released here
@@ -44,7 +45,7 @@ impl<T: Unpin> Future for OneshotReceiver<T> {
     type Output = T;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<T> {
-        let mut inner = self.0.lock().unwrap();
+        let mut inner = lock_or_recover(&self.0);
         if let Some(value) = inner.value.take() {
             Poll::Ready(value)
         } else {

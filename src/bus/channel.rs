@@ -15,10 +15,10 @@ pub struct AgentEndpoint {
 }
 
 /// Create a bidirectional channel for agent-to-agent communication.
-pub fn agent_channel() -> (AgentHandle, AgentEndpoint) {
-    let (event_tx, event_rx) = async_channel();
+pub fn agent_channel() -> crate::Result<(AgentHandle, AgentEndpoint)> {
+    let (event_tx, event_rx) = async_channel()?;
     let (msg_tx, msg_rx) = mpsc::channel();
-    (
+    Ok((
         AgentHandle {
             tx: event_tx,
             rx: msg_rx,
@@ -27,5 +27,5 @@ pub fn agent_channel() -> (AgentHandle, AgentEndpoint) {
             rx: event_rx,
             tx: msg_tx,
         },
-    )
+    ))
 }

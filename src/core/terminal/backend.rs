@@ -151,12 +151,6 @@ impl CrossBackend {
     }
 }
 
-impl Default for CrossBackend {
-    fn default() -> Self {
-        Self::new().expect("CrossBackend::new")
-    }
-}
-
 impl Drop for CrossBackend {
     fn drop(&mut self) {
         if self.in_alt_screen {

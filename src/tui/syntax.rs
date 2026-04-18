@@ -238,8 +238,11 @@ fn try_string(chars: &[char], i: usize, profile: &LangProfile) -> Option<Token> 
     // Raw string (Rust r"...")
     if let Some(raw_prefix) = profile.raw_string {
         let raw_chars: Vec<char> = raw_prefix.chars().collect();
-        if chars[i..].starts_with(&raw_chars) {
-            let quote_char = *raw_chars.last().unwrap();
+        if !raw_chars.is_empty() && chars[i..].starts_with(&raw_chars) {
+            let quote_char = match raw_chars.last() {
+                Some(c) => *c,
+                None => return None,
+            };
             let mut j = i + raw_chars.len();
             while j < chars.len() && chars[j] != quote_char {
                 j += 1;

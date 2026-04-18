@@ -17,7 +17,7 @@ impl Tool for GrepTool {
     }
 
     fn input_schema(&self) -> JsonValue {
-        JsonValue::parse(r#"{
+        crate::tools::parse_schema(r#"{
             "type":"object",
             "properties":{
                 "pattern":{"type":"string","description":"The regular expression pattern to search for in file contents"},
@@ -36,7 +36,7 @@ impl Tool for GrepTool {
                 "multiline":{"type":"boolean","description":"Enable multiline mode where . matches newlines (uses -z flag). Default: false."}
             },
             "required":["pattern"]
-        }"#).unwrap()
+        }"#)
     }
 
     fn execute(

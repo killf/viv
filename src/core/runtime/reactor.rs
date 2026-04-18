@@ -1,3 +1,4 @@
+use crate::Error;
 use crate::core::platform::{PlatformReactor, RawHandle};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::task::Waker;
@@ -12,40 +13,77 @@ pub fn reactor() -> Arc<Mutex<Reactor>> {
 }
 
 pub struct Reactor {
-    inner: PlatformReactor,
+    // `None` means the platform reactor failed to initialize. All operations
+    // return an error in that case so callers can propagate and shut down
+    // gracefully instead of crashing.
+    inner: Option<PlatformReactor>,
+    init_error: Option<String>,
+}
+
+fn unavailable(op: &str, reason: Option<&str>) -> Error {
+    let reason = reason.unwrap_or("unknown");
+    Error::Io(std::io::Error::other(format!(
+        "reactor unavailable for {op}: {reason}"
+    )))
 }
 
 impl Reactor {
     fn new() -> Self {
-        Reactor {
-            inner: PlatformReactor::new().expect("reactor init"),
+        match PlatformReactor::new() {
+            Ok(inner) => Reactor {
+                inner: Some(inner),
+                init_error: None,
+            },
+            Err(e) => Reactor {
+                inner: None,
+                init_error: Some(format!("{e}")),
+            },
         }
     }
 
-    pub fn register_readable(&mut self, handle: RawHandle, waker: Waker) -> u64 {
-        match self.inner.register_read(handle, waker) {
-            Ok(tok) => tok,
-            Err(e) => panic!("register_read failed: handle={:?} err={:?}", handle, e),
-        }
+    pub fn register_readable(
+        &mut self,
+        handle: RawHandle,
+        waker: Waker,
+    ) -> crate::Result<u64> {
+        let reason = self.init_error.clone();
+        let inner = self
+            .inner
+            .as_mut()
+            .ok_or_else(|| unavailable("register_readable", reason.as_deref()))?;
+        inner.register_read(handle, waker)
     }
 
-    pub fn register_writable(&mut self, handle: RawHandle, waker: Waker) -> u64 {
-        match self.inner.register_write(handle, waker) {
-            Ok(tok) => tok,
-            Err(e) => panic!("register_write failed: handle={:?} err={:?}", handle, e),
-        }
+    pub fn register_writable(
+        &mut self,
+        handle: RawHandle,
+        waker: Waker,
+    ) -> crate::Result<u64> {
+        let reason = self.init_error.clone();
+        let inner = self
+            .inner
+            .as_mut()
+            .ok_or_else(|| unavailable("register_writable", reason.as_deref()))?;
+        inner.register_write(handle, waker)
     }
 
     pub fn remove(&mut self, token: u64) {
-        self.inner.deregister(token).ok();
+        if let Some(inner) = self.inner.as_mut() {
+            inner.deregister(token).ok();
+        }
     }
 
     pub fn wait(&mut self, timeout: Duration) {
-        self.inner.poll(timeout).ok();
+        if let Some(inner) = self.inner.as_mut() {
+            inner.poll(timeout).ok();
+        } else {
+            // No reactor: avoid a tight busy loop by sleeping the timeout.
+            std::thread::sleep(timeout);
+        }
     }
 
-    /// Access the underlying platform reactor.
-    pub fn platform(&self) -> &PlatformReactor {
-        &self.inner
+    /// Access the underlying platform reactor if available.
+    pub fn platform(&self) -> Option<&PlatformReactor> {
+        self.inner.as_ref()
     }
 }

@@ -8,6 +8,7 @@ use std::task::{Context, Poll};
 
 use super::reactor::reactor;
 use crate::core::platform::PlatformNotifier;
+use crate::core::sync::lock_or_recover;
 
 struct NotifierHandle {
     inner: PlatformNotifier,
@@ -67,7 +68,8 @@ impl<T> Drop for AsyncReceiver<T> {
     fn drop(&mut self) {
         let token = self.token.get_mut();
         if let Some(t) = token.take() {
-            reactor().lock().unwrap().remove(t);
+            let r = reactor();
+            lock_or_recover(&r).remove(t);
         }
     }
 }
@@ -98,18 +100,20 @@ impl<T> Future for RecvFuture<'_, T> {
             Err(mpsc::TryRecvError::Empty) => {
                 let handle = self.receiver.notifier.inner.handle();
                 let r = reactor();
-                let mut guard = r.lock().unwrap();
+                let mut guard = lock_or_recover(&r);
                 // Clean up any previous registration so we can re-register with
                 // the new waker. epoll_ctl(ADD) is not idempotent — the second
-                // call on an already-registered fd returns EEXIST, which would
-                // panic in register_readable. This matches the pattern used in
-                // async_tcp.rs for spurious re-polls.
+                // call on an already-registered fd returns EEXIST.
                 if let Some(old) = unsafe { (*self.receiver.token.get()).take() } {
                     guard.remove(old);
                 }
-                let token = guard.register_readable(handle, cx.waker().clone());
-                unsafe { *self.receiver.token.get() = Some(token) };
-                Poll::Pending
+                match guard.register_readable(handle, cx.waker().clone()) {
+                    Ok(token) => {
+                        unsafe { *self.receiver.token.get() = Some(token) };
+                        Poll::Pending
+                    }
+                    Err(e) => Poll::Ready(Err(e)),
+                }
             }
         }
     }
@@ -117,10 +121,10 @@ impl<T> Future for RecvFuture<'_, T> {
 
 // ── Constructor ──────────────────────────────────────────────────────────────
 
-pub fn async_channel<T>() -> (NotifySender<T>, AsyncReceiver<T>) {
+pub fn async_channel<T>() -> crate::Result<(NotifySender<T>, AsyncReceiver<T>)> {
     let (tx, rx) = mpsc::channel();
     let notifier = Arc::new(NotifierHandle {
-        inner: PlatformNotifier::new().expect("create notifier"),
+        inner: PlatformNotifier::new()?,
         ref_count: AtomicUsize::new(1),
     });
     let sender = NotifySender {
@@ -132,5 +136,5 @@ pub fn async_channel<T>() -> (NotifySender<T>, AsyncReceiver<T>) {
         notifier,
         token: UnsafeCell::new(None),
     };
-    (sender, receiver)
+    Ok((sender, receiver))
 }

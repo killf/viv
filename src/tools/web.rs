@@ -28,14 +28,14 @@ impl Tool for WebFetchTool {
     }
 
     fn input_schema(&self) -> JsonValue {
-        JsonValue::parse(r#"{
+        crate::tools::parse_schema(r#"{
             "type":"object",
             "properties":{
                 "url":{"type":"string","description":"The URL to fetch content from"},
                 "prompt":{"type":"string","description":"The prompt to run on the fetched content. Describe what information you want to extract from the page."}
             },
             "required":["url","prompt"]
-        }"#).unwrap()
+        }"#)
     }
 
     fn execute(
@@ -209,7 +209,6 @@ pub fn html_to_markdown(html: &str) -> String {
     while i < len {
         if chars[i] == '<' {
             // Find the end of the tag
-            let tag_start = i;
             let mut j = i + 1;
             while j < len && chars[j] != '>' {
                 j += 1;

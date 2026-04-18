@@ -5,7 +5,7 @@ use viv::core::runtime::executor::block_on;
 
 #[test]
 fn send_then_recv() {
-    let (tx, rx) = async_channel::<i32>();
+    let (tx, rx) = async_channel::<i32>().unwrap();
     tx.send(42).unwrap();
     let val = block_on(async move { rx.recv().await.unwrap() });
     assert_eq!(val, 42);
@@ -13,7 +13,7 @@ fn send_then_recv() {
 
 #[test]
 fn multiple_sends() {
-    let (tx, rx) = async_channel::<i32>();
+    let (tx, rx) = async_channel::<i32>().unwrap();
     tx.send(1).unwrap();
     tx.send(2).unwrap();
     tx.send(3).unwrap();
@@ -28,7 +28,7 @@ fn multiple_sends() {
 
 #[test]
 fn recv_wakes_on_send() {
-    let (tx, rx) = async_channel::<&str>();
+    let (tx, rx) = async_channel::<&str>().unwrap();
     let start = Instant::now();
     thread::spawn(move || {
         thread::sleep(Duration::from_millis(50));
@@ -47,7 +47,7 @@ fn recv_wakes_on_send() {
 
 #[test]
 fn sender_drop_signals_closed() {
-    let (tx, rx) = async_channel::<i32>();
+    let (tx, rx) = async_channel::<i32>().unwrap();
     drop(tx);
     let result = block_on(async move { rx.recv().await });
     assert!(

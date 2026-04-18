@@ -34,7 +34,7 @@ fn encrypted_record_header_and_trailer_sizes() {
 
     // Encrypt minimal payload (1 byte)
     let mut out1 = Vec::new();
-    writer.write_encrypted(codec::APPLICATION_DATA, b"x", &mut out1);
+    writer.write_encrypted(codec::APPLICATION_DATA, b"x", &mut out1).unwrap();
 
     // Outer header = 5 bytes, ciphertext = payload(1) + type_pad(1) + tag(16) = 18
     assert_eq!(out1.len(), 5 + 18);
@@ -56,7 +56,7 @@ fn encrypt_empty_payload_produces_valid_record() {
 
     // Encrypt empty payload — inner = "" + content_type = 1 byte
     let mut encrypted = Vec::new();
-    writer.write_encrypted(codec::APPLICATION_DATA, &[], &mut encrypted);
+    writer.write_encrypted(codec::APPLICATION_DATA, &[], &mut encrypted).unwrap();
 
     // Decrypt should succeed
     let (ct, plaintext, _) = reader.read_record(&encrypted).expect("decrypt empty");
@@ -78,7 +78,7 @@ fn decrypt_record_with_wrong_key_fails() {
 
     let payload = b"secret data";
     let mut encrypted = Vec::new();
-    writer.write_encrypted(codec::APPLICATION_DATA, payload, &mut encrypted);
+    writer.write_encrypted(codec::APPLICATION_DATA, payload, &mut encrypted).unwrap();
 
     // Decryption with wrong key should fail
     let result = reader.read_record(&encrypted);
@@ -102,7 +102,7 @@ fn decrypt_record_with_wrong_iv_fails() {
 
     let payload = b"more secret";
     let mut encrypted = Vec::new();
-    writer.write_encrypted(codec::APPLICATION_DATA, payload, &mut encrypted);
+    writer.write_encrypted(codec::APPLICATION_DATA, payload, &mut encrypted).unwrap();
 
     let result = reader.read_record(&encrypted);
     assert!(
@@ -124,7 +124,7 @@ fn decrypt_record_with_tampered_ciphertext_fails() {
 
     let payload = b"integrity check";
     let mut encrypted = Vec::new();
-    writer.write_encrypted(codec::APPLICATION_DATA, payload, &mut encrypted);
+    writer.write_encrypted(codec::APPLICATION_DATA, payload, &mut encrypted).unwrap();
 
     // Tamper with the ciphertext (after the 5-byte header)
     if encrypted.len() > 10 {
@@ -151,7 +151,7 @@ fn decrypt_record_with_truncated_body_fails() {
 
     let payload = b"full record";
     let mut encrypted = Vec::new();
-    writer.write_encrypted(codec::APPLICATION_DATA, payload, &mut encrypted);
+    writer.write_encrypted(codec::APPLICATION_DATA, payload, &mut encrypted).unwrap();
 
     // Truncate the record — remove last byte
     encrypted.truncate(encrypted.len() - 1);

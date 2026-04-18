@@ -6,6 +6,7 @@
 use super::McpManager;
 use crate::core::json::JsonValue;
 use crate::core::runtime::AssertSend;
+use crate::core::sync::lock_or_recover;
 use crate::tools::{PermissionLevel, Tool};
 use std::future::Future;
 use std::pin::Pin;
@@ -61,7 +62,7 @@ impl Tool for McpToolProxy {
     ) -> Pin<Box<dyn Future<Output = crate::Result<String>> + Send + '_>> {
         let input = input.clone();
         Box::pin(AssertSend(async move {
-            let mut mgr = self.manager.lock().unwrap();
+            let mut mgr = lock_or_recover(&self.manager);
             mgr.call_tool(&self.server_name, &self.tool_name, &input)
                 .await
         }))
@@ -106,7 +107,7 @@ impl Tool for ListMcpResourcesTool {
         _input: &JsonValue,
     ) -> Pin<Box<dyn Future<Output = crate::Result<String>> + Send + '_>> {
         Box::pin(async move {
-            let mgr = self.manager.lock().unwrap();
+            let mgr = lock_or_recover(&self.manager);
             let mut output = String::new();
             for handle in &mgr.servers {
                 for res in &handle.resources {
@@ -205,7 +206,7 @@ impl Tool for ReadMcpResourceTool {
             .to_string();
 
         Box::pin(AssertSend(async move {
-            let mut mgr = self.manager.lock().unwrap();
+            let mut mgr = lock_or_recover(&self.manager);
             mgr.read_resource(&server, &uri).await
         }))
     }
@@ -249,7 +250,7 @@ impl Tool for ListMcpPromptsTool {
         _input: &JsonValue,
     ) -> Pin<Box<dyn Future<Output = crate::Result<String>> + Send + '_>> {
         Box::pin(async move {
-            let mgr = self.manager.lock().unwrap();
+            let mgr = lock_or_recover(&self.manager);
             let mut output = String::new();
             for handle in &mgr.servers {
                 for prompt in &handle.prompts {
@@ -367,7 +368,7 @@ impl Tool for GetMcpPromptTool {
             .unwrap_or(JsonValue::Object(vec![]));
 
         Box::pin(AssertSend(async move {
-            let mut mgr = self.manager.lock().unwrap();
+            let mut mgr = lock_or_recover(&self.manager);
             mgr.get_prompt(&server, &name, &args).await
         }))
     }

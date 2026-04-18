@@ -8,6 +8,7 @@ use super::LspManager;
 use super::path_to_uri;
 use crate::core::json::JsonValue;
 use crate::core::runtime::AssertSend;
+use crate::core::sync::lock_or_recover;
 use crate::lsp::types::Diagnostic;
 use crate::tools::{PermissionLevel, Tool};
 use std::future::Future;
@@ -186,7 +187,7 @@ impl Tool for LspDefinitionTool {
 
             #[cfg(unix)]
             {
-                let mut mgr = self.manager.lock().unwrap();
+                let mut mgr = lock_or_recover(&self.manager);
                 mgr.ensure_file_open(&file).await?;
                 let uri = path_to_uri(&file);
                 let client = mgr.get_or_start(&file).await?;
@@ -259,7 +260,7 @@ impl Tool for LspReferencesTool {
 
             #[cfg(unix)]
             {
-                let mut mgr = self.manager.lock().unwrap();
+                let mut mgr = lock_or_recover(&self.manager);
                 mgr.ensure_file_open(&file).await?;
                 let uri = path_to_uri(&file);
                 let client = mgr.get_or_start(&file).await?;
@@ -346,7 +347,7 @@ impl Tool for LspHoverTool {
 
             #[cfg(unix)]
             {
-                let mut mgr = self.manager.lock().unwrap();
+                let mut mgr = lock_or_recover(&self.manager);
                 mgr.ensure_file_open(&file).await?;
                 let uri = path_to_uri(&file);
                 let client = mgr.get_or_start(&file).await?;
@@ -425,7 +426,7 @@ impl Tool for LspDiagnosticsTool {
 
             #[cfg(unix)]
             {
-                let mut mgr = self.manager.lock().unwrap();
+                let mut mgr = lock_or_recover(&self.manager);
                 let mut output = String::new();
 
                 if let Some(ref path) = file {

@@ -43,7 +43,7 @@ fn encrypt_decrypt_roundtrip() {
 
     let payload = b"Hello, TLS 1.3!";
     let mut encrypted = Vec::new();
-    writer.write_encrypted(codec::APPLICATION_DATA, payload, &mut encrypted);
+    writer.write_encrypted(codec::APPLICATION_DATA, payload, &mut encrypted).unwrap();
 
     // The encrypted record should have outer type APPLICATION_DATA (0x17)
     assert_eq!(encrypted[0], 0x17);
@@ -78,10 +78,10 @@ fn encrypt_decrypt_multiple_records() {
     let msg2 = b"second message";
 
     let mut enc1 = Vec::new();
-    writer.write_encrypted(codec::APPLICATION_DATA, msg1, &mut enc1);
+    writer.write_encrypted(codec::APPLICATION_DATA, msg1, &mut enc1).unwrap();
 
     let mut enc2 = Vec::new();
-    writer.write_encrypted(codec::APPLICATION_DATA, msg2, &mut enc2);
+    writer.write_encrypted(codec::APPLICATION_DATA, msg2, &mut enc2).unwrap();
 
     // Decrypt first
     let (ct1, dec1, consumed1) = reader.read_record(&enc1).expect("decrypt first");
@@ -108,10 +108,10 @@ fn nonce_changes_between_records() {
 
     // Encrypt two identical payloads — ciphertext should differ due to nonce
     let mut enc1 = Vec::new();
-    writer.write_encrypted(codec::APPLICATION_DATA, payload, &mut enc1);
+    writer.write_encrypted(codec::APPLICATION_DATA, payload, &mut enc1).unwrap();
 
     let mut enc2 = Vec::new();
-    writer.write_encrypted(codec::APPLICATION_DATA, payload, &mut enc2);
+    writer.write_encrypted(codec::APPLICATION_DATA, payload, &mut enc2).unwrap();
 
     // The encrypted payloads (after the 5-byte header) should differ
     assert_ne!(
@@ -162,7 +162,7 @@ fn encrypted_inner_content_type_preserved() {
     // Encrypt a HANDSHAKE message (inner type should be preserved)
     let payload = b"handshake data";
     let mut encrypted = Vec::new();
-    writer.write_encrypted(codec::HANDSHAKE, payload, &mut encrypted);
+    writer.write_encrypted(codec::HANDSHAKE, payload, &mut encrypted).unwrap();
 
     // Outer type should be APPLICATION_DATA
     assert_eq!(encrypted[0], codec::APPLICATION_DATA);

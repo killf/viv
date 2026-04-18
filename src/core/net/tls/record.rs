@@ -173,12 +173,18 @@ impl RecordLayer {
         out.extend_from_slice(payload);
     }
 
-    /// Write an encrypted TLS record (AEAD). Panics if no encrypter installed.
-    pub fn write_encrypted(&mut self, content_type: u8, payload: &[u8], out: &mut Vec<u8>) {
-        self.encrypter
-            .as_mut()
-            .expect("no encrypter installed")
-            .encrypt(content_type, payload, out);
+    /// Write an encrypted TLS record (AEAD). Returns an error if no encrypter is installed.
+    pub fn write_encrypted(
+        &mut self,
+        content_type: u8,
+        payload: &[u8],
+        out: &mut Vec<u8>,
+    ) -> crate::Result<()> {
+        let enc = self.encrypter.as_mut().ok_or_else(|| {
+            crate::Error::Tls("write_encrypted called before encrypter installed".to_string())
+        })?;
+        enc.encrypt(content_type, payload, out);
+        Ok(())
     }
 
     /// Read one TLS record from `data`.

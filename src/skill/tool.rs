@@ -26,7 +26,7 @@ impl Tool for SkillTool {
     }
 
     fn input_schema(&self) -> JsonValue {
-        JsonValue::parse(
+        crate::tools::parse_schema(
             r#"{
             "type": "object",
             "properties": {
@@ -42,7 +42,6 @@ impl Tool for SkillTool {
             "required": ["skill"]
         }"#,
         )
-        .unwrap()
     }
 
     fn execute(

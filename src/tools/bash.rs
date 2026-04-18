@@ -19,7 +19,7 @@ impl Tool for BashTool {
     }
 
     fn input_schema(&self) -> JsonValue {
-        JsonValue::parse(r#"{
+        crate::tools::parse_schema(r#"{
             "type":"object",
             "properties":{
                 "command":{"type":"string","description":"The command to execute"},
@@ -28,7 +28,7 @@ impl Tool for BashTool {
                 "run_in_background":{"type":"boolean","description":"Set to true to run the command in the background. Returns the PID. Default: false."}
             },
             "required":["command"]
-        }"#).unwrap()
+        }"#)
     }
 
     fn execute(

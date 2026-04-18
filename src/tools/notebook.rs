@@ -16,7 +16,7 @@ impl Tool for NotebookEditTool {
     }
 
     fn input_schema(&self) -> JsonValue {
-        JsonValue::parse(
+        crate::tools::parse_schema(
             r#"{
             "type":"object",
             "properties":{
@@ -29,7 +29,6 @@ impl Tool for NotebookEditTool {
             "required":["notebook_path","new_source"]
         }"#,
         )
-        .unwrap()
     }
 
     fn execute(

@@ -26,10 +26,14 @@ where
         }
     }
 
-    fn take(&mut self) -> F::Output {
+    fn take(&mut self) -> Option<F::Output> {
         match std::mem::replace(self, MaybeDone::Taken) {
-            MaybeDone::Done(v) => v,
-            _ => panic!("MaybeDone::take called on non-Done variant"),
+            MaybeDone::Done(v) => Some(v),
+            other => {
+                // Restore state; caller must only call take() after poll() returned true.
+                *self = other;
+                None
+            }
         }
     }
 }
@@ -68,7 +72,13 @@ where
         let a_done = this.a.poll(cx);
         let b_done = this.b.poll(cx);
         if a_done && b_done {
-            Poll::Ready((this.a.take(), this.b.take()))
+            match (this.a.take(), this.b.take()) {
+                (Some(a), Some(b)) => Poll::Ready((a, b)),
+                // Invariant: both were Done; if take() returned None we treat
+                // it as pending rather than panicking. The waker remains
+                // registered via the inner futures.
+                _ => Poll::Pending,
+            }
         } else {
             Poll::Pending
         }
@@ -107,7 +117,14 @@ where
             }
         }
         if all_done {
-            Poll::Ready(this.futures.iter_mut().map(|s| s.take()).collect())
+            let mut out = Vec::with_capacity(this.futures.len());
+            for slot in this.futures.iter_mut() {
+                match slot.take() {
+                    Some(v) => out.push(v),
+                    None => return Poll::Pending,
+                }
+            }
+            Poll::Ready(out)
         } else {
             Poll::Pending
         }

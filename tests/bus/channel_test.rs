@@ -4,7 +4,7 @@ use viv::core::runtime::block_on_local;
 
 #[test]
 fn agent_channel_send_event_receive_in_endpoint() {
-    let (handle, endpoint) = agent_channel();
+    let (handle, endpoint) = agent_channel().unwrap();
     handle.tx.send(AgentEvent::Input("hello".into())).unwrap();
     let event = block_on_local(Box::pin(endpoint.rx.recv())).unwrap();
     match event {
@@ -15,7 +15,7 @@ fn agent_channel_send_event_receive_in_endpoint() {
 
 #[test]
 fn agent_channel_send_message_receive_in_handle() {
-    let (handle, endpoint) = agent_channel();
+    let (handle, endpoint) = agent_channel().unwrap();
     endpoint
         .tx
         .send(AgentMessage::TextChunk("chunk".into()))
@@ -28,7 +28,7 @@ fn agent_channel_send_message_receive_in_handle() {
 
 #[test]
 fn agent_channel_bidirectional_permission_flow() {
-    let (handle, endpoint) = agent_channel();
+    let (handle, endpoint) = agent_channel().unwrap();
     endpoint
         .tx
         .send(AgentMessage::PermissionRequest {

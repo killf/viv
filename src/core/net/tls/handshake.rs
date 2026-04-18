@@ -215,12 +215,15 @@ impl Handshake {
     ///
     /// Uses the transcript hash saved after server Finished (CH..SF),
     /// per RFC 8446 section 7.1.
-    pub fn install_app_keys(&mut self, record: &mut RecordLayer) {
-        let hash = self
-            .server_finished_hash
-            .expect("install_app_keys called before server Finished");
+    pub fn install_app_keys(&mut self, record: &mut RecordLayer) -> crate::Result<()> {
+        let hash = self.server_finished_hash.ok_or_else(|| {
+            crate::Error::Tls(
+                "install_app_keys called before server Finished".to_string(),
+            )
+        })?;
         let (client_app, server_app) = self.key_schedule.derive_app_secrets(&hash);
         record.install_encrypter(client_app.key, client_app.iv);
         record.install_decrypter(server_app.key, server_app.iv);
+        Ok(())
     }
 }

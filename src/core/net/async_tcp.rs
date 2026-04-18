@@ -1,5 +1,6 @@
 use super::tcp::connect as tcp_connect;
 use crate::core::runtime::reactor::reactor;
+use crate::core::sync::lock_or_recover;
 use std::future::Future;
 use std::io::{self, Read, Write};
 use std::net::TcpStream;
@@ -15,9 +16,9 @@ pub struct AsyncTcpStream {
 }
 
 impl AsyncTcpStream {
-    pub fn from_std(stream: TcpStream) -> Self {
-        stream.set_nonblocking(true).expect("set_nonblocking");
-        AsyncTcpStream { inner: stream }
+    pub fn from_std(stream: TcpStream) -> crate::Result<Self> {
+        stream.set_nonblocking(true)?;
+        Ok(AsyncTcpStream { inner: stream })
     }
 
     pub fn raw_handle(&self) -> crate::core::platform::RawHandle {
@@ -75,7 +76,7 @@ impl Future for ConnectFuture {
         if !self.done {
             self.done = true;
             match tcp_connect(&self.host, self.port) {
-                Ok(stream) => Poll::Ready(Ok(AsyncTcpStream::from_std(stream))),
+                Ok(stream) => Poll::Ready(AsyncTcpStream::from_std(stream)),
                 Err(e) => Poll::Ready(Err(e)),
             }
         } else {
@@ -99,19 +100,22 @@ impl<'a> Future for ReadFuture<'a> {
 
         // 清除上次注册（重新注册新 waker）
         if let Some(t) = this.token.take() {
-            reactor().lock().unwrap().remove(t);
+            let r = reactor();
+            lock_or_recover(&r).remove(t);
         }
 
         match this.stream.inner.read(this.buf) {
             Ok(n) => Poll::Ready(Ok(n)),
             Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
                 let fd = this.stream.raw_handle();
-                let token = reactor()
-                    .lock()
-                    .unwrap()
-                    .register_readable(fd, cx.waker().clone());
-                this.token = Some(token);
-                Poll::Pending
+                let r = reactor();
+                match lock_or_recover(&r).register_readable(fd, cx.waker().clone()) {
+                    Ok(token) => {
+                        this.token = Some(token);
+                        Poll::Pending
+                    }
+                    Err(e) => Poll::Ready(Err(e)),
+                }
             }
             Err(e) => Poll::Ready(Err(crate::Error::Io(e))),
         }
@@ -121,7 +125,8 @@ impl<'a> Future for ReadFuture<'a> {
 impl Drop for ReadFuture<'_> {
     fn drop(&mut self) {
         if let Some(t) = self.token.take() {
-            reactor().lock().unwrap().remove(t);
+            let r = reactor();
+            lock_or_recover(&r).remove(t);
         }
     }
 }
@@ -141,7 +146,8 @@ impl<'a> Future for WriteFuture<'a> {
         let this = self.as_mut().get_mut();
 
         if let Some(t) = this.token.take() {
-            reactor().lock().unwrap().remove(t);
+            let r = reactor();
+            lock_or_recover(&r).remove(t);
         }
 
         loop {
@@ -152,12 +158,14 @@ impl<'a> Future for WriteFuture<'a> {
                 Ok(n) => this.written += n,
                 Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
                     let fd = this.stream.raw_handle();
-                    let token = reactor()
-                        .lock()
-                        .unwrap()
-                        .register_writable(fd, cx.waker().clone());
-                    this.token = Some(token);
-                    return Poll::Pending;
+                    let r = reactor();
+                    match lock_or_recover(&r).register_writable(fd, cx.waker().clone()) {
+                        Ok(token) => {
+                            this.token = Some(token);
+                            return Poll::Pending;
+                        }
+                        Err(e) => return Poll::Ready(Err(e)),
+                    }
                 }
                 Err(e) => return Poll::Ready(Err(crate::Error::Io(e))),
             }
@@ -168,7 +176,8 @@ impl<'a> Future for WriteFuture<'a> {
 impl Drop for WriteFuture<'_> {
     fn drop(&mut self) {
         if let Some(t) = self.token.take() {
-            reactor().lock().unwrap().remove(t);
+            let r = reactor();
+            lock_or_recover(&r).remove(t);
         }
     }
 }

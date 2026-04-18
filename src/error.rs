@@ -24,6 +24,10 @@ pub enum Error {
     Lsp { server: String, message: String },
     /// QR code generation errors
     Qr(String),
+    /// Mutex poisoned (another thread panicked while holding the lock)
+    LockPoisoned(String),
+    /// Invariant violation (unexpected state that was previously a panic)
+    Invariant(String),
 }
 
 impl fmt::Display for Error {
@@ -40,6 +44,8 @@ impl fmt::Display for Error {
             Error::Mcp { server, message } => write!(f, "MCP error [{}]: {}", server, message),
             Error::Lsp { server, message } => write!(f, "LSP error [{}]: {}", server, message),
             Error::Qr(msg) => write!(f, "QR code error: {}", msg),
+            Error::LockPoisoned(msg) => write!(f, "lock poisoned: {}", msg),
+            Error::Invariant(msg) => write!(f, "invariant violation: {}", msg),
         }
     }
 }

@@ -592,17 +592,20 @@ fn finished_verify_data_exactly_one_bit_different_rejected() {
     );
 }
 
-// ── Test: install_app_keys panics if called before server Finished ──
+// ── Test: install_app_keys errors if called before server Finished ──
 
 #[test]
-#[should_panic(expected = "install_app_keys called before server Finished")]
-fn install_app_keys_before_server_finished_panics() {
+fn install_app_keys_before_server_finished_returns_err() {
     let mut hs = Handshake::new("example.com").unwrap();
     let _ch = hs.encode_client_hello().unwrap();
 
     // Don't complete the handshake — try to install app keys
     let mut record = RecordLayer::new();
-    hs.install_app_keys(&mut record);
+    let result = hs.install_app_keys(&mut record);
+    assert!(
+        result.is_err(),
+        "install_app_keys should return Err before server Finished"
+    );
 }
 
 // ── Test: encode_client_finished fails if handshake not complete ─────
@@ -632,5 +635,5 @@ fn encode_client_finished_works_after_complete_handshake() {
     assert_eq!(finished_msg.len(), 36, "Finished message should be 36 bytes");
 
     // install_app_keys should also work
-    hs.install_app_keys(&mut record);
+    hs.install_app_keys(&mut record).unwrap();
 }

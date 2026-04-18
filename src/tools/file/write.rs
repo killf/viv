@@ -16,14 +16,14 @@ impl Tool for WriteTool {
     }
 
     fn input_schema(&self) -> JsonValue {
-        JsonValue::parse(r#"{
+        crate::tools::parse_schema(r#"{
             "type":"object",
             "properties":{
                 "file_path":{"type":"string","description":"The absolute path to the file to write (must be absolute, not relative)"},
                 "content":{"type":"string","description":"The content to write to the file"}
             },
             "required":["file_path","content"]
-        }"#).unwrap()
+        }"#)
     }
 
     fn execute(

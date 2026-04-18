@@ -16,7 +16,7 @@ impl Tool for ReadTool {
     }
 
     fn input_schema(&self) -> JsonValue {
-        JsonValue::parse(r#"{
+        crate::tools::parse_schema(r#"{
             "type":"object",
             "properties":{
                 "file_path":{"type":"string","description":"The absolute path to the file to read"},
@@ -25,7 +25,7 @@ impl Tool for ReadTool {
                 "pages":{"type":"string","description":"Page range for PDF files (e.g., \"1-5\", \"3\", \"10-20\"). Only applicable to PDF files. Maximum 20 pages per request."}
             },
             "required":["file_path"]
-        }"#).unwrap()
+        }"#)
     }
 
     fn execute(

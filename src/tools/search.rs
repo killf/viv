@@ -19,7 +19,7 @@ impl Tool for WebSearchTool {
     }
 
     fn input_schema(&self) -> JsonValue {
-        JsonValue::parse(
+        crate::tools::parse_schema(
             r#"{
             "type":"object",
             "properties":{
@@ -33,7 +33,6 @@ impl Tool for WebSearchTool {
             "required":["query"]
         }"#,
         )
-        .unwrap()
     }
 
     fn execute(

@@ -1,5 +1,6 @@
 //! Zero-dependency async logging system.
 
+use crate::core::sync::lock_or_recover;
 use std::fmt;
 use std::fs::{self, OpenOptions};
 use std::io::{self, BufWriter, Write};
@@ -176,9 +177,9 @@ fn spawn_flusher(path: String, level: Level) -> Option<thread::JoinHandle<()>> {
     let shutdown = Arc::new(AtomicBool::new(false));
 
     // Take the previous handle from the global registry.
-    let prev = { PREV_HANDLE.lock().unwrap().take() };
+    let prev = { lock_or_recover(&PREV_HANDLE).take() };
     {
-        let mut guard = FLUSH_STATE.lock().unwrap();
+        let mut guard = lock_or_recover(&FLUSH_STATE);
         if let Some((_, old_shutdown)) = guard.take() {
             old_shutdown.store(true, Ordering::SeqCst);
         }
@@ -239,7 +240,7 @@ fn spawn_flusher(path: String, level: Level) -> Option<thread::JoinHandle<()>> {
     });
 
     // Register the new handle so the NEXT init() can wait for it.
-    *PREV_HANDLE.lock().unwrap() = Some(handle);
+    *lock_or_recover(&PREV_HANDLE) = Some(handle);
 
     // Return previous handle so init() can wait for it.
     prev
@@ -258,7 +259,7 @@ pub fn init(path: &str, level: Level) -> io::Result<()> {
 
 /// Core logging function. Called by macros.
 pub fn log(level: Level, module: String, file: &'static str, line: u32, msg: String) {
-    let guard = FLUSH_STATE.lock().unwrap();
+    let guard = lock_or_recover(&FLUSH_STATE);
     if let Some((tx, shutdown)) = guard.as_ref() {
         if shutdown.load(Ordering::SeqCst) {
             return;

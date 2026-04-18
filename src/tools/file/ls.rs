@@ -16,12 +16,12 @@ impl Tool for LsTool {
     }
 
     fn input_schema(&self) -> JsonValue {
-        JsonValue::parse(r#"{
+        crate::tools::parse_schema(r#"{
             "type":"object",
             "properties":{
                 "path":{"type":"string","description":"The directory path to list. Defaults to the current working directory."}
             }
-        }"#).unwrap()
+        }"#)
     }
 
     fn execute(

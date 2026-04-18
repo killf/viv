@@ -24,7 +24,7 @@ impl Tool for TodoWriteTool {
     }
 
     fn input_schema(&self) -> JsonValue {
-        JsonValue::parse(r#"{
+        crate::tools::parse_schema(r#"{
             "type":"object",
             "properties":{
                 "todos":{
@@ -42,7 +42,7 @@ impl Tool for TodoWriteTool {
                 }
             },
             "required":["todos"]
-        }"#).unwrap()
+        }"#)
     }
 
     fn execute(
@@ -88,7 +88,7 @@ impl Tool for TodoReadTool {
     }
 
     fn input_schema(&self) -> JsonValue {
-        JsonValue::parse(r#"{"type":"object","properties":{}}"#).unwrap()
+        crate::tools::parse_schema(r#"{"type":"object","properties":{}}"#)
     }
 
     fn execute(

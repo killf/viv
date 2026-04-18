@@ -14,7 +14,7 @@ fn main() {
 }
 
 fn run() -> viv::Result<()> {
-    let (event_tx, event_rx) = async_channel();
+    let (event_tx, event_rx) = async_channel()?;
     let (msg_tx, msg_rx) = channel::<AgentMessage>();
 
     let config = AgentConfig::default();

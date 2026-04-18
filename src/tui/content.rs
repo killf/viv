@@ -291,8 +291,7 @@ pub fn parse_markdown(text: &str) -> Vec<MarkdownNode> {
             let mut items: Vec<Vec<InlineSpan>> = Vec::new();
             items.push(parse_inline(unordered_item_text(line)));
             // greedily consume consecutive unordered items
-            while lines.peek().map(|l| is_unordered_item(l)).unwrap_or(false) {
-                let next = lines.next().unwrap();
+            while let Some(next) = lines.next_if(|l| is_unordered_item(l)) {
                 items.push(parse_inline(unordered_item_text(next)));
             }
             nodes.push(MarkdownNode::List {
@@ -306,8 +305,7 @@ pub fn parse_markdown(text: &str) -> Vec<MarkdownNode> {
         if is_ordered_item(line) {
             let mut items: Vec<Vec<InlineSpan>> = Vec::new();
             items.push(parse_inline(ordered_item_text(line)));
-            while lines.peek().map(|l| is_ordered_item(l)).unwrap_or(false) {
-                let next = lines.next().unwrap();
+            while let Some(next) = lines.next_if(|l| is_ordered_item(l)) {
                 items.push(parse_inline(ordered_item_text(next)));
             }
             nodes.push(MarkdownNode::List {
@@ -351,8 +349,10 @@ fn is_ordered_item(line: &str) -> bool {
 
 fn ordered_item_text(line: &str) -> &str {
     // Skip past "N. "
-    let dot = line.find(". ").unwrap();
-    &line[dot + 2..]
+    match line.find(". ") {
+        Some(dot) => &line[dot + 2..],
+        None => line,
+    }
 }
 
 // ── MarkdownParseBuffer ───────────────────────────────────────────────────────

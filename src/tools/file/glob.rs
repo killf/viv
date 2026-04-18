@@ -19,14 +19,14 @@ impl Tool for GlobTool {
     }
 
     fn input_schema(&self) -> JsonValue {
-        JsonValue::parse(r#"{
+        crate::tools::parse_schema(r#"{
             "type":"object",
             "properties":{
                 "pattern":{"type":"string","description":"The glob pattern to match files against"},
                 "path":{"type":"string","description":"The directory to search in. If not specified, the current working directory will be used."}
             },
             "required":["pattern"]
-        }"#).unwrap()
+        }"#)
     }
 
     fn execute(

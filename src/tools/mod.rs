@@ -112,6 +112,21 @@ pub mod sub_agent;
 pub mod todo;
 pub mod web;
 
+/// Parse a static JSON schema literal without panicking.
+///
+/// Tool schemas are hard-coded string literals, so parse failures only occur
+/// if the literal itself is malformed (a programmer error). Rather than
+/// crashing the agent, we fall back to a minimal empty-object schema and the
+/// tool still works — the LLM just won't see detailed parameter hints.
+pub fn parse_schema(s: &str) -> JsonValue {
+    JsonValue::parse(s).unwrap_or_else(|_| {
+        JsonValue::Object(vec![
+            ("type".to_string(), JsonValue::Str("object".to_string())),
+            ("properties".to_string(), JsonValue::Object(vec![])),
+        ])
+    })
+}
+
 /// Polls a pinned future to completion synchronously (used in tests).
 pub fn poll_to_completion<T>(mut future: Pin<Box<dyn Future<Output = T> + Send + '_>>) -> T {
     use std::task::{Context, Poll};

@@ -17,6 +17,8 @@ use std::pin::Pin;
 use std::sync::mpsc;
 use std::thread;
 
+use crate::core::sync::lock_or_recover;
+
 /// Runtime 运行在独立线程，暴露 spawn 接口
 type SpawnFn = Box<dyn FnOnce(&mut Executor) + Send>;
 
@@ -41,10 +43,8 @@ impl Runtime {
                 }
                 let did_work = exec.run_ready();
                 if !did_work {
-                    reactor()
-                        .lock()
-                        .unwrap()
-                        .wait(std::time::Duration::from_millis(10));
+                    let r = reactor();
+                    lock_or_recover(&r).wait(std::time::Duration::from_millis(10));
                 }
             }
         });

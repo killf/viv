@@ -1,4 +1,5 @@
 use super::task::{JoinHandle, Task, TaskId, oneshot};
+use crate::core::sync::lock_or_recover;
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
@@ -72,7 +73,7 @@ impl Executor {
         };
         let waker = task.waker();
         let mut cx = Context::from_waker(&waker);
-        let mut future = task.future.lock().unwrap();
+        let mut future = lock_or_recover(&task.future);
         if let Poll::Ready(()) = future.as_mut().poll(&mut cx) {
             drop(future);
             self.tasks.remove(&id);

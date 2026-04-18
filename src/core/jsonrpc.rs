@@ -76,7 +76,10 @@ impl Message {
                 .get("id")
                 .and_then(|v| v.as_i64())
                 .ok_or_else(|| Error::Json("Response id must be an integer".to_string()))?;
-            let result = json.get("result").cloned().unwrap();
+            let result = json
+                .get("result")
+                .cloned()
+                .ok_or_else(|| Error::Json("Response missing result field".to_string()))?;
             Ok(Message::Response(Response::Result { id, result }))
         } else if has_id && has_error {
             // Response::Error
@@ -84,7 +87,10 @@ impl Message {
                 .get("id")
                 .and_then(|v| v.as_i64())
                 .ok_or_else(|| Error::Json("Response id must be an integer".to_string()))?;
-            let error = parse_rpc_error(json.get("error").unwrap())?;
+            let err_val = json
+                .get("error")
+                .ok_or_else(|| Error::Json("Response missing error field".to_string()))?;
+            let error = parse_rpc_error(err_val)?;
             Ok(Message::Response(Response::Error { id, error }))
         } else if has_method && !has_id {
             // Notification

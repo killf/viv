@@ -40,7 +40,12 @@ impl McpClientKind {
             #[cfg(not(unix))]
             _ => {
                 let _ = (name, args);
-                unreachable!()
+                Box::pin(async {
+                    Err(Error::Mcp {
+                        server: "unknown".into(),
+                        message: "MCP not supported on this platform".into(),
+                    })
+                })
             }
         }
     }
@@ -55,7 +60,12 @@ impl McpClientKind {
             #[cfg(not(unix))]
             _ => {
                 let _ = uri;
-                unreachable!()
+                Box::pin(async {
+                    Err(Error::Mcp {
+                        server: "unknown".into(),
+                        message: "MCP not supported on this platform".into(),
+                    })
+                })
             }
         }
     }
@@ -71,7 +81,12 @@ impl McpClientKind {
             #[cfg(not(unix))]
             _ => {
                 let _ = (name, args);
-                unreachable!()
+                Box::pin(async {
+                    Err(Error::Mcp {
+                        server: "unknown".into(),
+                        message: "MCP not supported on this platform".into(),
+                    })
+                })
             }
         }
     }
@@ -81,7 +96,7 @@ impl McpClientKind {
             #[cfg(unix)]
             McpClientKind::Stdio(c) => Box::pin(c.shutdown()),
             #[cfg(not(unix))]
-            _ => unreachable!(),
+            _ => Box::pin(async { Ok(()) }),
         }
     }
 }
