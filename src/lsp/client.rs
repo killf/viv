@@ -177,6 +177,33 @@ impl<T: Transport> LspClient<T> {
         self.notify("textDocument/didOpen", Some(params)).await
     }
 
+    /// Send a `textDocument/didChange` notification with full file content.
+    pub async fn notify_did_change(
+        &mut self,
+        uri: &str,
+        content: &str,
+        version: i32,
+    ) -> crate::Result<()> {
+        let params = JsonValue::Object(vec![(
+            "textDocument".to_string(),
+            JsonValue::Object(vec![
+                ("uri".to_string(), JsonValue::Str(uri.to_string())),
+                (
+                    "version".to_string(),
+                    JsonValue::Number(crate::core::json::Number::Int(version as i64)),
+                ),
+            ]),
+        ), (
+            "contentChanges".to_string(),
+            JsonValue::Array(vec![
+                JsonValue::Object(vec![
+                    ("text".to_string(), JsonValue::Str(content.to_string())),
+                ]),
+            ]),
+        )]);
+        self.notify("textDocument/didChange", Some(params)).await
+    }
+
     /// Gracefully shut down: send `shutdown` request, send `exit` notification, close transport.
     pub async fn shutdown(&mut self) -> crate::Result<()> {
         self.request("shutdown", None).await?;
