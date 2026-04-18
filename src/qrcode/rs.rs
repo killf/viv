@@ -1,4 +1,4 @@
-use crate::qrcode::gf256::{mul, EXP_TABLE};
+use crate::qrcode::gf256::{EXP_TABLE, mul};
 
 /// Generate the Reed-Solomon generator polynomial for `ecc_count` error correction codewords.
 ///

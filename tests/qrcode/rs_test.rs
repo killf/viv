@@ -4,7 +4,7 @@ use viv::qrcode::rs;
 fn generator_poly_length() {
     let gpoly = rs::generator_poly(7);
     assert_eq!(gpoly.len(), 8); // degree 7 → 8 coefficients
-    assert_eq!(gpoly[0], 1);    // monic polynomial
+    assert_eq!(gpoly[0], 1); // monic polynomial
 }
 
 #[test]
@@ -20,7 +20,9 @@ fn rs_encode_hello_world_1m() {
     // "HELLO WORLD" as 1-M QR code
     // Data codewords: [32, 91, 11, 120, 209, 114, 220, 77, 67, 64, 236, 17, 236, 17, 236, 17]
     // Expected ECC (10 codewords): [196, 35, 39, 119, 235, 215, 231, 226, 93, 23]
-    let data = vec![32, 91, 11, 120, 209, 114, 220, 77, 67, 64, 236, 17, 236, 17, 236, 17];
+    let data = vec![
+        32, 91, 11, 120, 209, 114, 220, 77, 67, 64, 236, 17, 236, 17, 236, 17,
+    ];
     let ecc = rs::rs_encode(&data, 10);
     assert_eq!(ecc, vec![196, 35, 39, 119, 235, 215, 231, 226, 93, 23]);
 }

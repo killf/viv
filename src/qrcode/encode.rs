@@ -1,7 +1,7 @@
-use crate::qrcode::rs::rs_encode;
-use crate::qrcode::tables::{BYTE_CAPACITY_M, EC_TABLE_M};
 use crate::Result;
 use crate::error::Error;
+use crate::qrcode::rs::rs_encode;
+use crate::qrcode::tables::{BYTE_CAPACITY_M, EC_TABLE_M};
 
 /// Interleaved data + ECC codewords and the QR version used.
 pub struct EncodedData {
@@ -32,7 +32,10 @@ struct BitStream {
 
 impl BitStream {
     fn new() -> Self {
-        BitStream { bytes: Vec::new(), bit_pos: 0 }
+        BitStream {
+            bytes: Vec::new(),
+            bit_pos: 0,
+        }
     }
 
     /// Append the `count` least-significant bits of `value`.
@@ -76,8 +79,7 @@ pub fn encode_data(text: &str) -> Result<(Vec<u8>, u8)> {
     let version = select_version(n)
         .ok_or_else(|| Error::Qr(format!("input too long ({} bytes) for QR code", n)))?;
 
-    let (total_data, _ecc_per_block, _g1b, _g1d, _g2b, _g2d) =
-        EC_TABLE_M[(version - 1) as usize];
+    let (total_data, _ecc_per_block, _g1b, _g1d, _g2b, _g2d) = EC_TABLE_M[(version - 1) as usize];
     let total_data = total_data as usize;
 
     let mut bs = BitStream::new();
@@ -176,5 +178,8 @@ pub fn encode_and_interleave(text: &str) -> Result<EncodedData> {
         }
     }
 
-    Ok(EncodedData { data: interleaved, version })
+    Ok(EncodedData {
+        data: interleaved,
+        version,
+    })
 }

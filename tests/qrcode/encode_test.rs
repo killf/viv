@@ -46,7 +46,8 @@ fn encode_and_interleave_hello() {
 
 #[test]
 fn encode_and_interleave_long_url() {
-    let result = encode::encode_and_interleave("https://www.example.com/very/long/path/here").unwrap();
+    let result =
+        encode::encode_and_interleave("https://www.example.com/very/long/path/here").unwrap();
     assert!(result.version >= 3);
     assert!(!result.data.is_empty());
 }
