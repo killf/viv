@@ -128,3 +128,51 @@ fn bit_len_cross_limb() {
     let n = BigUint::from_bytes_be(&[0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
     assert_eq!(n.bit_len(), 65);
 }
+
+#[test]
+fn add_zero_identity() {
+    let a = BigUint::from_u64(42);
+    assert_eq!(a.add(&BigUint::zero()), a);
+    assert_eq!(BigUint::zero().add(&a), a);
+}
+
+#[test]
+fn add_simple() {
+    let a = BigUint::from_u64(7);
+    let b = BigUint::from_u64(35);
+    assert_eq!(a.add(&b), BigUint::from_u64(42));
+}
+
+#[test]
+fn add_carry_within_limb() {
+    let a = BigUint::from_u64(u64::MAX);
+    let b = BigUint::from_u64(1);
+    let sum = a.add(&b);
+    // 2^64
+    assert_eq!(sum.bit_len(), 65);
+    assert_eq!(sum.to_bytes_be(9), vec![1, 0, 0, 0, 0, 0, 0, 0, 0]);
+}
+
+#[test]
+fn add_propagates_multi_limb_carry() {
+    // [u64::MAX, u64::MAX] + 1 = [0, 0, 1] = 2^128
+    let a = BigUint::from_bytes_be(&[
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+        0xff,
+    ]);
+    let b = BigUint::one();
+    let sum = a.add(&b);
+    assert_eq!(sum.bit_len(), 129);
+    let mut expected = vec![0u8; 16];
+    expected.insert(0, 1);
+    assert_eq!(sum.to_bytes_be(17), expected);
+}
+
+#[test]
+fn add_different_widths() {
+    // 2^64 + 3
+    let a = BigUint::from_u64(3);
+    let b = BigUint::from_bytes_be(&[0x01, 0, 0, 0, 0, 0, 0, 0, 0]);
+    let sum = a.add(&b);
+    assert_eq!(sum.to_bytes_be(9), vec![1, 0, 0, 0, 0, 0, 0, 0, 3]);
+}

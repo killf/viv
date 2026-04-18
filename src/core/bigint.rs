@@ -100,6 +100,25 @@ impl BigUint {
     fn byte_len(&self) -> usize {
         self.bit_len().div_ceil(8)
     }
+
+    /// Addition: `self + other`. Never fails.
+    pub fn add(&self, other: &Self) -> Self {
+        let n = self.limbs.len().max(other.limbs.len());
+        let mut out = Vec::with_capacity(n + 1);
+        let mut carry: u64 = 0;
+        for i in 0..n {
+            let a = self.limbs.get(i).copied().unwrap_or(0);
+            let b = other.limbs.get(i).copied().unwrap_or(0);
+            let sum = (a as u128) + (b as u128) + (carry as u128);
+            out.push(sum as u64);
+            carry = (sum >> 64) as u64;
+        }
+        if carry != 0 {
+            out.push(carry);
+        }
+        normalize(&mut out);
+        BigUint { limbs: out }
+    }
 }
 
 /// Strip trailing zero limbs so `BigUint` invariants hold.
