@@ -19,6 +19,8 @@ use crate::memory::index::MemoryIndex;
 use crate::memory::retrieval::retrieve_relevant;
 use crate::memory::store::MemoryStore;
 use crate::permissions::PermissionManager;
+use crate::skill::SkillRegistry;
+use crate::skill::tool::SkillTool;
 use crate::tools::{PermissionLevel, ToolRegistry};
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
@@ -72,6 +74,7 @@ pub struct Agent {
     msg_tx: Sender<AgentMessage>,
     mcp: Arc<Mutex<McpManager>>,
     lsp: Arc<Mutex<LspManager>>,
+    skill_registry: Arc<SkillRegistry>,
 }
 
 impl Agent {
@@ -95,6 +98,8 @@ impl Agent {
         let store = Arc::new(MemoryStore::new(memory_dir)?);
         let index = Arc::new(Mutex::new(MemoryIndex::load(&store)?));
 
+        let skill_registry = Arc::new(SkillRegistry::new());
+
         Ok(Agent {
             messages: vec![],
             prompt_cache: PromptCache::default(),
@@ -110,6 +115,7 @@ impl Agent {
             msg_tx: endpoint.tx,
             mcp,
             lsp,
+            skill_registry,
         })
     }
 
@@ -162,6 +168,13 @@ impl Agent {
         tools.register(Box::new(LspHoverTool::new(lsp.clone())));
         tools.register(Box::new(LspDiagnosticsTool::new(lsp.clone())));
 
+        // Load skills and register SkillTool
+        let home = std::env::var("HOME").unwrap_or_default();
+        let user_skills = format!("{}/.viv/skills", home);
+        let project_skills = ".viv/skills".to_string();
+        let skill_registry = Arc::new(SkillRegistry::load(&user_skills, &project_skills));
+        tools.register(Box::new(SkillTool::new(skill_registry.clone())));
+
         let _ = msg_tx.send(AgentMessage::Ready { model: model_name });
 
         Ok(Agent {
@@ -179,6 +192,7 @@ impl Agent {
             msg_tx,
             mcp,
             lsp,
+            skill_registry,
         })
     }
 
@@ -253,7 +267,8 @@ impl Agent {
             }
         };
 
-        let system = build_system_prompt("", "", &memories, &mut self.prompt_cache);
+        let skill_list = self.skill_registry.format_for_prompt();
+        let system = build_system_prompt("", &skill_list, &memories, &mut self.prompt_cache);
         self.messages.push(Message::user_text(text));
 
         let token_estimate = estimate_tokens(&self.messages);

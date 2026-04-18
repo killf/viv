@@ -107,6 +107,18 @@ impl SkillRegistry {
         out
     }
 
+    /// Load skills from both the user-global and project-local directories,
+    /// merging them so that project skills override user skills with the same
+    /// name.
+    pub fn load(user_dir: &str, project_dir: &str) -> Self {
+        let mut reg = SkillRegistry::load_from_dir(user_dir, SkillSource::User);
+        let project = SkillRegistry::load_from_dir(project_dir, SkillSource::Project);
+        for entry in project.skills.into_values() {
+            reg.add(entry);
+        }
+        reg
+    }
+
     /// Load skills from a directory.  Each sub-directory that contains a
     /// `SKILL.md` file is treated as one skill.  The front-matter `name` and
     /// `description` fields are used if present; otherwise the directory name
