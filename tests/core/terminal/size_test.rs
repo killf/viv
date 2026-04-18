@@ -1,5 +1,6 @@
 use viv::core::terminal::size::*;
 
+#[cfg(unix)]
 #[test]
 fn terminal_size_returns_valid() {
     let size = terminal_size().unwrap();

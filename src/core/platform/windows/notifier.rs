@@ -40,3 +40,4 @@ impl Drop for EventNotifier {
 
 // SAFETY: Event HANDLEs are thread-safe in Windows.
 unsafe impl Send for EventNotifier {}
+unsafe impl Sync for EventNotifier {}

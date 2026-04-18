@@ -80,3 +80,4 @@ impl Drop for IocpReactor {
 // SAFETY: HANDLE (IOCP port) is thread-safe — Windows guarantees
 // completion port handles can be used from any thread.
 unsafe impl Send for IocpReactor {}
+unsafe impl Sync for IocpReactor {}

@@ -40,3 +40,4 @@ impl Drop for WinTimer {
 
 // SAFETY: Waitable timer HANDLEs are thread-safe in Windows.
 unsafe impl Send for WinTimer {}
+unsafe impl Sync for WinTimer {}

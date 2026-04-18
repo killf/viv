@@ -131,6 +131,7 @@ impl Drop for WinTerminal {
 
 // SAFETY: Console HANDLEs are thread-safe in Windows.
 unsafe impl Send for WinTerminal {}
+unsafe impl Sync for WinTerminal {}
 
 pub struct WinResizeListener {
     input_handle: HANDLE,
@@ -154,3 +155,4 @@ impl WinResizeListener {
 
 // SAFETY: Console HANDLEs are thread-safe in Windows.
 unsafe impl Send for WinResizeListener {}
+unsafe impl Sync for WinResizeListener {}
