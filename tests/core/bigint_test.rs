@@ -269,3 +269,79 @@ fn mul_commutative() {
     let b = BigUint::from_bytes_be(&[9, 8, 7, 6, 5, 4, 3, 2, 1]);
     assert_eq!(a.mul(&b), b.mul(&a));
 }
+
+#[test]
+fn div_rem_by_zero_is_none() {
+    let a = BigUint::from_u64(42);
+    assert_eq!(a.div_rem(&BigUint::zero()), None);
+}
+
+#[test]
+fn div_rem_zero_by_nonzero() {
+    let (q, r) = BigUint::zero().div_rem(&BigUint::from_u64(7)).unwrap();
+    assert_eq!(q, BigUint::zero());
+    assert_eq!(r, BigUint::zero());
+}
+
+#[test]
+fn div_rem_smaller_by_larger() {
+    let a = BigUint::from_u64(5);
+    let b = BigUint::from_u64(10);
+    let (q, r) = a.div_rem(&b).unwrap();
+    assert_eq!(q, BigUint::zero());
+    assert_eq!(r, a);
+}
+
+#[test]
+fn div_rem_exact() {
+    let a = BigUint::from_u64(42);
+    let b = BigUint::from_u64(6);
+    let (q, r) = a.div_rem(&b).unwrap();
+    assert_eq!(q, BigUint::from_u64(7));
+    assert_eq!(r, BigUint::zero());
+}
+
+#[test]
+fn div_rem_with_remainder() {
+    let a = BigUint::from_u64(100);
+    let b = BigUint::from_u64(7);
+    let (q, r) = a.div_rem(&b).unwrap();
+    assert_eq!(q, BigUint::from_u64(14));
+    assert_eq!(r, BigUint::from_u64(2));
+}
+
+#[test]
+fn div_rem_by_one() {
+    let a = BigUint::from_u64(42);
+    let (q, r) = a.div_rem(&BigUint::one()).unwrap();
+    assert_eq!(q, a);
+    assert_eq!(r, BigUint::zero());
+}
+
+#[test]
+fn div_rem_roundtrip_multi_limb() {
+    // q*d + r == a and r < b
+    let a = BigUint::from_bytes_be(&[
+        0xde, 0xad, 0xbe, 0xef, 0xca, 0xfe, 0xba, 0xbe, 0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde,
+        0xf0, 0x11, 0x22, 0x33, 0x44,
+    ]);
+    let b = BigUint::from_bytes_be(&[0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef]);
+    let (q, r) = a.div_rem(&b).unwrap();
+    assert_eq!(r.cmp(&b), Ordering::Less);
+    let reconstructed = q.mul(&b).add(&r);
+    assert_eq!(reconstructed, a);
+}
+
+#[test]
+fn div_rem_large_divisor() {
+    // 4096-bit / 2048-bit sanity
+    let mut a_bytes = vec![0xabu8; 512];
+    a_bytes[0] = 0x7f;
+    let mut b_bytes = vec![0xcdu8; 256];
+    b_bytes[0] = 0x7f;
+    let a = BigUint::from_bytes_be(&a_bytes);
+    let b = BigUint::from_bytes_be(&b_bytes);
+    let (q, r) = a.div_rem(&b).unwrap();
+    assert_eq!(r.cmp(&b), Ordering::Less);
+    assert_eq!(q.mul(&b).add(&r), a);
+}

@@ -167,6 +167,72 @@ impl BigUint {
         normalize(&mut out);
         BigUint { limbs: out }
     }
+
+    /// Divide and take remainder: `(self / divisor, self % divisor)`.
+    /// Returns `None` if `divisor` is zero.
+    ///
+    /// Bit-by-bit binary long division, MSB-first.
+    pub fn div_rem(&self, divisor: &Self) -> Option<(Self, Self)> {
+        if divisor.is_zero() {
+            return None;
+        }
+        if self.cmp(divisor) == Ordering::Less {
+            return Some((Self::zero(), self.clone()));
+        }
+
+        let n_bits = self.bit_len();
+        let mut q = BigUint { limbs: Vec::new() };
+        let mut r = BigUint { limbs: Vec::new() };
+
+        for i in (0..n_bits).rev() {
+            // r = r << 1
+            shl1_in_place(&mut r.limbs);
+            // r.bit[0] = self.bit[i]
+            let bit = (self.limbs[i / 64] >> (i % 64)) & 1;
+            if bit == 1 {
+                if r.limbs.is_empty() {
+                    r.limbs.push(1);
+                } else {
+                    r.limbs[0] |= 1;
+                }
+            }
+
+            // if r >= divisor: r -= divisor; q.bit[i] = 1
+            if r.cmp(divisor) != Ordering::Less {
+                // The `?` will never fire here by the cmp check above, but we
+                // use it to avoid unwrap() per the project's no-panic rule.
+                r = r.checked_sub(divisor)?;
+                set_bit(&mut q.limbs, i);
+            }
+        }
+
+        normalize(&mut q.limbs);
+        normalize(&mut r.limbs);
+        Some((q, r))
+    }
+}
+
+/// Shift `limbs` left by one bit in place.
+fn shl1_in_place(limbs: &mut Vec<u64>) {
+    let mut carry = 0u64;
+    for limb in limbs.iter_mut() {
+        let new_carry = *limb >> 63;
+        *limb = (*limb << 1) | carry;
+        carry = new_carry;
+    }
+    if carry != 0 {
+        limbs.push(carry);
+    }
+}
+
+/// Set bit `i` (0-indexed from LSB) in a limb slice, growing if needed.
+fn set_bit(limbs: &mut Vec<u64>, i: usize) {
+    let limb_idx = i / 64;
+    let bit_idx = i % 64;
+    while limbs.len() <= limb_idx {
+        limbs.push(0);
+    }
+    limbs[limb_idx] |= 1u64 << bit_idx;
 }
 
 /// Strip trailing zero limbs so `BigUint` invariants hold.
