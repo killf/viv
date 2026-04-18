@@ -20,7 +20,7 @@ impl Tool for TodoWriteTool {
     }
 
     fn description(&self) -> &str {
-        "Use this tool to create and manage a structured task list for the current coding session. This helps track progress and organize complex tasks.\n\nEach todo requires: id (string), content (description), status (pending | in_progress | completed), and optionally priority (high | medium | low).\n\nWhen status changes, update the list via this tool. Mark tasks in_progress BEFORE beginning work; mark completed immediately after finishing."
+        "Use this tool to create and manage a structured task list for the current coding session.\n\nTask descriptions must have two forms:\n- content: The imperative form describing what needs to be done (e.g., \"Run tests\")\n- activeForm: The present continuous form shown during execution (e.g., \"Running tests\")\n\nTask states: pending, in_progress, completed. Only one task should be in_progress at a time. Mark tasks complete immediately after finishing."
     }
 
     fn input_schema(&self) -> JsonValue {
@@ -29,16 +29,15 @@ impl Tool for TodoWriteTool {
             "properties":{
                 "todos":{
                     "type":"array",
-                    "description":"The complete list of todos (replaces existing list)",
+                    "description":"The updated todo list",
                     "items":{
                         "type":"object",
                         "properties":{
-                            "id":{"type":"string","description":"Unique identifier for this todo"},
                             "content":{"type":"string","description":"Description of the task"},
                             "status":{"type":"string","description":"pending | in_progress | completed"},
-                            "priority":{"type":"string","description":"high | medium | low"}
+                            "activeForm":{"type":"string","description":"Present continuous form shown during execution (e.g. 'Running tests')"}
                         },
-                        "required":["id","content","status"]
+                        "required":["content","status","activeForm"]
                     }
                 }
             },

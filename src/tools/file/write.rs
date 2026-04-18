@@ -46,7 +46,8 @@ impl Tool for WriteTool {
             }
             std::fs::write(path, content)
                 .map_err(|e| Error::Tool(format!("write '{}': {}", path, e)))?;
-            Ok(format!("Wrote {} bytes to {}", content.len(), path))
+            let line_count = content.lines().count();
+            Ok(format!("Wrote {} bytes ({} lines) to {}", content.len(), line_count, path))
         })
     }
 

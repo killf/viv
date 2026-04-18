@@ -52,3 +52,23 @@ fn read_missing_file_is_error() {
     let input = JsonValue::parse(r#"{"file_path":"/nonexistent/no.txt"}"#).unwrap();
     assert!(poll_to_completion(ReadTool.execute(&input)).is_err());
 }
+
+#[test]
+fn read_binary_file_returns_message_not_crash() {
+    let dir = tempdir();
+    let path = dir.join("binary.bin");
+    fs::write(&path, b"\x89PNG\r\n\x1a\n\x00\x00binary").unwrap();
+    let input = JsonValue::parse(&format!(r#"{{"file_path":"{}"}}"#, json_path(&path))).unwrap();
+    let result = poll_to_completion(ReadTool.execute(&input)).unwrap();
+    assert!(result.to_lowercase().contains("binary"), "Should indicate binary file: {}", result);
+}
+
+#[test]
+fn read_empty_file_returns_warning() {
+    let dir = tempdir();
+    let path = dir.join("empty.txt");
+    fs::write(&path, "").unwrap();
+    let input = JsonValue::parse(&format!(r#"{{"file_path":"{}"}}"#, json_path(&path))).unwrap();
+    let result = poll_to_completion(ReadTool.execute(&input)).unwrap();
+    assert!(result.contains("empty"));
+}

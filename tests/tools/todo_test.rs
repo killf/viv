@@ -39,3 +39,18 @@ fn todo_read_returns_empty_array_when_no_file() {
     let result = poll_to_completion(read.execute(&JsonValue::Object(vec![]))).unwrap();
     assert_eq!(result, "[]");
 }
+
+#[test]
+fn todo_write_accepts_claude_code_format() {
+    let dir = tempdir();
+    let path = dir.join("todo.json");
+    let tool = TodoWriteTool::new(path.clone());
+    let input = JsonValue::parse(r#"{
+        "todos": [
+            {"content": "Fix bug", "status": "in_progress", "activeForm": "Fixing bug"},
+            {"content": "Write tests", "status": "pending", "activeForm": "Writing tests"}
+        ]
+    }"#).unwrap();
+    let result = poll_to_completion(tool.execute(&input)).unwrap();
+    assert!(result.contains("2 todo(s)"));
+}

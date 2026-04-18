@@ -39,8 +39,25 @@ impl Tool for ReadTool {
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| Error::Tool("missing 'file_path'".into()))?;
 
-            let content = std::fs::read_to_string(path)
+            if path.ends_with(".pdf") {
+                let pages = input.get("pages").and_then(|v| v.as_str());
+                return read_pdf(path, pages);
+            }
+
+            let raw = std::fs::read(path)
                 .map_err(|e| Error::Tool(format!("cannot read '{}': {}", path, e)))?;
+            if raw.iter().take(512).any(|&b| b == 0) {
+                return Ok(format!(
+                    "Binary file '{}' — cannot display as text ({} bytes)",
+                    path,
+                    raw.len()
+                ));
+            }
+
+            let content = String::from_utf8_lossy(&raw);
+            if content.is_empty() {
+                return Ok(format!("File '{}' exists but is empty", path));
+            }
 
             let offset = input
                 .get("offset")
@@ -68,4 +85,32 @@ impl Tool for ReadTool {
     fn permission_level(&self) -> PermissionLevel {
         PermissionLevel::ReadOnly
     }
+}
+
+fn read_pdf(path: &str, pages: Option<&str>) -> crate::Result<String> {
+    use std::process::Command;
+    let mut cmd = Command::new("pdftotext");
+    if let Some(range) = pages {
+        let parts: Vec<&str> = range.split('-').collect();
+        if let Some(first) = parts.first() {
+            cmd.arg("-f").arg(first);
+        }
+        if let Some(last) = parts.get(1) {
+            cmd.arg("-l").arg(last);
+        }
+    }
+    cmd.arg(path).arg("-");
+    let output = cmd.output().map_err(|e| {
+        Error::Tool(format!(
+            "pdftotext not found or failed: {}. Install poppler-utils for PDF support.",
+            e
+        ))
+    })?;
+    if !output.status.success() {
+        return Err(Error::Tool(format!(
+            "pdftotext error: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        )));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }

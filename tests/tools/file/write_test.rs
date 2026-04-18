@@ -58,3 +58,15 @@ fn write_overwrites_existing_file() {
     poll_to_completion(WriteTool.execute(&input)).unwrap();
     assert_eq!(fs::read_to_string(&path).unwrap(), "new");
 }
+
+#[test]
+fn write_returns_line_count() {
+    let dir = tempdir();
+    let path = dir.join("out.txt");
+    let input = JsonValue::parse(&format!(
+        r#"{{"file_path":"{}","content":"line1\nline2\nline3\n"}}"#,
+        json_path(&path)
+    )).unwrap();
+    let result = poll_to_completion(WriteTool.execute(&input)).unwrap();
+    assert!(result.contains("3 lines") || result.contains("3 line"), "Should mention line count: {}", result);
+}
