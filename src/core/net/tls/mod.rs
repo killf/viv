@@ -66,7 +66,7 @@ impl TlsStream {
 
                 match ct {
                     CHANGE_CIPHER_SPEC => {
-                        // Middlebox compatibility — just skip
+                        // Middlebox compatibility -- just skip
                         continue;
                     }
                     ALERT => {
@@ -183,7 +183,7 @@ impl Read for TlsStream {
                         }
                         ALERT => {
                             if payload.len() >= 2 && payload[0] == 1 && payload[1] == 0 {
-                                // close_notify — treat as EOF
+                                // close_notify -- treat as EOF
                                 return Ok(0);
                             }
                             return Err(io::Error::other(format!(
@@ -193,7 +193,7 @@ impl Read for TlsStream {
                             )));
                         }
                         HANDSHAKE => {
-                            // Post-handshake messages (NewSessionTicket, etc.) — skip
+                            // Post-handshake messages (NewSessionTicket, etc.) -- skip
                             continue;
                         }
                         _ => {

@@ -102,8 +102,8 @@ fn encode_change_cipher_spec_format() {
     let mut out = Vec::new();
     codec::encode_change_cipher_spec(&mut out);
 
-    // Full TLS record: type(0x14) + version(0x0301) + length(0x0001) + payload(0x01)
-    assert_eq!(out, &[0x14, 0x03, 0x01, 0x00, 0x01, 0x01]);
+    // Full TLS record: type(0x14) + version(0x0303) + length(0x0001) + payload(0x01)
+    assert_eq!(out, &[0x14, 0x03, 0x03, 0x00, 0x01, 0x01]);
 }
 
 // ── ServerHello decoding ───────────────────────────────────────────

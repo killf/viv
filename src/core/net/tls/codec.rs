@@ -133,7 +133,7 @@ pub fn encode_finished(verify_data: &[u8; 32], out: &mut Vec<u8>) {
 /// This is sent as a full TLS record (type 0x14), not a handshake message.
 pub fn encode_change_cipher_spec(out: &mut Vec<u8>) {
     out.push(CHANGE_CIPHER_SPEC); // content type
-    push_u16(out, 0x0301);        // legacy version
+    push_u16(out, 0x0303);        // legacy version TLS 1.2
     push_u16(out, 1);             // length = 1
     out.push(0x01);               // CCS payload
 }

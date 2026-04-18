@@ -2,7 +2,7 @@ use std::pin::Pin;
 use std::future::Future;
 use std::sync::Arc;
 use crate::core::json::JsonValue;
-use crate::core::net::async_tls::AsyncTlsStream;
+use crate::core::net::tls::AsyncTlsStream;
 use crate::core::net::http::HttpRequest;
 use crate::core::runtime::AssertSend;
 use crate::error::Error;

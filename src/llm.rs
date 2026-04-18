@@ -587,7 +587,7 @@ impl LLMClient {
         tier: ModelTier,
         mut on_text: impl FnMut(&str),
     ) -> crate::Result<StreamResult> {
-        use crate::core::net::async_tls::AsyncTlsStream;
+        use crate::core::net::tls::AsyncTlsStream;
 
         let req = self.build_agent_request(system_blocks, messages, tools_json, tier);
         let url = &self.url;

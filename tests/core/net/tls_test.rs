@@ -7,7 +7,7 @@ fn tcp_connect_to_nowhere_fails() {
 }
 
 #[test]
-fn tls_openssl_links() {
+fn tls_stream_is_constructible() {
     use viv::core::net::tls::TlsStream;
     let _size = std::mem::size_of::<TlsStream>();
 }
@@ -20,22 +20,29 @@ fn tcp_connect_real_server() {
     assert!(stream.is_ok(), "TCP connect to 8.8.8.8:53 failed: {:?}", stream.err());
 }
 
-/// Test real HTTPS GET to www.baidu.com
+/// Pure Rust TLS 1.3 handshake + HTTPS GET against a real server.
+///
+/// Verifies the complete TLS 1.3 implementation (X25519 key exchange,
+/// AES-128-GCM record encryption, SHA-256 key schedule) works end-to-end
+/// with zero external dependencies (no OpenSSL).
 #[cfg(feature = "full_test")]
 #[test]
-fn http_get_baidu() {
+fn tls13_pure_rust_https_get() {
     use viv::core::net::tls::TlsStream;
     use viv::core::net::http::HttpRequest;
     use std::io::{Read, Write};
 
-    let mut tls = TlsStream::connect("www.baidu.com", 443)
-        .expect("TLS connect to www.baidu.com failed");
+    let host = "example.com";
+    let mut tls = TlsStream::connect(host, 443)
+        .expect("TLS 1.3 connect failed");
 
     let req = HttpRequest {
         method: "GET".into(),
         path: "/".into(),
         headers: vec![
-            ("Host".into(), "www.baidu.com".into()),
+            ("Host".into(), host.into()),
+            ("User-Agent".into(), "viv/0.1".into()),
+            ("Accept".into(), "*/*".into()),
             ("Connection".into(), "close".into()),
         ],
         body: None,
@@ -51,7 +58,13 @@ fn http_get_baidu() {
         response.extend_from_slice(&buf[..n]);
     }
 
+    assert!(!response.is_empty(), "Response was empty");
     let resp_str = String::from_utf8_lossy(&response);
-    assert!(resp_str.starts_with("HTTP/1.1"), "Expected HTTP response, got: {}", &resp_str[..50.min(resp_str.len())]);
-    println!("baidu response: {} bytes, status line: {}", response.len(), resp_str.lines().next().unwrap_or(""));
+    let first_line = resp_str.lines().next().unwrap_or("");
+    assert!(
+        first_line.starts_with("HTTP/1."),
+        "Expected HTTP/1.x response, got: {}",
+        first_line,
+    );
+    println!("Pure Rust TLS 1.3: {} bytes, status: {}", response.len(), first_line);
 }

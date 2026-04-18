@@ -40,6 +40,9 @@ pub struct Handshake {
     server_name: String,
     random: [u8; 32],
     session_id: [u8; 32],
+    /// Transcript hash after server Finished (CH..SF).
+    /// Used for application traffic key derivation per RFC 8446 section 7.1.
+    server_finished_hash: Option<[u8; 32]>,
 }
 
 impl Handshake {
@@ -62,6 +65,7 @@ impl Handshake {
             server_name: server_name.to_string(),
             random,
             session_id,
+            server_finished_hash: None,
         })
     }
 
@@ -119,8 +123,7 @@ impl Handshake {
                 // Install server handshake decrypter
                 record.install_decrypter(server_hs_keys.key, server_hs_keys.iv);
 
-                // Save client handshake keys for later (used when sending Finished)
-                // We install the client encrypter now so we can send Finished encrypted
+                // Install the client encrypter so we can send Finished encrypted
                 record.install_encrypter(client_hs_keys.key, client_hs_keys.iv);
 
                 self.state = State::ExpectEncryptedExtensions;
@@ -168,8 +171,14 @@ impl Handshake {
                     return Err(crate::Error::Tls("server Finished verify failed".into()));
                 }
 
-                // Now add Finished to transcript (needed for app key derivation)
+                // Now add Finished to transcript
                 self.transcript.update(msg_bytes);
+
+                // Save the transcript hash at this point (CH..SF) for app key derivation.
+                // Per RFC 8446 section 7.1, application traffic secrets use
+                // Transcript-Hash(ClientHello..server Finished), NOT the hash
+                // after client Finished.
+                self.server_finished_hash = Some(self.transcript.clone().finish());
 
                 self.state = State::Complete;
                 Ok(HandshakeResult::Complete)
@@ -186,6 +195,7 @@ impl Handshake {
     /// returns Complete.
     pub fn encode_client_finished(&mut self) -> Vec<u8> {
         // verify_data = HMAC(client_finished_key, transcript_hash)
+        // At this point transcript contains CH..SF
         let transcript_hash = self.transcript.clone().finish();
         let client_finished_key = self.key_schedule.client_finished_key();
         let verify_data = hmac_sha256(&client_finished_key, &transcript_hash);
@@ -202,10 +212,14 @@ impl Handshake {
 
     /// Derive and install application traffic keys on the record layer.
     /// Call after sending client Finished.
+    ///
+    /// Uses the transcript hash saved after server Finished (CH..SF),
+    /// per RFC 8446 section 7.1.
     pub fn install_app_keys(&mut self, record: &mut RecordLayer) {
-        let handshake_hash = self.transcript.clone().finish();
+        let hash = self.server_finished_hash
+            .expect("install_app_keys called before server Finished");
         let (client_app, server_app) =
-            self.key_schedule.derive_app_secrets(&handshake_hash);
+            self.key_schedule.derive_app_secrets(&hash);
         record.install_encrypter(client_app.key, client_app.iv);
         record.install_decrypter(server_app.key, server_app.iv);
     }

@@ -1,4 +1,3 @@
 fn main() {
-    println!("cargo:rustc-link-lib=ssl");
-    println!("cargo:rustc-link-lib=crypto");
+    // No external C libraries needed — TLS is pure Rust.
 }
