@@ -36,37 +36,23 @@ pub trait Tool: Send + Sync {
 
 SubAgent 不需要扩展 trait — 它内部创建轻量 agent loop，不暴露新接口。
 
-### 1.2 ToolRegistry 改为 Arc 共享
+### 1.2 ToolRegistry — Agent 不变，改进 to_api_json
 
-SubAgent 需要访问父 Agent 的 tool 集合：
+Agent 中 `tools: ToolRegistry` 保持不变（不需要 Arc）。SubAgent 是临时的，用时创建自己的 ToolRegistry，跑完销毁。
 
-```rust
-// 之前
-pub struct Agent {
-    tools: ToolRegistry,
-}
+ToolRegistry 改进 `to_api_json()`：内部用 `JsonValue` 构建代替字符串拼接（避免转义问题），仍返回 `String`。调用方（`llm.rs`）无需变更。
 
-// 之后
-pub struct Agent {
-    tools: Arc<ToolRegistry>,
-}
-```
-
-注册完成后 ToolRegistry 只读，`Arc` 足够，不需要 `Mutex`。
-
-### 1.3 ToolRegistry 新增方法
+新增 `default_tools_without(exclude, llm)` 工厂方法，供 SubAgent 创建不含指定 tool 的 registry：
 
 ```rust
 impl ToolRegistry {
-    // 已有
-    pub fn to_api_json(&self) -> JsonValue { ... }
-
-    // 新增：排除指定 tool 的 JSON（供 SubAgent 使用）
-    pub fn to_api_json_excluding(&self, exclude: &str) -> JsonValue { ... }
+    pub fn default_tools_without(exclude: &str, llm: Arc<LLMClient>) -> Self {
+        let mut reg = Self::default_tools(llm);
+        reg.tools.retain(|t| t.name() != exclude);
+        reg
+    }
 }
 ```
-
-`to_api_json()` 内部用 `JsonValue` 构建代替字符串拼接（避免转义问题），但仍返回 `String`（`format!("{}", json_value)`）。调用方（`llm.rs`）无需变更。
 
 ### 1.4 Tool 名称重映射
 
@@ -127,11 +113,17 @@ where F: Future<Output = T> + Send
 ```rust
 pub struct SubAgentTool {
     llm: Arc<LLMClient>,
-    tools: Arc<ToolRegistry>,
 }
 ```
 
 文件位置：`src/tools/agent.rs`
+
+SubAgent 是临时的、轻量的 — 用时创建，跑完销毁。每次 execute() 内部：
+1. 创建新的 `ToolRegistry`（`default_tools_without("Agent", llm)`）
+2. 创建新的 `Vec<Message>` 消息历史
+3. 跑 agentic loop
+4. 返回文本结果
+5. 一切 drop
 
 ### 2.2 Tool 接口
 
@@ -150,15 +142,52 @@ pub struct SubAgentTool {
 
 ### 2.4 执行流程
 
-1. 创建独立的 `Vec<Message>` 消息历史
-2. 构建精简 system prompt（无 memory retrieval，无 prompt cache）
-3. 调用 `tools.to_api_json_excluding("Agent")` 获取可用 tool JSON
-4. 运行简化版 agentic loop：
-   - 调用 `llm.stream_agent_async()` — text chunk 不转发到 UI
-   - tool 执行全部 auto-approve，串行执行
-   - 收集所有文本输出
-5. 循环直到 `end_turn` 或达到 `max_iterations`
-6. 返回收集的文本作为 tool result
+```rust
+async fn run_sub_agent(llm: &LLMClient, prompt: &str, tier: ModelTier, max_iter: usize)
+    -> Result<String>
+{
+    let tools = ToolRegistry::default_tools_without("Agent", Arc::clone(&llm));
+    let tools_json = tools.to_api_json();
+    let system = vec![SystemBlock::dynamic("You are a sub-agent. Complete the task and report back.")];
+    let mut messages = vec![Message::user_text(prompt)];
+    let mut collected_text = String::new();
+
+    for _ in 0..max_iter {
+        let result = llm.stream_agent_async(
+            &system, &messages, &tools_json, tier,
+            |_| { /* 不转发到 UI */ }
+        ).await?;
+
+        for block in &result.text_blocks {
+            if let ContentBlock::Text(t) = block { collected_text.push_str(t); }
+        }
+
+        if result.tool_uses.is_empty() || result.stop_reason == "end_turn" {
+            break;
+        }
+
+        // 构建 assistant message
+        let mut assistant_blocks = result.text_blocks;
+        assistant_blocks.extend(result.tool_uses.clone());
+        messages.push(Message::Assistant(assistant_blocks));
+
+        // 执行 tool（全部 auto-approve，串行）
+        let mut tool_results = Vec::new();
+        for tu in &result.tool_uses {
+            if let ContentBlock::ToolUse { id, name, input } = tu {
+                let r = match tools.get(name) {
+                    Some(tool) => tool.execute(input).await,
+                    None => Err(Error::Tool(format!("unknown tool: {}", name))),
+                };
+                // 收集结果 ...
+            }
+        }
+        messages.push(Message::User(tool_results));
+    }
+
+    Ok(collected_text)
+}
+```
 
 ### 2.5 UI 通知
 
@@ -168,7 +197,7 @@ pub struct SubAgentTool {
 
 ### 2.6 递归防护
 
-子 Agent 的 tool 集排除 `Agent` 本身，防止无限递归。
+`default_tools_without("Agent")` 自然排除了 Agent tool，防止无限递归。
 
 ---
 
@@ -355,37 +384,13 @@ pub fn default_tools(llm: Arc<LLMClient>) -> Self {
     // 网络
     reg.register(Box::new(WebFetchTool::new(Arc::clone(&llm))));
     reg.register(Box::new(WebSearchTool));
-    // SubAgent（需要 Arc<ToolRegistry> — 在 Agent::new() 中注册，不在 default_tools 中）
+    // SubAgent — 轻量，用时创建自己的 ToolRegistry
+    reg.register(Box::new(SubAgentTool::new(Arc::clone(&llm))));
     reg
 }
 ```
 
-**注意**: `SubAgentTool` 需要 `Arc<ToolRegistry>` 引用，存在循环依赖。解决方案：在 `Agent::new()` 中，先创建 registry，转为 `Arc`，然后创建 `SubAgentTool` 并通过单独方法注册：
-
-```rust
-// Agent::new() 中
-let mut tools = ToolRegistry::default_tools(Arc::clone(&llm));
-let tools = Arc::new(tools);
-// SubAgentTool 通过 Arc::get_mut 或在 Arc 化之前注册一个 placeholder
-// 实际方案：使用 late-binding — SubAgentTool 持有 Weak<ToolRegistry>
-```
-
-**选定方案**：`SubAgentTool` 持有 `Arc<LLMClient>` + tools JSON string + tool registry 引用。Agent 在初始化完成后，先创建所有其他 tool 并转为 `Arc<ToolRegistry>`，再创建 SubAgentTool：
-
-```rust
-pub struct SubAgentTool {
-    llm: Arc<LLMClient>,
-    tools: Arc<ToolRegistry>,   // 共享 registry 引用（用于 execute）
-    tools_json: String,         // 预生成的 JSON（排除 "Agent"）
-}
-```
-
-初始化顺序：
-1. 创建除 SubAgentTool 外的所有 tool，放入 ToolRegistry
-2. 将 ToolRegistry 转为 Arc
-3. 调用 `tools.to_api_json_excluding("Agent")` 生成 JSON string
-4. 创建 SubAgentTool，注入 `Arc<ToolRegistry>` 和 JSON string
-5. 通过 `Arc::get_mut()` 向 registry 追加 SubAgentTool（此时只有一个 Arc 持有者，get_mut 会成功）
+SubAgent 没有循环引用问题 — 它只持有 `Arc<LLMClient>`，execute() 时临时创建自己的 `ToolRegistry`（通过 `default_tools_without("Agent", llm)`），跑完即销毁。
 
 ---
 
@@ -393,7 +398,7 @@ pub struct SubAgentTool {
 
 | 文件 | 变更类型 |
 |------|---------|
-| `src/tools/mod.rs` | 修改 — ToolRegistry Arc 化, to_api_json 返回 JsonValue, 新增 to_api_json_excluding |
+| `src/tools/mod.rs` | 修改 — to_api_json 用 JsonValue 构建, 新增 default_tools_without |
 | `src/tools/bash.rs` | 修改 — description 丰富, 移除 dangerouslyDisableSandbox |
 | `src/tools/file/read.rs` | 修改 — 改名 Read, description, PDF pages 实现, 二进制检测 |
 | `src/tools/file/write.rs` | 修改 — 改名 Write, description, 返回行数 |
@@ -406,7 +411,7 @@ pub struct SubAgentTool {
 | `src/tools/notebook.rs` | 新增 — NotebookEditTool |
 | `src/tools/search.rs` | 新增 — WebSearchTool (Tavily) |
 | `src/tools/agent.rs` | 新增 — SubAgentTool |
-| `src/agent/agent.rs` | 修改 — tools Arc 化, LSP 名称更新, Agent tool 并发执行, SubAgent 初始化顺序 |
+| `src/agent/agent.rs` | 修改 — LSP 名称更新, Agent tool 并发执行 |
 | `src/core/runtime/mod.rs` | 修改 — 新增 join_all |
 | `tests/tools/` | 修改 — 所有引用旧名称的测试更新 |
 | `tests/tools/notebook_test.rs` | 新增 |
