@@ -55,6 +55,58 @@ impl BigUint {
             non_eq => non_eq,
         }
     }
+
+    /// Construct from big-endian bytes. Leading zero bytes are stripped.
+    pub fn from_bytes_be(bytes: &[u8]) -> Self {
+        let start = bytes.iter().position(|&b| b != 0).unwrap_or(bytes.len());
+        let trimmed = &bytes[start..];
+        if trimmed.is_empty() {
+            return Self::zero();
+        }
+        let byte_count = trimmed.len();
+        let limb_count = byte_count.div_ceil(8);
+        let mut limbs = vec![0u64; limb_count];
+        for i in 0..byte_count {
+            let b = trimmed[byte_count - 1 - i] as u64;
+            limbs[i / 8] |= b << ((i % 8) * 8);
+        }
+        normalize(&mut limbs);
+        BigUint { limbs }
+    }
+
+    /// Return big-endian byte representation, padded on the left to at least
+    /// `out_len` bytes. If the value needs more bytes, no truncation happens.
+    pub fn to_bytes_be(&self, out_len: usize) -> Vec<u8> {
+        let bl = self.byte_len();
+        let n = bl.max(out_len);
+        let mut out = vec![0u8; n];
+        for i in 0..bl {
+            let limb = self.limbs[i / 8];
+            let byte = ((limb >> ((i % 8) * 8)) & 0xff) as u8;
+            out[n - 1 - i] = byte;
+        }
+        out
+    }
+
+    /// Number of bits needed to represent this value. 0 for zero.
+    pub fn bit_len(&self) -> usize {
+        match self.limbs.last() {
+            None => 0,
+            Some(&top) => (self.limbs.len() - 1) * 64 + (64 - top.leading_zeros() as usize),
+        }
+    }
+
+    /// Number of bytes needed to represent this value. 0 for zero.
+    fn byte_len(&self) -> usize {
+        self.bit_len().div_ceil(8)
+    }
+}
+
+/// Strip trailing zero limbs so `BigUint` invariants hold.
+fn normalize(limbs: &mut Vec<u64>) {
+    while limbs.last() == Some(&0) {
+        limbs.pop();
+    }
 }
 
 impl PartialEq for BigUint {
