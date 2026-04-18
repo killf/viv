@@ -220,3 +220,52 @@ fn sub_normalizes_result() {
     let diff = a.checked_sub(&b).unwrap();
     assert_eq!(diff, BigUint::one());
 }
+
+#[test]
+fn mul_by_zero_is_zero() {
+    let a = BigUint::from_u64(42);
+    assert_eq!(a.mul(&BigUint::zero()), BigUint::zero());
+    assert_eq!(BigUint::zero().mul(&a), BigUint::zero());
+}
+
+#[test]
+fn mul_by_one_identity() {
+    let a = BigUint::from_u64(42);
+    assert_eq!(a.mul(&BigUint::one()), a);
+}
+
+#[test]
+fn mul_small() {
+    let a = BigUint::from_u64(7);
+    let b = BigUint::from_u64(6);
+    assert_eq!(a.mul(&b), BigUint::from_u64(42));
+}
+
+#[test]
+fn mul_cross_limb() {
+    // (2^32) * (2^32) = 2^64
+    let a = BigUint::from_u64(1u64 << 32);
+    let b = BigUint::from_u64(1u64 << 32);
+    let p = a.mul(&b);
+    assert_eq!(p.bit_len(), 65);
+    assert_eq!(p.to_bytes_be(9), vec![1, 0, 0, 0, 0, 0, 0, 0, 0]);
+}
+
+#[test]
+fn mul_u64_max_squared() {
+    // (2^64 - 1)^2 = 2^128 - 2^65 + 1 = 0xfffffffffffffffe_0000000000000001
+    let a = BigUint::from_u64(u64::MAX);
+    let p = a.mul(&a);
+    let expected = BigUint::from_bytes_be(&[
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfe, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x01,
+    ]);
+    assert_eq!(p, expected);
+}
+
+#[test]
+fn mul_commutative() {
+    let a = BigUint::from_bytes_be(&[1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    let b = BigUint::from_bytes_be(&[9, 8, 7, 6, 5, 4, 3, 2, 1]);
+    assert_eq!(a.mul(&b), b.mul(&a));
+}

@@ -143,6 +143,30 @@ impl BigUint {
         normalize(&mut out);
         Some(BigUint { limbs: out })
     }
+
+    /// Multiplication: `self * other`. Schoolbook O(n²).
+    pub fn mul(&self, other: &Self) -> Self {
+        if self.is_zero() || other.is_zero() {
+            return Self::zero();
+        }
+        let m = self.limbs.len();
+        let n = other.limbs.len();
+        let mut out = vec![0u64; m + n];
+        for i in 0..m {
+            let mut carry: u64 = 0;
+            let a = self.limbs[i] as u128;
+            for j in 0..n {
+                let b = other.limbs[j] as u128;
+                let cur = out[i + j] as u128;
+                let prod = a * b + cur + carry as u128;
+                out[i + j] = prod as u64;
+                carry = (prod >> 64) as u64;
+            }
+            out[i + n] = out[i + n].wrapping_add(carry);
+        }
+        normalize(&mut out);
+        BigUint { limbs: out }
+    }
 }
 
 /// Strip trailing zero limbs so `BigUint` invariants hold.
