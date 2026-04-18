@@ -23,6 +23,7 @@ jobs:
             run_tests: true
 
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@v4
@@ -48,6 +49,7 @@ jobs:
 
       - name: Run tests
         if: matrix.run_tests
+        timeout-minutes: 2
         run: cargo test --target ${{ matrix.target }}
 
       - name: Clippy
