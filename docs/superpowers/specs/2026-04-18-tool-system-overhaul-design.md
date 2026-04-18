@@ -10,16 +10,132 @@
 | B Description | 所有 tool 对齐 Claude Code 级别的详细描述 |
 | C 参数补全 | 修复 Glob 排序、实现 Read pages、Grep 可移植性、TodoWrite 格式对齐等 |
 | D 新增 tool | NotebookEdit、Agent（SubAgent 并发）、WebSearch（Tavily） |
+| E 通信抽象 | Agent 间双向通信的 channel 抽象 |
 
 ## 实现策略
 
-Top-Down：先改框架（Tool trait / ToolRegistry / Agent loop），再逐个填充 tool 细节。
+Top-Down：先改框架（通信抽象 → Tool trait / ToolRegistry → Agent loop），再逐个填充 tool 细节。
 
 ---
 
-## Part 1: 框架层变更
+## Part 1: Agent 通信抽象
 
-### 1.1 Tool trait
+### 1.1 现状
+
+当前 Agent 通过两个独立的 channel 与 UI 通信：
+
+```rust
+pub struct Agent {
+    event_rx: AsyncReceiver<AgentEvent>,   // 收来自 UI 的指令
+    msg_tx: Sender<AgentMessage>,          // 发给 UI 的消息
+}
+```
+
+这些 channel 在 `main.rs` 中手动创建，Agent 不知道也不关心对端是谁。这正是抽象的基础。
+
+### 1.2 AgentHandle / AgentEndpoint
+
+将通信双端显式建模：
+
+```rust
+// src/bus/mod.rs
+
+/// 持有者侧（UI 或父 Agent 持有）— 向 Agent 发指令，收 Agent 消息
+pub struct AgentHandle {
+    pub tx: NotifySender<AgentEvent>,
+    pub rx: std::sync::mpsc::Receiver<AgentMessage>,
+}
+
+/// Agent 侧 — 收指令，发消息
+pub struct AgentEndpoint {
+    pub rx: AsyncReceiver<AgentEvent>,
+    pub tx: std::sync::mpsc::Sender<AgentMessage>,
+}
+
+/// 创建一对通信端点
+pub fn agent_channel() -> (AgentHandle, AgentEndpoint) {
+    let (event_tx, event_rx) = async_channel();
+    let (msg_tx, msg_rx) = std::sync::mpsc::channel();
+    (
+        AgentHandle { tx: event_tx, rx: msg_rx },
+        AgentEndpoint { rx: event_rx, tx: msg_tx },
+    )
+}
+```
+
+### 1.3 Agent 改用 AgentEndpoint
+
+```rust
+// 之前
+pub struct Agent {
+    event_rx: AsyncReceiver<AgentEvent>,
+    msg_tx: Sender<AgentMessage>,
+    // ...
+}
+
+// 之后
+pub struct Agent {
+    endpoint: AgentEndpoint,
+    // ...
+}
+```
+
+内部所有 `self.event_rx` → `self.endpoint.rx`，`self.msg_tx` → `self.endpoint.tx`。
+
+`Agent::new()` 签名简化：
+
+```rust
+// 之前
+pub async fn new(
+    config: AgentConfig,
+    event_rx: AsyncReceiver<AgentEvent>,
+    msg_tx: Sender<AgentMessage>,
+) -> Result<Self>
+
+// 之后
+pub async fn new(config: AgentConfig, endpoint: AgentEndpoint) -> Result<Self>
+```
+
+### 1.4 main.rs 适配
+
+```rust
+fn run() -> viv::Result<()> {
+    let (handle, endpoint) = agent_channel();
+
+    let config = AgentConfig::default();
+    let agent_handle = thread::spawn(move || {
+        block_on_local(Box::pin(async move {
+            let agent = Agent::new(config, endpoint).await?;
+            agent.run().await
+        }))
+    });
+
+    TerminalUI::new(handle)?.run()?;
+    agent_handle.join().unwrap_or(Ok(()))
+}
+```
+
+`TerminalUI::new()` 接收 `AgentHandle` 而非两个独立 channel。
+
+### 1.5 双向通信场景
+
+因为子 Agent 用同样的 `AgentEndpoint`，它天然支持双向通信：
+
+| 场景 | 子 Agent 发 | 父 Agent 收到后 |
+|------|------------|----------------|
+| 请求权限 | `AgentMessage::PermissionRequest { tool, input }` | 决策后回 `AgentEvent::PermissionResponse(bool)` |
+| 流式输出 | `AgentMessage::TextChunk(text)` | 收集文本或转发到 UI |
+| 状态汇报 | `AgentMessage::Status(msg)` | 记录或转发 |
+| 被中断 | — | 父 Agent 发 `AgentEvent::Interrupt` |
+| 完成 | `AgentMessage::Done` | 结束监听 |
+
+未来扩展上下文请求只需给 `AgentMessage` / `AgentEvent` 枚举加 variant。
+
+---
+
+## Part 2: Tool trait 与 ToolRegistry
+
+### 2.1 Tool trait
 
 保持不变：
 
@@ -34,15 +150,13 @@ pub trait Tool: Send + Sync {
 }
 ```
 
-SubAgent 不需要扩展 trait — 它内部创建轻量 agent loop，不暴露新接口。
+### 2.2 ToolRegistry 改进
 
-### 1.2 ToolRegistry — Agent 不变，改进 to_api_json
+Agent 中 `tools: ToolRegistry` 保持不变（不需要 Arc）。
 
-Agent 中 `tools: ToolRegistry` 保持不变（不需要 Arc）。SubAgent 是临时的，用时创建自己的 ToolRegistry，跑完销毁。
+**to_api_json() 改进**：内部用 `JsonValue` 构建代替字符串拼接（避免转义问题），仍返回 `String`。调用方（`llm.rs`）无需变更。
 
-ToolRegistry 改进 `to_api_json()`：内部用 `JsonValue` 构建代替字符串拼接（避免转义问题），仍返回 `String`。调用方（`llm.rs`）无需变更。
-
-新增 `default_tools_without(exclude, llm)` 工厂方法，供 SubAgent 创建不含指定 tool 的 registry：
+**新增 `default_tools_without()`**：供 SubAgent 创建不含指定 tool 的 registry：
 
 ```rust
 impl ToolRegistry {
@@ -54,7 +168,7 @@ impl ToolRegistry {
 }
 ```
 
-### 1.4 Tool 名称重映射
+### 2.3 Tool 名称重映射
 
 | 之前 | 之后 |
 |------|------|
@@ -71,7 +185,11 @@ if matches!(name.as_str(), "FileEdit" | "FileWrite" | "MultiEdit")
 if matches!(name.as_str(), "Edit" | "Write" | "MultiEdit")
 ```
 
-### 1.5 Agent Loop 并发改造
+---
+
+## Part 3: Agent Loop 并发 与 SubAgent
+
+### 3.1 Agent Loop 并发改造
 
 当 LLM 返回多个 tool_use 时，Agent tool 并发执行，普通 tool 串行执行：
 
@@ -93,7 +211,7 @@ let agent_results = join_all(agent_futures).await;
 tool_results.extend(agent_results);
 ```
 
-### 1.6 join_all 实现
+### 3.2 join_all 实现
 
 在 `core::runtime` 中添加零依赖的 `join_all`：
 
@@ -104,11 +222,7 @@ where F: Future<Output = T> + Send
 
 基于 viv 已有的单线程 async runtime，轮询所有 future 直到全部完成。
 
----
-
-## Part 2: SubAgent 设计
-
-### 2.1 结构
+### 3.3 SubAgentTool 结构
 
 ```rust
 pub struct SubAgentTool {
@@ -118,19 +232,10 @@ pub struct SubAgentTool {
 
 文件位置：`src/tools/agent.rs`
 
-SubAgent 是临时的、轻量的 — 用时创建，跑完销毁。每次 execute() 内部：
-1. 创建新的 `ToolRegistry`（`default_tools_without("Agent", llm)`）
-2. 创建新的 `Vec<Message>` 消息历史
-3. 跑 agentic loop
-4. 返回文本结果
-5. 一切 drop
-
-### 2.2 Tool 接口
-
 - **名称**: `"Agent"`
-- **权限**: `ReadOnly`（子 Agent 本身不直接写文件；内部 tool 各自控制权限，全部 auto-approve）
+- **权限**: `ReadOnly`
 
-### 2.3 参数
+### 3.4 参数
 
 ```json
 {
@@ -140,70 +245,90 @@ SubAgent 是临时的、轻量的 — 用时创建，跑完销毁。每次 execu
 }
 ```
 
-### 2.4 执行流程
+### 3.5 执行流程
+
+SubAgent 是临时的、轻量的 — 通过 `agent_channel()` 创建通信端点，用完即毁：
 
 ```rust
-async fn run_sub_agent(llm: &LLMClient, prompt: &str, tier: ModelTier, max_iter: usize)
-    -> Result<String>
-{
-    let tools = ToolRegistry::default_tools_without("Agent", Arc::clone(&llm));
-    let tools_json = tools.to_api_json();
-    let system = vec![SystemBlock::dynamic("You are a sub-agent. Complete the task and report back.")];
-    let mut messages = vec![Message::user_text(prompt)];
-    let mut collected_text = String::new();
+async fn execute(&self, input: &JsonValue) -> Result<String> {
+    let prompt = /* 从 input 解析 */;
+    let tier = /* 从 input 解析，默认 Fast */;
+    let max_iter = /* 从 input 解析，默认 20 */;
 
-    for _ in 0..max_iter {
-        let result = llm.stream_agent_async(
-            &system, &messages, &tools_json, tier,
-            |_| { /* 不转发到 UI */ }
-        ).await?;
+    // 创建通信 channel
+    let (handle, endpoint) = agent_channel();
 
-        for block in &result.text_blocks {
-            if let ContentBlock::Text(t) = block { collected_text.push_str(t); }
-        }
+    // 创建子 Agent（轻量版 — 无 MCP/LSP/Memory）
+    let config = AgentConfig {
+        model_tier: tier,
+        max_iterations: max_iter,
+        permission_mode: PermissionMode::Auto,
+        ..Default::default()
+    };
+    let child = Agent::new_sub(config, endpoint, Arc::clone(&self.llm)).await?;
 
-        if result.tool_uses.is_empty() || result.stop_reason == "end_turn" {
-            break;
-        }
+    // 并发：子 Agent 运行 + 父侧监听消息
+    let child_future = child.run();
 
-        // 构建 assistant message
-        let mut assistant_blocks = result.text_blocks;
-        assistant_blocks.extend(result.tool_uses.clone());
-        messages.push(Message::Assistant(assistant_blocks));
-
-        // 执行 tool（全部 auto-approve，串行）
-        let mut tool_results = Vec::new();
-        for tu in &result.tool_uses {
-            if let ContentBlock::ToolUse { id, name, input } = tu {
-                let r = match tools.get(name) {
-                    Some(tool) => tool.execute(input).await,
-                    None => Err(Error::Tool(format!("unknown tool: {}", name))),
-                };
-                // 收集结果 ...
+    let monitor_future = async {
+        let mut collected_text = String::new();
+        loop {
+            match handle.rx.try_recv() {
+                Ok(AgentMessage::TextChunk(t)) => collected_text.push_str(&t),
+                Ok(AgentMessage::Done) => break,
+                Ok(AgentMessage::PermissionRequest { .. }) => {
+                    // 双向通信：子 Agent 请求权限，父 Agent 决策
+                    let _ = handle.tx.send(AgentEvent::PermissionResponse(true));
+                }
+                Ok(_) => {}
+                Err(TryRecvError::Empty) => yield_now().await,
+                Err(TryRecvError::Disconnected) => break,
             }
         }
-        messages.push(Message::User(tool_results));
-    }
+        Ok(collected_text)
+    };
 
-    Ok(collected_text)
+    let (_, text) = join(child_future, monitor_future).await;
+    text
 }
 ```
 
-### 2.5 UI 通知
+### 3.6 Agent::new_sub() — 轻量子 Agent 构造器
 
-- 启动时：`AgentMessage::ToolStart { name: "Agent", input: "prompt=..." }`
-- 完成时：`AgentMessage::ToolEnd { name: "Agent", output: "..." }`
-- 子 Agent 内部的 tool 调用不单独通知 UI
+```rust
+impl Agent {
+    /// 创建子 Agent — 无 MCP/LSP/Memory，纯 tool 执行
+    pub async fn new_sub(
+        config: AgentConfig,
+        endpoint: AgentEndpoint,
+        llm: Arc<LLMClient>,
+    ) -> Result<Self> {
+        let tools = ToolRegistry::default_tools_without("Agent", Arc::clone(&llm));
+        Ok(Agent {
+            endpoint,
+            tools,
+            llm,
+            config,
+            messages: vec![],
+            prompt_cache: PromptCache::default(),
+            // store, index, mcp, lsp, permissions — 使用空/默认值
+            ..
+        })
+    }
+}
+```
 
-### 2.6 递归防护
+子 Agent 复用完整 `Agent` 结构体和 `agent.run()` 逻辑，只是初始化时跳过 MCP/LSP/Memory。不需要单独的 agent loop 实现。
 
-`default_tools_without("Agent")` 自然排除了 Agent tool，防止无限递归。
+### 3.7 递归防护
+
+`default_tools_without("Agent")` 排除了 Agent tool，防止无限递归。
 
 ---
 
-## Part 3: 现有 Tool 改造
+## Part 4: 现有 Tool 改造
 
-### 3.1 Read（原 FileRead）
+### 4.1 Read（原 FileRead）
 
 **名称变更**: `FileRead` → `Read`
 
@@ -213,7 +338,7 @@ async fn run_sub_agent(llm: &LLMClient, prompt: &str, tier: ModelTier, max_iter:
 - `pages`: 检测 `.pdf` 后缀，调用 `pdftotext -f <start> -l <end> <file> -` 命令。`pdftotext` 不存在时返回友好错误
 - 二进制文件检测：读前 512 字节检查 NUL 字节，是二进制则返回提示信息而非崩溃
 
-### 3.2 Write（原 FileWrite）
+### 4.2 Write（原 FileWrite）
 
 **名称变更**: `FileWrite` → `Write`
 
@@ -221,7 +346,7 @@ async fn run_sub_agent(llm: &LLMClient, prompt: &str, tier: ModelTier, max_iter:
 
 **实现改进**: 返回信息包含行数。
 
-### 3.3 Edit（原 FileEdit）
+### 4.3 Edit（原 FileEdit）
 
 **名称变更**: `FileEdit` → `Edit`
 
@@ -229,17 +354,17 @@ async fn run_sub_agent(llm: &LLMClient, prompt: &str, tier: ModelTier, max_iter:
 
 无参数变更。
 
-### 3.4 MultiEdit
+### 4.4 MultiEdit
 
 保留，description 补充原子性说明。无参数变更。
 
-### 3.5 Bash
+### 4.5 Bash
 
 **Description**: 对齐 Claude Code 详细使用指南 — 不用 bash 做 grep/cat、引号处理、git 注意事项、timeout 说明。
 
 **实现修复**: 从 schema 中移除 `dangerouslyDisableSandbox`（viv 无沙箱机制）。
 
-### 3.6 Glob
+### 4.6 Glob
 
 **Description 修正**: 移除"sorted by modification time"的错误描述，改为真正按修改时间排序。
 
@@ -247,7 +372,7 @@ async fn run_sub_agent(llm: &LLMClient, prompt: &str, tier: ModelTier, max_iter:
 - `matches.sort()` 改为按 `metadata().modified()` 排序（最近修改的排前面）
 - 添加默认忽略：`.git/`, `node_modules/`, `target/`
 
-### 3.7 Grep
+### 4.7 Grep
 
 **Description**: 对齐 Claude Code — regex 语法说明、output_mode 用途、head_limit 说明。
 
@@ -262,11 +387,11 @@ async fn run_sub_agent(llm: &LLMClient, prompt: &str, tier: ModelTier, max_iter:
   - `go` → `*.go`
   - 等
 
-### 3.8 LS
+### 4.8 LS
 
 保留，description 丰富。无实现变更。
 
-### 3.9 TodoWrite
+### 4.9 TodoWrite
 
 **格式对齐 Claude Code**:
 - 移除 `id` 字段
@@ -274,11 +399,11 @@ async fn run_sub_agent(llm: &LLMClient, prompt: &str, tier: ModelTier, max_iter:
 - 添加 `activeForm` 字段（进行时描述，如 "Running tests"）
 - 保持 `content` + `status`（pending | in_progress | completed）
 
-### 3.10 TodoRead
+### 4.10 TodoRead
 
 保留（viv 独有），无变更。
 
-### 3.11 WebFetch
+### 4.11 WebFetch
 
 **Description**: 对齐 Claude Code — 不支持认证 URL、HTTP→HTTPS 升级。
 
@@ -288,18 +413,18 @@ async fn run_sub_agent(llm: &LLMClient, prompt: &str, tier: ModelTier, max_iter:
 
 ---
 
-## Part 4: 新增 Tool — NotebookEdit
+## Part 5: 新增 Tool — NotebookEdit
 
-### 4.1 结构
+### 5.1 结构
 
 文件位置：`src/tools/notebook.rs`
 
-### 4.2 Tool 接口
+### 5.2 Tool 接口
 
 - **名称**: `"NotebookEdit"`
 - **权限**: `Write`
 
-### 4.3 参数
+### 5.3 参数
 
 ```json
 {
@@ -311,7 +436,7 @@ async fn run_sub_agent(llm: &LLMClient, prompt: &str, tier: ModelTier, max_iter:
 }
 ```
 
-### 4.4 实现要点
+### 5.4 实现要点
 
 - ipynb 是 JSON：`{ cells: [{ cell_type, source, id?, metadata, outputs }] }`
 - 用 `JsonValue` 解析
@@ -323,22 +448,22 @@ async fn run_sub_agent(llm: &LLMClient, prompt: &str, tier: ModelTier, max_iter:
 
 ---
 
-## Part 5: 新增 Tool — WebSearch（Tavily）
+## Part 6: 新增 Tool — WebSearch（Tavily）
 
-### 5.1 结构
+### 6.1 结构
 
 文件位置：`src/tools/search.rs`
 
-### 5.2 环境变量
+### 6.2 环境变量
 
 `VIV_TAVILY_API_KEY` — required。未设置时 tool 仍注册，execute 时返回友好错误。
 
-### 5.3 Tool 接口
+### 6.3 Tool 接口
 
 - **名称**: `"WebSearch"`
 - **权限**: `ReadOnly`
 
-### 5.4 参数
+### 6.4 参数
 
 ```json
 {
@@ -351,7 +476,7 @@ async fn run_sub_agent(llm: &LLMClient, prompt: &str, tier: ModelTier, max_iter:
 }
 ```
 
-### 5.5 实现要点
+### 6.5 实现要点
 
 - POST `https://api.tavily.com/search`
 - 复用 `AsyncTlsStream` + `HttpRequest`
@@ -361,7 +486,7 @@ async fn run_sub_agent(llm: &LLMClient, prompt: &str, tier: ModelTier, max_iter:
 
 ---
 
-## Part 6: default_tools 注册顺序
+## Part 7: default_tools 注册顺序
 
 ```rust
 pub fn default_tools(llm: Arc<LLMClient>) -> Self {
@@ -384,13 +509,11 @@ pub fn default_tools(llm: Arc<LLMClient>) -> Self {
     // 网络
     reg.register(Box::new(WebFetchTool::new(Arc::clone(&llm))));
     reg.register(Box::new(WebSearchTool));
-    // SubAgent — 轻量，用时创建自己的 ToolRegistry
+    // SubAgent — 用时通过 agent_channel() 创建通信端点，跑完即销毁
     reg.register(Box::new(SubAgentTool::new(Arc::clone(&llm))));
     reg
 }
 ```
-
-SubAgent 没有循环引用问题 — 它只持有 `Arc<LLMClient>`，execute() 时临时创建自己的 `ToolRegistry`（通过 `default_tools_without("Agent", llm)`），跑完即销毁。
 
 ---
 
@@ -398,6 +521,10 @@ SubAgent 没有循环引用问题 — 它只持有 `Arc<LLMClient>`，execute() 
 
 | 文件 | 变更类型 |
 |------|---------|
+| `src/bus/mod.rs` | 修改 — 新增 AgentHandle, AgentEndpoint, agent_channel() |
+| `src/bus/terminal.rs` | 修改 — TerminalUI 改为接收 AgentHandle |
+| `src/main.rs` | 修改 — 使用 agent_channel() |
+| `src/agent/agent.rs` | 修改 — 用 AgentEndpoint 替代两个独立 channel, 新增 new_sub(), LSP 名称更新, Agent tool 并发 |
 | `src/tools/mod.rs` | 修改 — to_api_json 用 JsonValue 构建, 新增 default_tools_without |
 | `src/tools/bash.rs` | 修改 — description 丰富, 移除 dangerouslyDisableSandbox |
 | `src/tools/file/read.rs` | 修改 — 改名 Read, description, PDF pages 实现, 二进制检测 |
@@ -410,9 +537,9 @@ SubAgent 没有循环引用问题 — 它只持有 `Arc<LLMClient>`，execute() 
 | `src/tools/web.rs` | 修改 — description, HTML→Markdown 转换器, 截断 16000 |
 | `src/tools/notebook.rs` | 新增 — NotebookEditTool |
 | `src/tools/search.rs` | 新增 — WebSearchTool (Tavily) |
-| `src/tools/agent.rs` | 新增 — SubAgentTool |
-| `src/agent/agent.rs` | 修改 — LSP 名称更新, Agent tool 并发执行 |
-| `src/core/runtime/mod.rs` | 修改 — 新增 join_all |
+| `src/tools/agent.rs` | 新增 — SubAgentTool, 使用 agent_channel() 双向通信 |
+| `src/core/runtime/mod.rs` | 修改 — 新增 join_all, join |
+| `tests/bus/` | 新增 — agent_channel 通信测试 |
 | `tests/tools/` | 修改 — 所有引用旧名称的测试更新 |
 | `tests/tools/notebook_test.rs` | 新增 |
 | `tests/tools/search_test.rs` | 新增 |
