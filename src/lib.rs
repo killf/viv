@@ -9,6 +9,7 @@ pub mod memory;
 pub mod permissions;
 pub mod tools;
 pub mod tui;
+pub mod log;
 
 pub use error::Error;
 pub type Result<T> = std::result::Result<T, Error>;
