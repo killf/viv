@@ -10,7 +10,10 @@ fn tempdir() -> std::path::PathBuf {
     p
 }
 fn nanos() -> u32 {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().subsec_nanos()
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .subsec_nanos()
 }
 fn json_path(p: &std::path::Path) -> String {
     p.display().to_string().replace('\\', "\\\\")
@@ -26,7 +29,8 @@ fn notebook_replace_cell_by_id() {
     let input = JsonValue::parse(&format!(
         r#"{{"notebook_path":"{}","cell_id":"cell1","new_source":"print('world')"}}"#,
         json_path(&path)
-    )).unwrap();
+    ))
+    .unwrap();
     let result = poll_to_completion(NotebookEditTool.execute(&input)).unwrap();
     assert!(result.to_lowercase().contains("replace"), "Got: {}", result);
     let content = fs::read_to_string(&path).unwrap();
@@ -59,7 +63,8 @@ fn notebook_delete_cell() {
     let input = JsonValue::parse(&format!(
         r#"{{"notebook_path":"{}","cell_id":"cell2","edit_mode":"delete","new_source":""}}"#,
         json_path(&path)
-    )).unwrap();
+    ))
+    .unwrap();
     let result = poll_to_completion(NotebookEditTool.execute(&input)).unwrap();
     assert!(result.to_lowercase().contains("delete"), "Got: {}", result);
     let content = fs::read_to_string(&path).unwrap();

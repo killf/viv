@@ -16,7 +16,10 @@ fn agent_channel_send_event_receive_in_endpoint() {
 #[test]
 fn agent_channel_send_message_receive_in_handle() {
     let (handle, endpoint) = agent_channel();
-    endpoint.tx.send(AgentMessage::TextChunk("chunk".into())).unwrap();
+    endpoint
+        .tx
+        .send(AgentMessage::TextChunk("chunk".into()))
+        .unwrap();
     match handle.rx.try_recv() {
         Ok(AgentMessage::TextChunk(s)) => assert_eq!(s, "chunk"),
         other => panic!("expected TextChunk, got {:?}", other),

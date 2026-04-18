@@ -66,7 +66,12 @@ fn write_returns_line_count() {
     let input = JsonValue::parse(&format!(
         r#"{{"file_path":"{}","content":"line1\nline2\nline3\n"}}"#,
         json_path(&path)
-    )).unwrap();
+    ))
+    .unwrap();
     let result = poll_to_completion(WriteTool.execute(&input)).unwrap();
-    assert!(result.contains("3 lines") || result.contains("3 line"), "Should mention line count: {}", result);
+    assert!(
+        result.contains("3 lines") || result.contains("3 line"),
+        "Should mention line count: {}",
+        result
+    );
 }

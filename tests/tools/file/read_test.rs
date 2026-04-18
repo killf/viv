@@ -60,7 +60,11 @@ fn read_binary_file_returns_message_not_crash() {
     fs::write(&path, b"\x89PNG\r\n\x1a\n\x00\x00binary").unwrap();
     let input = JsonValue::parse(&format!(r#"{{"file_path":"{}"}}"#, json_path(&path))).unwrap();
     let result = poll_to_completion(ReadTool.execute(&input)).unwrap();
-    assert!(result.to_lowercase().contains("binary"), "Should indicate binary file: {}", result);
+    assert!(
+        result.to_lowercase().contains("binary"),
+        "Should indicate binary file: {}",
+        result
+    );
 }
 
 #[test]

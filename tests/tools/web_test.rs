@@ -53,11 +53,7 @@ fn html_to_markdown_pre() {
 #[test]
 fn html_to_markdown_paragraphs() {
     let md = html_to_markdown("<p>First</p><p>Second</p>");
-    assert!(
-        md.contains("First") && md.contains("Second"),
-        "Got: {}",
-        md
-    );
+    assert!(md.contains("First") && md.contains("Second"), "Got: {}", md);
 }
 
 #[test]

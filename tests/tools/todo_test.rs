@@ -45,12 +45,15 @@ fn todo_write_accepts_claude_code_format() {
     let dir = tempdir();
     let path = dir.join("todo.json");
     let tool = TodoWriteTool::new(path.clone());
-    let input = JsonValue::parse(r#"{
+    let input = JsonValue::parse(
+        r#"{
         "todos": [
             {"content": "Fix bug", "status": "in_progress", "activeForm": "Fixing bug"},
             {"content": "Write tests", "status": "pending", "activeForm": "Writing tests"}
         ]
-    }"#).unwrap();
+    }"#,
+    )
+    .unwrap();
     let result = poll_to_completion(tool.execute(&input)).unwrap();
     assert!(result.contains("2 todo(s)"));
 }

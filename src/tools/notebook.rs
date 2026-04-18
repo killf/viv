@@ -208,12 +208,12 @@ fn replace_cell_source(cell: &JsonValue, new_source: &JsonValue) -> crate::Resul
 /// Create a new cell object.
 fn make_new_cell(cell_type: &str, source: &JsonValue) -> JsonValue {
     let mut pairs = vec![
-        ("cell_type".to_string(), JsonValue::Str(cell_type.to_string())),
-        ("source".to_string(), source.clone()),
         (
-            "metadata".to_string(),
-            JsonValue::Object(vec![]),
+            "cell_type".to_string(),
+            JsonValue::Str(cell_type.to_string()),
         ),
+        ("source".to_string(), source.clone()),
+        ("metadata".to_string(), JsonValue::Object(vec![])),
     ];
     if cell_type == "code" {
         pairs.push(("outputs".to_string(), JsonValue::Array(vec![])));

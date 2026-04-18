@@ -61,7 +61,10 @@ impl ToolRegistry {
         format!("{}", JsonValue::Array(tools))
     }
 
-    pub fn default_tools_without(exclude: &str, llm: std::sync::Arc<crate::llm::LLMClient>) -> Self {
+    pub fn default_tools_without(
+        exclude: &str,
+        llm: std::sync::Arc<crate::llm::LLMClient>,
+    ) -> Self {
         let mut reg = Self::default_tools(llm);
         reg.tools.retain(|t| t.name() != exclude);
         reg
@@ -75,10 +78,10 @@ impl ToolRegistry {
         use crate::tools::file::ls::LsTool;
         use crate::tools::file::read::ReadTool;
         use crate::tools::file::write::WriteTool;
-        use crate::tools::todo::{TodoReadTool, TodoWriteTool};
         use crate::tools::notebook::NotebookEditTool;
         use crate::tools::search::WebSearchTool;
         use crate::tools::sub_agent::SubAgentTool;
+        use crate::tools::todo::{TodoReadTool, TodoWriteTool};
         use crate::tools::web::WebFetchTool;
 
         let todo_path = std::path::PathBuf::from(".viv/todo.json");

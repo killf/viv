@@ -76,8 +76,7 @@ async fn run_sub_agent(
 
     let (handle, endpoint) = agent_channel();
 
-    let memory_dir =
-        std::env::temp_dir().join(format!("viv_sub_{}", std::process::id()));
+    let memory_dir = std::env::temp_dir().join(format!("viv_sub_{}", std::process::id()));
 
     let config = AgentConfig {
         model_tier: tier,
@@ -129,8 +128,7 @@ async fn run_sub_agent(
         collected
     };
 
-    let (agent_result, text) =
-        join(Box::pin(child_future), Box::pin(monitor_future)).await;
+    let (agent_result, text) = join(Box::pin(child_future), Box::pin(monitor_future)).await;
     agent_result?;
 
     if text.is_empty() {

@@ -74,10 +74,17 @@ fn grep_context_alias_works_like_dash_c() {
     let input = JsonValue::parse(&format!(
         r#"{{"pattern":"ccc","path":"{}","output_mode":"content","context":1}}"#,
         json_path(&dir)
-    )).unwrap();
+    ))
+    .unwrap();
     let result = poll_to_completion(GrepTool.execute(&input)).unwrap();
-    assert!(result.contains("bbb"), "context=1 should show line before match");
-    assert!(result.contains("ddd"), "context=1 should show line after match");
+    assert!(
+        result.contains("bbb"),
+        "context=1 should show line before match"
+    );
+    assert!(
+        result.contains("ddd"),
+        "context=1 should show line after match"
+    );
 }
 
 #[test]
@@ -90,7 +97,8 @@ fn grep_type_js_expands_to_multiple_extensions() {
     let input = JsonValue::parse(&format!(
         r#"{{"pattern":"target","path":"{}","type":"js"}}"#,
         json_path(&dir)
-    )).unwrap();
+    ))
+    .unwrap();
     let result = poll_to_completion(GrepTool.execute(&input)).unwrap();
     assert!(result.contains("a.js"));
     assert!(result.contains("b.jsx"));

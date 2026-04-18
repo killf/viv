@@ -46,8 +46,14 @@ impl Tool for GlobTool {
             walk_glob(Path::new(root), &parts, &mut matches)
                 .map_err(|e| Error::Tool(format!("glob walk: {}", e)))?;
             matches.sort_by(|a, b| {
-                let ma = a.metadata().and_then(|m| m.modified()).unwrap_or(std::time::SystemTime::UNIX_EPOCH);
-                let mb = b.metadata().and_then(|m| m.modified()).unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+                let ma = a
+                    .metadata()
+                    .and_then(|m| m.modified())
+                    .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+                let mb = b
+                    .metadata()
+                    .and_then(|m| m.modified())
+                    .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
                 mb.cmp(&ma)
             });
             Ok(matches
@@ -82,7 +88,9 @@ fn walk_glob(dir: &Path, parts: &[&str], out: &mut Vec<PathBuf>) -> std::io::Res
                 let p = entry.path();
                 if p.is_dir() {
                     if let Some(name) = p.file_name().and_then(|n| n.to_str()) {
-                        if IGNORED_DIRS.contains(&name) { continue; }
+                        if IGNORED_DIRS.contains(&name) {
+                            continue;
+                        }
                     }
                     walk_glob(&p, parts, out)?;
                 }
@@ -96,7 +104,9 @@ fn walk_glob(dir: &Path, parts: &[&str], out: &mut Vec<PathBuf>) -> std::io::Res
             let p = entry.path();
             if p.is_dir() {
                 if let Some(name) = p.file_name().and_then(|n| n.to_str()) {
-                    if IGNORED_DIRS.contains(&name) { continue; }
+                    if IGNORED_DIRS.contains(&name) {
+                        continue;
+                    }
                 }
             }
             let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
@@ -118,7 +128,9 @@ fn collect_all(dir: &Path, out: &mut Vec<PathBuf>) -> std::io::Result<()> {
             let p = entry.path();
             if p.is_dir() {
                 if let Some(name) = p.file_name().and_then(|n| n.to_str()) {
-                    if IGNORED_DIRS.contains(&name) { continue; }
+                    if IGNORED_DIRS.contains(&name) {
+                        continue;
+                    }
                 }
             }
             out.push(p.clone());

@@ -1,7 +1,7 @@
 use viv::core::json::JsonValue;
 use viv::tools::Tool;
-use viv::tools::search::WebSearchTool;
 use viv::tools::poll_to_completion;
+use viv::tools::search::WebSearchTool;
 
 #[test]
 fn search_without_api_key_returns_friendly_error() {
@@ -12,14 +12,21 @@ fn search_without_api_key_returns_friendly_error() {
     let result = poll_to_completion(tool.execute(&input));
     assert!(result.is_err());
     let err = result.unwrap_err().to_string();
-    assert!(err.contains("VIV_TAVILY_API_KEY"), "Error should mention env var: {}", err);
+    assert!(
+        err.contains("VIV_TAVILY_API_KEY"),
+        "Error should mention env var: {}",
+        err
+    );
 }
 
 #[test]
 fn search_tool_has_correct_name_and_permission() {
     let tool = WebSearchTool;
     assert_eq!(tool.name(), "WebSearch");
-    assert_eq!(tool.permission_level(), viv::tools::PermissionLevel::ReadOnly);
+    assert_eq!(
+        tool.permission_level(),
+        viv::tools::PermissionLevel::ReadOnly
+    );
 }
 
 #[test]

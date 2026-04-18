@@ -61,7 +61,11 @@ impl Tool for GrepTool {
             let lines_after = input.get("-A").and_then(|v| v.as_i64()).unwrap_or(0);
             let lines_before = input.get("-B").and_then(|v| v.as_i64()).unwrap_or(0);
             let context_alias = input.get("context").and_then(|v| v.as_i64()).unwrap_or(0);
-            let context = input.get("-C").and_then(|v| v.as_i64()).unwrap_or(0).max(context_alias);
+            let context = input
+                .get("-C")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0)
+                .max(context_alias);
             let head_limit = input
                 .get("head_limit")
                 .and_then(|v| v.as_i64())

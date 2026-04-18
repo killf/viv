@@ -387,8 +387,7 @@ impl Agent {
                 type AgentFuture =
                     std::pin::Pin<Box<dyn std::future::Future<Output = AgentResult> + Send>>;
                 let mut futures: Vec<AgentFuture> = Vec::new();
-                let mut denied_results: Vec<AgentResult> =
-                    Vec::new();
+                let mut denied_results: Vec<AgentResult> = Vec::new();
 
                 for (tu, allowed) in &approved {
                     if let ContentBlock::ToolUse { id, name, input } = tu {
@@ -420,14 +419,15 @@ impl Agent {
                                     type ErasedFut = std::pin::Pin<
                                         Box<
                                             dyn std::future::Future<
-                                                    Output = std::result::Result<String, crate::Error>,
+                                                    Output = std::result::Result<
+                                                        String,
+                                                        crate::Error,
+                                                    >,
                                                 > + Send
                                                 + 'static,
                                         >,
                                     >;
-                                    let fut: ErasedFut = unsafe {
-                                        std::mem::transmute(fut)
-                                    };
+                                    let fut: ErasedFut = unsafe { std::mem::transmute(fut) };
                                     futures.push(Box::pin(async move {
                                         let result = fut.await;
                                         (id, name, result)

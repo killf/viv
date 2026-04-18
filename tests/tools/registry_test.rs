@@ -98,12 +98,14 @@ fn to_api_json_escapes_special_characters() {
     let arr = parsed.as_array().unwrap();
     assert_eq!(arr.len(), 1);
     assert_eq!(arr[0].get("name").unwrap().as_str().unwrap(), "quote");
-    assert!(arr[0]
-        .get("description")
-        .unwrap()
-        .as_str()
-        .unwrap()
-        .contains("\"quotes\""));
+    assert!(
+        arr[0]
+            .get("description")
+            .unwrap()
+            .as_str()
+            .unwrap()
+            .contains("\"quotes\"")
+    );
 }
 
 #[test]
@@ -122,8 +124,5 @@ fn default_tools_have_claude_code_names() {
         reg.get("FileWrite").is_none(),
         "FileWrite should be renamed"
     );
-    assert!(
-        reg.get("FileEdit").is_none(),
-        "FileEdit should be renamed"
-    );
+    assert!(reg.get("FileEdit").is_none(), "FileEdit should be renamed");
 }

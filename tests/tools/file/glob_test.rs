@@ -69,11 +69,17 @@ fn glob_results_sorted_by_modification_time() {
     fs::write(&a, "a updated").unwrap();
 
     let input = JsonValue::parse(&format!(
-        r#"{{"pattern":"*.txt","path":"{}"}}"#, json_path(&dir)
-    )).unwrap();
+        r#"{{"pattern":"*.txt","path":"{}"}}"#,
+        json_path(&dir)
+    ))
+    .unwrap();
     let result = poll_to_completion(GlobTool.execute(&input)).unwrap();
     let lines: Vec<&str> = result.lines().collect();
-    assert!(lines[0].ends_with("a.txt"), "Expected a.txt first (most recent), got: {}", lines[0]);
+    assert!(
+        lines[0].ends_with("a.txt"),
+        "Expected a.txt first (most recent), got: {}",
+        lines[0]
+    );
 }
 
 #[test]
@@ -84,8 +90,10 @@ fn glob_ignores_git_directory() {
     fs::write(dir.join("real.txt"), "real").unwrap();
 
     let input = JsonValue::parse(&format!(
-        r#"{{"pattern":"**/*","path":"{}"}}"#, json_path(&dir)
-    )).unwrap();
+        r#"{{"pattern":"**/*","path":"{}"}}"#,
+        json_path(&dir)
+    ))
+    .unwrap();
     let result = poll_to_completion(GlobTool.execute(&input)).unwrap();
     assert!(!result.contains(".git"), "Should not include .git contents");
     assert!(result.contains("real.txt"));

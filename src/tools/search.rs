@@ -166,7 +166,13 @@ impl Tool for WebSearchTool {
                     .and_then(|v| v.as_str())
                     .unwrap_or("(no content)");
 
-                output.push_str(&format!("{}. {}\n   {}\n   {}\n\n", i + 1, title, url, content));
+                output.push_str(&format!(
+                    "{}. {}\n   {}\n   {}\n\n",
+                    i + 1,
+                    title,
+                    url,
+                    content
+                ));
             }
 
             Ok(output.trim_end().to_string())
