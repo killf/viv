@@ -53,3 +53,40 @@ fn glob_double_star_recurses() {
     assert!(result.contains("deep.rs"));
     assert!(result.contains("top.rs"));
 }
+
+#[test]
+fn glob_results_sorted_by_modification_time() {
+    let dir = tempdir();
+    let a = dir.join("a.txt");
+    let b = dir.join("b.txt");
+    let c = dir.join("c.txt");
+    fs::write(&a, "a").unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    fs::write(&b, "b").unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    fs::write(&c, "c").unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    fs::write(&a, "a updated").unwrap();
+
+    let input = JsonValue::parse(&format!(
+        r#"{{"pattern":"*.txt","path":"{}"}}"#, json_path(&dir)
+    )).unwrap();
+    let result = poll_to_completion(GlobTool.execute(&input)).unwrap();
+    let lines: Vec<&str> = result.lines().collect();
+    assert!(lines[0].ends_with("a.txt"), "Expected a.txt first (most recent), got: {}", lines[0]);
+}
+
+#[test]
+fn glob_ignores_git_directory() {
+    let dir = tempdir();
+    fs::create_dir_all(dir.join(".git/objects")).unwrap();
+    fs::write(dir.join(".git/objects/abc"), "git object").unwrap();
+    fs::write(dir.join("real.txt"), "real").unwrap();
+
+    let input = JsonValue::parse(&format!(
+        r#"{{"pattern":"**/*","path":"{}"}}"#, json_path(&dir)
+    )).unwrap();
+    let result = poll_to_completion(GlobTool.execute(&input)).unwrap();
+    assert!(!result.contains(".git"), "Should not include .git contents");
+    assert!(result.contains("real.txt"));
+}

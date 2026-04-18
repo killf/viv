@@ -5,6 +5,8 @@ use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 
+const IGNORED_DIRS: &[&str] = &[".git", "node_modules", "target"];
+
 pub struct GlobTool;
 
 impl Tool for GlobTool {
@@ -43,7 +45,11 @@ impl Tool for GlobTool {
             let parts: Vec<&str> = pattern.split('/').collect();
             walk_glob(Path::new(root), &parts, &mut matches)
                 .map_err(|e| Error::Tool(format!("glob walk: {}", e)))?;
-            matches.sort();
+            matches.sort_by(|a, b| {
+                let ma = a.metadata().and_then(|m| m.modified()).unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+                let mb = b.metadata().and_then(|m| m.modified()).unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+                mb.cmp(&ma)
+            });
             Ok(matches
                 .iter()
                 .map(|p| p.display().to_string())
@@ -75,6 +81,9 @@ fn walk_glob(dir: &Path, parts: &[&str], out: &mut Vec<PathBuf>) -> std::io::Res
             for entry in std::fs::read_dir(dir)?.flatten() {
                 let p = entry.path();
                 if p.is_dir() {
+                    if let Some(name) = p.file_name().and_then(|n| n.to_str()) {
+                        if IGNORED_DIRS.contains(&name) { continue; }
+                    }
                     walk_glob(&p, parts, out)?;
                 }
             }
@@ -85,6 +94,11 @@ fn walk_glob(dir: &Path, parts: &[&str], out: &mut Vec<PathBuf>) -> std::io::Res
     if dir.is_dir() {
         for entry in std::fs::read_dir(dir)?.flatten() {
             let p = entry.path();
+            if p.is_dir() {
+                if let Some(name) = p.file_name().and_then(|n| n.to_str()) {
+                    if IGNORED_DIRS.contains(&name) { continue; }
+                }
+            }
             let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
             if segment_match(seg, name) {
                 if rest.is_empty() {
@@ -102,6 +116,11 @@ fn collect_all(dir: &Path, out: &mut Vec<PathBuf>) -> std::io::Result<()> {
     if dir.is_dir() {
         for entry in std::fs::read_dir(dir)?.flatten() {
             let p = entry.path();
+            if p.is_dir() {
+                if let Some(name) = p.file_name().and_then(|n| n.to_str()) {
+                    if IGNORED_DIRS.contains(&name) { continue; }
+                }
+            }
             out.push(p.clone());
             if p.is_dir() {
                 collect_all(&p, out)?;
