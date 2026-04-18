@@ -65,3 +65,35 @@ fn grep_glob_filter_limits_files() {
     assert!(result.contains("a.rs"));
     assert!(!result.contains("b.txt"));
 }
+
+#[test]
+fn grep_context_alias_works_like_dash_c() {
+    let dir = tempdir();
+    let f = dir.join("f.txt");
+    fs::write(&f, "aaa\nbbb\nccc\nddd\neee\n").unwrap();
+    let input = JsonValue::parse(&format!(
+        r#"{{"pattern":"ccc","path":"{}","output_mode":"content","context":1}}"#,
+        json_path(&dir)
+    )).unwrap();
+    let result = poll_to_completion(GrepTool.execute(&input)).unwrap();
+    assert!(result.contains("bbb"), "context=1 should show line before match");
+    assert!(result.contains("ddd"), "context=1 should show line after match");
+}
+
+#[test]
+fn grep_type_js_expands_to_multiple_extensions() {
+    let dir = tempdir();
+    fs::write(dir.join("a.js"), "target").unwrap();
+    fs::write(dir.join("b.jsx"), "target").unwrap();
+    fs::write(dir.join("c.mjs"), "target").unwrap();
+    fs::write(dir.join("d.py"), "target").unwrap();
+    let input = JsonValue::parse(&format!(
+        r#"{{"pattern":"target","path":"{}","type":"js"}}"#,
+        json_path(&dir)
+    )).unwrap();
+    let result = poll_to_completion(GrepTool.execute(&input)).unwrap();
+    assert!(result.contains("a.js"));
+    assert!(result.contains("b.jsx"));
+    assert!(result.contains("c.mjs"));
+    assert!(!result.contains("d.py"));
+}

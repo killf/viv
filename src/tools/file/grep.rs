@@ -30,6 +30,7 @@ impl Tool for GrepTool {
                 "-A":{"type":"number","description":"Number of lines to show after each match. Requires output_mode: \"content\"."},
                 "-B":{"type":"number","description":"Number of lines to show before each match. Requires output_mode: \"content\"."},
                 "-C":{"type":"number","description":"Number of lines to show before and after each match. Requires output_mode: \"content\"."},
+                "context":{"type":"number","description":"Alias for -C. Number of context lines before and after each match."},
                 "head_limit":{"type":"number","description":"Limit output to first N lines/entries. Defaults to 250 when unspecified. Pass 0 for unlimited."},
                 "offset":{"type":"number","description":"Skip first N lines/entries before applying head_limit. Defaults to 0."},
                 "multiline":{"type":"boolean","description":"Enable multiline mode where . matches newlines (uses -z flag). Default: false."}
@@ -59,7 +60,8 @@ impl Tool for GrepTool {
             let show_line_numbers = input.get("-n").and_then(|v| v.as_bool()).unwrap_or(true);
             let lines_after = input.get("-A").and_then(|v| v.as_i64()).unwrap_or(0);
             let lines_before = input.get("-B").and_then(|v| v.as_i64()).unwrap_or(0);
-            let context = input.get("-C").and_then(|v| v.as_i64()).unwrap_or(0);
+            let context_alias = input.get("context").and_then(|v| v.as_i64()).unwrap_or(0);
+            let context = input.get("-C").and_then(|v| v.as_i64()).unwrap_or(0).max(context_alias);
             let head_limit = input
                 .get("head_limit")
                 .and_then(|v| v.as_i64())
@@ -108,7 +110,9 @@ impl Tool for GrepTool {
 
             // Include filter: type takes precedence over glob
             if let Some(t) = type_filter {
-                cmd.arg(format!("--include=*.{}", t));
+                for ext in expand_type_filter(t) {
+                    cmd.arg(format!("--include={}", ext));
+                }
             } else if let Some(g) = glob_filter {
                 cmd.arg(format!("--include={}", g));
             }
@@ -158,4 +162,21 @@ impl Tool for GrepTool {
     fn permission_level(&self) -> PermissionLevel {
         PermissionLevel::ReadOnly
     }
+}
+
+fn expand_type_filter(t: &str) -> Vec<String> {
+    let patterns: &[&str] = match t {
+        "js" => &["*.js", "*.jsx", "*.mjs", "*.cjs"],
+        "ts" => &["*.ts", "*.tsx", "*.mts", "*.cts"],
+        "py" => &["*.py", "*.pyi"],
+        "rs" => &["*.rs"],
+        "go" => &["*.go"],
+        "java" => &["*.java"],
+        "c" => &["*.c", "*.h"],
+        "cpp" => &["*.cpp", "*.cc", "*.cxx", "*.hpp", "*.hh", "*.hxx"],
+        "rb" => &["*.rb"],
+        "sh" => &["*.sh", "*.bash", "*.zsh"],
+        _ => return vec![format!("*.{}", t)],
+    };
+    patterns.iter().map(|s| s.to_string()).collect()
 }
