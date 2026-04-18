@@ -324,7 +324,7 @@ impl Agent {
                             // Safe: single-threaded runtime, guard does not cross threads.
                             #[allow(clippy::await_holding_lock)]
                             if let Err(e) = mgr.notify_did_change(&path).await {
-                                tracing::warn!("[agent] failed to notify LSP of file change: {}", e);
+                                eprintln!("[agent] failed to notify LSP of file change: {}", e);
                             }
                         }
                     }

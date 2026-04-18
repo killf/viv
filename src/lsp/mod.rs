@@ -10,7 +10,7 @@ use crate::mcp::transport::stdio::{Framing, StdioTransport};
 use crate::{Error, Result};
 use client::LspClient;
 use config::LspConfig;
-use tracing;
+
 
 type LspStdioClient = LspClient<StdioTransport>;
 
@@ -156,7 +156,7 @@ impl LspManager {
         for (name, slot) in self.servers.iter_mut() {
             if let Some(client) = slot.as_mut() {
                 if let Err(e) = client.shutdown().await {
-                    tracing::warn!("[lsp] failed to shutdown server '{}': {}", name, e);
+                    eprintln!("[lsp] failed to shutdown server '{}': {}", name, e);
                 }
             }
             *slot = None;
@@ -176,7 +176,7 @@ impl LspManager {
         let content = match std::fs::read_to_string(file) {
             Ok(c) => c,
             Err(e) => {
-                tracing::warn!("[lsp] failed to read changed file '{}': {}", file, e);
+                eprintln!("[lsp] failed to read changed file '{}': {}", file, e);
                 return Ok(());
             }
         };
