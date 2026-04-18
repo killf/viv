@@ -1,6 +1,7 @@
 pub mod block;
 pub mod code_block;
 pub mod content;
+pub mod conversation;
 pub mod focus;
 pub mod header;
 pub mod input;
