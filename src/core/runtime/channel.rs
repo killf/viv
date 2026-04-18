@@ -97,10 +97,17 @@ impl<T> Future for RecvFuture<'_, T> {
             ))),
             Err(mpsc::TryRecvError::Empty) => {
                 let handle = self.receiver.notifier.inner.handle();
-                let token = reactor()
-                    .lock()
-                    .unwrap()
-                    .register_readable(handle, cx.waker().clone());
+                let r = reactor();
+                let mut guard = r.lock().unwrap();
+                // Clean up any previous registration so we can re-register with
+                // the new waker. epoll_ctl(ADD) is not idempotent — the second
+                // call on an already-registered fd returns EEXIST, which would
+                // panic in register_readable. This matches the pattern used in
+                // async_tcp.rs for spurious re-polls.
+                if let Some(old) = unsafe { (*self.receiver.token.get()).take() } {
+                    guard.remove(old);
+                }
+                let token = guard.register_readable(handle, cx.waker().clone());
                 unsafe { *self.receiver.token.get() = Some(token) };
                 Poll::Pending
             }

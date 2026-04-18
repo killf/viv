@@ -23,15 +23,17 @@ impl Reactor {
     }
 
     pub fn register_readable(&mut self, handle: RawHandle, waker: Waker) -> u64 {
-        self.inner
-            .register_read(handle, waker)
-            .expect("register_read")
+        match self.inner.register_read(handle, waker) {
+            Ok(tok) => tok,
+            Err(e) => panic!("register_read failed: handle={:?} err={:?}", handle, e),
+        }
     }
 
     pub fn register_writable(&mut self, handle: RawHandle, waker: Waker) -> u64 {
-        self.inner
-            .register_write(handle, waker)
-            .expect("register_write")
+        match self.inner.register_write(handle, waker) {
+            Ok(tok) => tok,
+            Err(e) => panic!("register_write failed: handle={:?} err={:?}", handle, e),
+        }
     }
 
     pub fn remove(&mut self, token: u64) {

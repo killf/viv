@@ -163,9 +163,10 @@ impl UnixTerminal {
         let mut original = Termios::zeroed();
         let ret = unsafe { tcgetattr(self.input_fd, &mut original) };
         if ret != 0 {
+            let err = unsafe { *__errno_location() };
             return Err(crate::Error::Terminal(format!(
-                "tcgetattr failed with code {}",
-                ret
+                "tcgetattr failed (fd={}, owns_input={}, ret={}, errno={})",
+                self.input_fd, self.owns_input, ret, err
             )));
         }
 
