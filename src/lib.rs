@@ -8,6 +8,7 @@ pub mod lsp;
 pub mod mcp;
 pub mod memory;
 pub mod permissions;
+pub mod qrcode;
 pub mod tools;
 pub mod tui;
 
