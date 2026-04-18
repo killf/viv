@@ -1,28 +1,64 @@
 use std::collections::HashMap;
 use std::future::Future;
-use std::os::unix::io::RawFd;
 use std::pin::Pin;
 use std::process::{Child, Command, Stdio};
 use std::task::{Context, Poll};
 
 use crate::core::json::JsonValue;
+use crate::core::platform::RawHandle;
 use crate::core::runtime::reactor::reactor;
 
 use super::Transport;
 
-// FFI for non-blocking I/O
-unsafe extern "C" {
-    fn read(fd: i32, buf: *mut u8, count: usize) -> isize;
-    fn write(fd: i32, buf: *const u8, count: usize) -> isize;
-    fn fcntl(fd: i32, cmd: i32, ...) -> i32;
-    fn __errno_location() -> *mut i32;
+// ── Unix FFI and helpers ────────────────────────────────────────────────────
+
+#[cfg(unix)]
+mod unix_io {
+    use crate::core::platform::RawHandle;
+
+    unsafe extern "C" {
+        pub fn read(fd: i32, buf: *mut u8, count: usize) -> isize;
+        pub fn write(fd: i32, buf: *const u8, count: usize) -> isize;
+        fn fcntl(fd: i32, cmd: i32, ...) -> i32;
+        pub fn __errno_location() -> *mut i32;
+    }
+
+    const F_GETFL: i32 = 3;
+    const F_SETFL: i32 = 4;
+    const O_NONBLOCK: i32 = 0o4000;
+
+    pub const EAGAIN: i32 = 11;
+    pub const EWOULDBLOCK: i32 = 11; // same as EAGAIN on Linux
+
+    /// Set a file descriptor to non-blocking mode.
+    pub fn set_nonblocking(fd: RawHandle) -> crate::Result<()> {
+        unsafe {
+            let flags = fcntl(fd, F_GETFL);
+            if flags < 0 {
+                return Err(crate::Error::Io(std::io::Error::last_os_error()));
+            }
+            let ret = fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+            if ret < 0 {
+                return Err(crate::Error::Io(std::io::Error::last_os_error()));
+            }
+        }
+        Ok(())
+    }
+
+    /// Get the raw fd from a ChildStdin via the AsRawFd trait.
+    pub fn stdin_fd(child: &std::process::Child) -> Option<RawHandle> {
+        use std::os::unix::io::AsRawFd;
+        child.stdin.as_ref().map(|s| s.as_raw_fd())
+    }
+
+    pub fn stdout_fd(child: &std::process::Child) -> Option<RawHandle> {
+        use std::os::unix::io::AsRawFd;
+        child.stdout.as_ref().map(|s| s.as_raw_fd())
+    }
 }
 
-const F_GETFL: i32 = 3;
-const F_SETFL: i32 = 4;
-const O_NONBLOCK: i32 = 0o4000;
-const EAGAIN: i32 = 11;
-const EWOULDBLOCK: i32 = 11; // same as EAGAIN on Linux
+#[cfg(unix)]
+use unix_io::*;
 
 // ── Framing ──────────────────────────────────────────────────────────────────
 
@@ -100,38 +136,10 @@ impl Framing {
     }
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-/// Set a file descriptor to non-blocking mode.
-fn set_nonblocking(fd: RawFd) -> crate::Result<()> {
-    unsafe {
-        let flags = fcntl(fd, F_GETFL);
-        if flags < 0 {
-            return Err(crate::Error::Io(std::io::Error::last_os_error()));
-        }
-        let ret = fcntl(fd, F_SETFL, flags | O_NONBLOCK);
-        if ret < 0 {
-            return Err(crate::Error::Io(std::io::Error::last_os_error()));
-        }
-    }
-    Ok(())
-}
-
-/// Get the raw fd from a ChildStdin via the AsRawFd trait.
-fn stdin_fd(child: &Child) -> Option<RawFd> {
-    use std::os::unix::io::AsRawFd;
-    child.stdin.as_ref().map(|s| s.as_raw_fd())
-}
-
-fn stdout_fd(child: &Child) -> Option<RawFd> {
-    use std::os::unix::io::AsRawFd;
-    child.stdout.as_ref().map(|s| s.as_raw_fd())
-}
-
 // ── WaitReadable future ──────────────────────────────────────────────────────
 
 struct WaitReadable {
-    fd: RawFd,
+    fd: RawHandle,
     token: Option<u64>,
 }
 
@@ -157,7 +165,7 @@ impl Drop for WaitReadable {
     }
 }
 
-fn wait_readable(fd: RawFd) -> WaitReadable {
+fn wait_readable(fd: RawHandle) -> WaitReadable {
     WaitReadable { fd, token: None }
 }
 
@@ -175,8 +183,8 @@ fn wait_readable(fd: RawFd) -> WaitReadable {
 /// required (e.g. LSP servers that use `Content-Length` headers).
 pub struct StdioTransport {
     child: Child,
-    stdin_fd: RawFd,
-    stdout_fd: RawFd,
+    stdin_fd: RawHandle,
+    stdout_fd: RawHandle,
     read_buf: Vec<u8>,
     framing: Framing,
 }

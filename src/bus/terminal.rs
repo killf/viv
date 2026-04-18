@@ -2,7 +2,7 @@ use std::sync::mpsc::Receiver;
 
 use crate::bus::{AgentEvent, AgentMessage};
 use crate::core::runtime::channel::NotifySender;
-use crate::core::terminal::backend::{Backend, LinuxBackend};
+use crate::core::terminal::backend::{Backend, CrossBackend};
 use crate::core::terminal::buffer::char_width;
 use crate::core::terminal::events::{Event, EventLoop};
 use crate::core::terminal::input::KeyEvent;
@@ -36,7 +36,7 @@ enum UiAction {
 pub struct TerminalUI {
     event_tx: NotifySender<AgentEvent>,
     msg_rx: Receiver<AgentMessage>,
-    backend: LinuxBackend,
+    backend: CrossBackend,
     renderer: Renderer,
     editor: LineEditor,
     history_lines: Vec<Line>,
@@ -66,7 +66,7 @@ impl TerminalUI {
         event_tx: NotifySender<AgentEvent>,
         msg_rx: Receiver<AgentMessage>,
     ) -> crate::Result<Self> {
-        let mut backend = LinuxBackend::new();
+        let mut backend = CrossBackend::new()?;
         backend.enter_alt_screen()?;
         backend.enable_raw_mode()?;
         // Switch to a steady (non-blinking) bar cursor via DECSCUSR. Blinking

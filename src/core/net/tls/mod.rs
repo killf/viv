@@ -263,7 +263,7 @@ impl AsyncTlsStream {
     /// Connect to `host:port` over TLS 1.3 with async I/O.
     pub async fn connect(host: &str, port: u16) -> crate::Result<Self> {
         let mut tcp = AsyncTcpStream::connect(host, port).await?;
-        let fd = tcp.raw_fd();
+        let fd = tcp.raw_handle();
         let mut record = RecordLayer::new();
         let mut hs = Handshake::new(host)?;
 
@@ -367,8 +367,8 @@ impl AsyncTlsStream {
         })
     }
 
-    pub fn raw_fd(&self) -> std::os::unix::io::RawFd {
-        self.tcp.raw_fd()
+    pub fn raw_handle(&self) -> crate::core::platform::RawHandle {
+        self.tcp.raw_handle()
     }
 
     /// Async read into buffer. Returns number of bytes read (0 = EOF).
@@ -381,7 +381,7 @@ impl AsyncTlsStream {
             return Ok(n);
         }
 
-        let fd = self.tcp.raw_fd();
+        let fd = self.tcp.raw_handle();
         let mut tmp = [0u8; 8192];
 
         loop {
@@ -429,7 +429,7 @@ impl AsyncTlsStream {
 
     /// Async write all bytes from buffer.
     pub async fn write_all(&mut self, buf: &[u8]) -> crate::Result<()> {
-        let fd = self.tcp.raw_fd();
+        let fd = self.tcp.raw_handle();
         let chunk_size = 16384;
         let mut offset = 0;
         while offset < buf.len() {
@@ -449,26 +449,17 @@ impl AsyncTlsStream {
 
 impl Drop for AsyncTlsStream {
     fn drop(&mut self) {
-        // Best-effort close_notify (sync write via syscall since we're in Drop)
+        // Best-effort close_notify via std::io::Write (portable, no inline asm)
         let mut alert_record = Vec::new();
         self.record.write_encrypted(
             ALERT,
             &[1, 0],
             &mut alert_record,
         );
-        let fd = self.tcp.raw_fd() as u64;
-        unsafe {
-            std::arch::asm!(
-                "syscall",
-                in("rax") 1u64,  // SYS_write
-                in("rdi") fd,
-                in("rsi") alert_record.as_ptr(),
-                in("rdx") alert_record.len(),
-                lateout("rax") _,
-                lateout("rcx") _,
-                lateout("r11") _,
-            );
-        }
+        self.tcp.inner_mut().set_nonblocking(false).ok();
+        let stream = self.tcp.inner_mut();
+        let _ = std::io::Write::write_all(stream, &alert_record);
+        let _ = std::io::Write::flush(stream);
     }
 }
 
@@ -476,7 +467,7 @@ impl Drop for AsyncTlsStream {
 
 async fn async_read(
     tcp: &mut AsyncTcpStream,
-    _fd: std::os::unix::io::RawFd,
+    _handle: crate::core::platform::RawHandle,
     buf: &mut [u8],
 ) -> crate::Result<usize> {
     let n = tcp.read(buf).await?;
@@ -485,7 +476,7 @@ async fn async_read(
 
 async fn async_write_all(
     tcp: &mut AsyncTcpStream,
-    _fd: std::os::unix::io::RawFd,
+    _handle: crate::core::platform::RawHandle,
     buf: &[u8],
 ) -> crate::Result<()> {
     tcp.write_all(buf).await

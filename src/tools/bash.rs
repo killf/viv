@@ -2,8 +2,9 @@ use std::pin::Pin;
 use std::future::Future;
 use crate::error::Error;
 use crate::core::json::JsonValue;
+use crate::core::platform::shell_command;
 use crate::tools::{PermissionLevel, Tool};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::time::{Duration, Instant};
 
 pub struct BashTool;
@@ -41,16 +42,14 @@ impl Tool for BashTool {
             .and_then(|v| v.as_bool()).unwrap_or(false);
 
         if run_in_background {
-            let child = Command::new("sh")
-                .arg("-c").arg(command)
+            let child = shell_command(command)
                 .stdout(Stdio::null()).stderr(Stdio::null())
                 .spawn()
                 .map_err(|e| Error::Tool(format!("spawn: {}", e)))?;
             return Ok(format!("Background process started (pid: {})", child.id()));
         }
 
-        let mut child = Command::new("sh")
-            .arg("-c").arg(command)
+        let mut child = shell_command(command)
             .stdout(Stdio::piped()).stderr(Stdio::piped())
             .spawn()
             .map_err(|e| Error::Tool(format!("spawn: {}", e)))?;

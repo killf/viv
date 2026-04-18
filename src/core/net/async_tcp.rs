@@ -1,7 +1,10 @@
 use std::future::Future;
 use std::io::{self, Read, Write};
 use std::net::TcpStream;
+#[cfg(unix)]
 use std::os::unix::io::AsRawFd;
+#[cfg(windows)]
+use std::os::windows::io::AsRawSocket;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use crate::core::runtime::reactor::reactor;
@@ -17,9 +20,14 @@ impl AsyncTcpStream {
         AsyncTcpStream { inner: stream }
     }
 
-    pub fn raw_fd(&self) -> std::os::unix::io::RawFd {
-        self.inner.as_raw_fd()
+    pub fn raw_handle(&self) -> crate::core::platform::RawHandle {
+        #[cfg(unix)]
+        { self.inner.as_raw_fd() }
+        #[cfg(windows)]
+        { self.inner.as_raw_socket() as crate::core::platform::RawHandle }
     }
+
+    pub fn inner_mut(&mut self) -> &mut TcpStream { &mut self.inner }
 
     pub fn connect(host: &str, port: u16) -> ConnectFuture {
         ConnectFuture { host: host.to_string(), port, done: false }
@@ -76,7 +84,7 @@ impl<'a> Future for ReadFuture<'a> {
         match this.stream.inner.read(this.buf) {
             Ok(n) => Poll::Ready(Ok(n)),
             Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
-                let fd = this.stream.inner.as_raw_fd();
+                let fd = this.stream.raw_handle();
                 let token = reactor().lock().unwrap().register_readable(fd, cx.waker().clone());
                 this.token = Some(token);
                 Poll::Pending
@@ -119,7 +127,7 @@ impl<'a> Future for WriteFuture<'a> {
             match this.stream.inner.write(&this.buf[this.written..]) {
                 Ok(n) => this.written += n,
                 Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
-                    let fd = this.stream.inner.as_raw_fd();
+                    let fd = this.stream.raw_handle();
                     let token = reactor().lock().unwrap().register_writable(fd, cx.waker().clone());
                     this.token = Some(token);
                     return Poll::Pending;

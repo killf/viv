@@ -1,6 +1,7 @@
 use std::io::Write as IoWrite;
 use super::size::{TermSize, terminal_size};
 use super::raw_mode::RawMode;
+use crate::core::platform::PlatformTerminal;
 
 /// ANSI sequence to switch to the terminal's alternate screen buffer
 /// (like vim/htop). Preserves the user's scrollback.
@@ -86,6 +87,97 @@ impl Backend for LinuxBackend {
     fn disable_raw_mode(&mut self) -> crate::Result<()> {
         self.raw_mode = None;
         Ok(())
+    }
+
+    fn hide_cursor(&mut self) -> crate::Result<()> {
+        self.stdout.write_all(b"\x1b[?25l")?;
+        Ok(())
+    }
+
+    fn show_cursor(&mut self) -> crate::Result<()> {
+        self.stdout.write_all(b"\x1b[?25h")?;
+        Ok(())
+    }
+
+    fn move_cursor(&mut self, row: u16, col: u16) -> crate::Result<()> {
+        let seq = format!("\x1b[{};{}H", row + 1, col + 1);
+        self.stdout.write_all(seq.as_bytes())?;
+        Ok(())
+    }
+
+    fn enter_alt_screen(&mut self) -> crate::Result<()> {
+        if !self.in_alt_screen {
+            self.stdout.write_all(ENTER_ALT_SCREEN)?;
+            self.stdout.flush()?;
+            self.in_alt_screen = true;
+        }
+        Ok(())
+    }
+
+    fn leave_alt_screen(&mut self) -> crate::Result<()> {
+        if self.in_alt_screen {
+            self.stdout.write_all(LEAVE_ALT_SCREEN)?;
+            self.stdout.flush()?;
+            self.in_alt_screen = false;
+        }
+        Ok(())
+    }
+}
+
+// ── CrossBackend ─────────────────────────────────────────────────────────────
+
+pub struct CrossBackend {
+    terminal: PlatformTerminal,
+    stdout: std::io::Stdout,
+    in_alt_screen: bool,
+}
+
+impl CrossBackend {
+    pub fn new() -> crate::Result<Self> {
+        Ok(CrossBackend {
+            terminal: PlatformTerminal::new()?,
+            stdout: std::io::stdout(),
+            in_alt_screen: false,
+        })
+    }
+}
+
+impl Default for CrossBackend {
+    fn default() -> Self { Self::new().expect("CrossBackend::new") }
+}
+
+impl Drop for CrossBackend {
+    fn drop(&mut self) {
+        if self.in_alt_screen {
+            let _ = self.stdout.write_all(LEAVE_ALT_SCREEN);
+            let _ = self.stdout.flush();
+        }
+        self.terminal.disable_raw_mode().ok();
+    }
+}
+
+impl Backend for CrossBackend {
+    fn size(&self) -> crate::Result<TermSize> {
+        let (cols, rows) = self.terminal.size();
+        Ok(TermSize { rows, cols })
+    }
+
+    fn write(&mut self, buf: &[u8]) -> crate::Result<()> {
+        self.stdout.write_all(buf)?;
+        Ok(())
+    }
+
+    fn flush(&mut self) -> crate::Result<()> {
+        self.stdout.flush()?;
+        Ok(())
+    }
+
+    fn enable_raw_mode(&mut self) -> crate::Result<()> {
+        self.terminal.enable_raw_mode()
+    }
+
+    fn disable_raw_mode(&mut self) -> crate::Result<()> {
+        self.terminal.disable_raw_mode()
     }
 
     fn hide_cursor(&mut self) -> crate::Result<()> {
