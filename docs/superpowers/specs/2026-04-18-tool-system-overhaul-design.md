@@ -16,43 +16,50 @@
 
 Top-Down：先改框架（通信抽象 → Tool trait / ToolRegistry → Agent loop），再逐个填充 tool 细节。
 
----
+## 通信架构总览
 
-## Part 1: Agent 通信抽象
+三条规则：
 
-### 1.1 现状
+1. **主 Agent ↔ UI**：通过现有的 `AgentEvent` / `AgentMessage` + `mpsc` 通信，**不改动**
+2. **主 Agent ↔ 子 Agent**：通过新的 `agent_channel()` 双向通信
+3. **子 Agent ↔ 子 Agent**：不允许（子 Agent 只和创建它的父 Agent 通信）
 
-当前 Agent 通过两个独立的 channel 与 UI 通信：
-
-```rust
-pub struct Agent {
-    event_rx: AsyncReceiver<AgentEvent>,   // 收来自 UI 的指令
-    msg_tx: Sender<AgentMessage>,          // 发给 UI 的消息
-}
+```
+┌──────────┐  AgentEvent/AgentMessage  ┌────────────┐  agent_channel  ┌─────────────┐
+│    UI    │◄─────────────────────────►│  主 Agent  │◄──────────────►│  子 Agent A │
+│(Terminal)│   (现有 mpsc, 不改动)      │            │                └─────────────┘
+└──────────┘                           │            │  agent_channel  ┌─────────────┐
+                                       │            │◄──────────────►│  子 Agent B │
+                                       └────────────┘                └─────────────┘
+                                                                      (A 和 B 之间
+                                                                       不能通信)
 ```
 
-这些 channel 在 `main.rs` 中手动创建，Agent 不知道也不关心对端是谁。这正是抽象的基础。
+---
 
-### 1.2 AgentHandle / AgentEndpoint
+## Part 1: Agent 间通信抽象
 
-将通信双端显式建模：
+### 1.1 agent_channel — 仅用于 Agent 间通信
 
 ```rust
-// src/bus/mod.rs
+// src/bus/channel.rs (新文件)
 
-/// 持有者侧（UI 或父 Agent 持有）— 向 Agent 发指令，收 Agent 消息
+use crate::bus::{AgentEvent, AgentMessage};
+use crate::core::runtime::channel::{async_channel, NotifySender, AsyncReceiver};
+
+/// 父 Agent 侧 — 向子 Agent 发指令，收子 Agent 的消息
 pub struct AgentHandle {
     pub tx: NotifySender<AgentEvent>,
     pub rx: std::sync::mpsc::Receiver<AgentMessage>,
 }
 
-/// Agent 侧 — 收指令，发消息
+/// 子 Agent 侧 — 收父 Agent 的指令，发消息给父 Agent
 pub struct AgentEndpoint {
     pub rx: AsyncReceiver<AgentEvent>,
     pub tx: std::sync::mpsc::Sender<AgentMessage>,
 }
 
-/// 创建一对通信端点
+/// 创建 Agent 间通信的一对端点
 pub fn agent_channel() -> (AgentHandle, AgentEndpoint) {
     let (event_tx, event_rx) = async_channel();
     let (msg_tx, msg_rx) = std::sync::mpsc::channel();
@@ -63,73 +70,50 @@ pub fn agent_channel() -> (AgentHandle, AgentEndpoint) {
 }
 ```
 
-### 1.3 Agent 改用 AgentEndpoint
+### 1.2 主 Agent 不变
+
+主 Agent 保持现有结构，UI 通信路径完全不动：
 
 ```rust
-// 之前
 pub struct Agent {
-    event_rx: AsyncReceiver<AgentEvent>,
-    msg_tx: Sender<AgentMessage>,
-    // ...
-}
-
-// 之后
-pub struct Agent {
-    endpoint: AgentEndpoint,
+    event_rx: AsyncReceiver<AgentEvent>,   // 收来自 UI 的指令（不变）
+    msg_tx: Sender<AgentMessage>,          // 发给 UI 的消息（不变）
     // ...
 }
 ```
 
-内部所有 `self.event_rx` → `self.endpoint.rx`，`self.msg_tx` → `self.endpoint.tx`。
+`main.rs`、`TerminalUI` — **零改动**。
 
-`Agent::new()` 签名简化：
+### 1.3 子 Agent 使用 AgentEndpoint
+
+子 Agent 通过 `AgentEndpoint` 与父 Agent 通信：
 
 ```rust
-// 之前
-pub async fn new(
+// Agent::new_sub() 接收 AgentEndpoint
+pub async fn new_sub(
     config: AgentConfig,
-    event_rx: AsyncReceiver<AgentEvent>,
-    msg_tx: Sender<AgentMessage>,
+    endpoint: AgentEndpoint,
+    llm: Arc<LLMClient>,
 ) -> Result<Self>
-
-// 之后
-pub async fn new(config: AgentConfig, endpoint: AgentEndpoint) -> Result<Self>
 ```
 
-### 1.4 main.rs 适配
+子 Agent 内部用 `endpoint.rx` 收指令（如权限响应、中断），用 `endpoint.tx` 发消息（如文本输出、权限请求、完成通知）。
 
-```rust
-fn run() -> viv::Result<()> {
-    let (handle, endpoint) = agent_channel();
-
-    let config = AgentConfig::default();
-    let agent_handle = thread::spawn(move || {
-        block_on_local(Box::pin(async move {
-            let agent = Agent::new(config, endpoint).await?;
-            agent.run().await
-        }))
-    });
-
-    TerminalUI::new(handle)?.run()?;
-    agent_handle.join().unwrap_or(Ok(()))
-}
-```
-
-`TerminalUI::new()` 接收 `AgentHandle` 而非两个独立 channel。
-
-### 1.5 双向通信场景
-
-因为子 Agent 用同样的 `AgentEndpoint`，它天然支持双向通信：
+### 1.4 双向通信场景
 
 | 场景 | 子 Agent 发 | 父 Agent 收到后 |
 |------|------------|----------------|
 | 请求权限 | `AgentMessage::PermissionRequest { tool, input }` | 决策后回 `AgentEvent::PermissionResponse(bool)` |
-| 流式输出 | `AgentMessage::TextChunk(text)` | 收集文本或转发到 UI |
-| 状态汇报 | `AgentMessage::Status(msg)` | 记录或转发 |
+| 流式输出 | `AgentMessage::TextChunk(text)` | 收集文本 |
+| 状态汇报 | `AgentMessage::Status(msg)` | 记录或忽略 |
 | 被中断 | — | 父 Agent 发 `AgentEvent::Interrupt` |
 | 完成 | `AgentMessage::Done` | 结束监听 |
 
-未来扩展上下文请求只需给 `AgentMessage` / `AgentEvent` 枚举加 variant。
+### 1.5 隔离性保证
+
+子 Agent 之间不能通信 — 每个子 Agent 只持有一个 `AgentEndpoint`，只能和创建它的父 Agent 交互。父 Agent 持有每个子 Agent 的 `AgentHandle`，是唯一的协调者。
+
+未来扩展（如上下文请求）只需给 `AgentEvent` / `AgentMessage` 枚举加 variant。
 
 ---
 
@@ -156,7 +140,7 @@ Agent 中 `tools: ToolRegistry` 保持不变（不需要 Arc）。
 
 **to_api_json() 改进**：内部用 `JsonValue` 构建代替字符串拼接（避免转义问题），仍返回 `String`。调用方（`llm.rs`）无需变更。
 
-**新增 `default_tools_without()`**：供 SubAgent 创建不含指定 tool 的 registry：
+**新增 `default_tools_without()`**：供子 Agent 创建不含指定 tool 的 registry：
 
 ```rust
 impl ToolRegistry {
@@ -187,7 +171,7 @@ if matches!(name.as_str(), "Edit" | "Write" | "MultiEdit")
 
 ---
 
-## Part 3: Agent Loop 并发 与 SubAgent
+## Part 3: Agent Loop 并发与 SubAgent
 
 ### 3.1 Agent Loop 并发改造
 
@@ -213,11 +197,14 @@ tool_results.extend(agent_results);
 
 ### 3.2 join_all 实现
 
-在 `core::runtime` 中添加零依赖的 `join_all`：
+在 `core::runtime` 中添加零依赖的 `join_all` 和 `join`：
 
 ```rust
 pub async fn join_all<F, T>(futures: Vec<F>) -> Vec<T>
 where F: Future<Output = T> + Send
+
+pub async fn join<A, B, RA, RB>(a: A, b: B) -> (RA, RB)
+where A: Future<Output = RA> + Send, B: Future<Output = RB> + Send
 ```
 
 基于 viv 已有的单线程 async runtime，轮询所有 future 直到全部完成。
@@ -255,7 +242,7 @@ async fn execute(&self, input: &JsonValue) -> Result<String> {
     let tier = /* 从 input 解析，默认 Fast */;
     let max_iter = /* 从 input 解析，默认 20 */;
 
-    // 创建通信 channel
+    // 创建 agent 间通信 channel
     let (handle, endpoint) = agent_channel();
 
     // 创建子 Agent（轻量版 — 无 MCP/LSP/Memory）
@@ -277,7 +264,7 @@ async fn execute(&self, input: &JsonValue) -> Result<String> {
                 Ok(AgentMessage::TextChunk(t)) => collected_text.push_str(&t),
                 Ok(AgentMessage::Done) => break,
                 Ok(AgentMessage::PermissionRequest { .. }) => {
-                    // 双向通信：子 Agent 请求权限，父 Agent 决策
+                    // 双向：子 Agent 请求权限，父 Agent 自动批准
                     let _ = handle.tx.send(AgentEvent::PermissionResponse(true));
                 }
                 Ok(_) => {}
@@ -305,20 +292,21 @@ impl Agent {
     ) -> Result<Self> {
         let tools = ToolRegistry::default_tools_without("Agent", Arc::clone(&llm));
         Ok(Agent {
-            endpoint,
+            event_rx: endpoint.rx,
+            msg_tx: endpoint.tx,
             tools,
             llm,
             config,
             messages: vec![],
             prompt_cache: PromptCache::default(),
-            // store, index, mcp, lsp, permissions — 使用空/默认值
+            // store, index, mcp, lsp, permissions — 空/默认值
             ..
         })
     }
 }
 ```
 
-子 Agent 复用完整 `Agent` 结构体和 `agent.run()` 逻辑，只是初始化时跳过 MCP/LSP/Memory。不需要单独的 agent loop 实现。
+子 Agent 复用完整 `Agent` 结构体和 `Agent::run()` 逻辑。`event_rx` / `msg_tx` 指向的是 `agent_channel` 的端点（父 Agent），而非 UI。对 Agent 内部逻辑完全透明。
 
 ### 3.7 递归防护
 
@@ -509,7 +497,7 @@ pub fn default_tools(llm: Arc<LLMClient>) -> Self {
     // 网络
     reg.register(Box::new(WebFetchTool::new(Arc::clone(&llm))));
     reg.register(Box::new(WebSearchTool));
-    // SubAgent — 用时通过 agent_channel() 创建通信端点，跑完即销毁
+    // SubAgent — 用时通过 agent_channel() 创建通信端点，跑完即毁
     reg.register(Box::new(SubAgentTool::new(Arc::clone(&llm))));
     reg
 }
@@ -521,10 +509,9 @@ pub fn default_tools(llm: Arc<LLMClient>) -> Self {
 
 | 文件 | 变更类型 |
 |------|---------|
-| `src/bus/mod.rs` | 修改 — 新增 AgentHandle, AgentEndpoint, agent_channel() |
-| `src/bus/terminal.rs` | 修改 — TerminalUI 改为接收 AgentHandle |
-| `src/main.rs` | 修改 — 使用 agent_channel() |
-| `src/agent/agent.rs` | 修改 — 用 AgentEndpoint 替代两个独立 channel, 新增 new_sub(), LSP 名称更新, Agent tool 并发 |
+| `src/bus/mod.rs` | 修改 — 新增 `pub mod channel` |
+| `src/bus/channel.rs` | 新增 — AgentHandle, AgentEndpoint, agent_channel() |
+| `src/agent/agent.rs` | 修改 — 新增 new_sub(), LSP 名称更新, Agent tool 并发执行 |
 | `src/tools/mod.rs` | 修改 — to_api_json 用 JsonValue 构建, 新增 default_tools_without |
 | `src/tools/bash.rs` | 修改 — description 丰富, 移除 dangerouslyDisableSandbox |
 | `src/tools/file/read.rs` | 修改 — 改名 Read, description, PDF pages 实现, 二进制检测 |
@@ -539,7 +526,7 @@ pub fn default_tools(llm: Arc<LLMClient>) -> Self {
 | `src/tools/search.rs` | 新增 — WebSearchTool (Tavily) |
 | `src/tools/agent.rs` | 新增 — SubAgentTool, 使用 agent_channel() 双向通信 |
 | `src/core/runtime/mod.rs` | 修改 — 新增 join_all, join |
-| `tests/bus/` | 新增 — agent_channel 通信测试 |
+| `tests/bus/channel_test.rs` | 新增 — agent_channel 通信测试 |
 | `tests/tools/` | 修改 — 所有引用旧名称的测试更新 |
 | `tests/tools/notebook_test.rs` | 新增 |
 | `tests/tools/search_test.rs` | 新增 |
