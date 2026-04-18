@@ -1,4 +1,5 @@
 use std::cmp::Ordering;
+use std::time::Instant;
 
 use viv::core::bigint::BigUint;
 
@@ -405,4 +406,77 @@ fn modexp_fermat_little_theorem() {
     let e = BigUint::from_u64(96);
     let m = BigUint::from_u64(97);
     assert_eq!(a.modexp(&e, &m), Some(BigUint::one()));
+}
+
+fn rsa2048_test_modulus() -> BigUint {
+    // A pseudo-random 256-byte big-endian number used for modexp stress
+    // testing. NOT a real RSA modulus — we don't assert any RSA-specific
+    // properties here, only modexp self-consistency at 2048-bit scale.
+    let n_hex = "\
+        c2f1e5f7d8c4b2a394d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3\
+        c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5\
+        e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7\
+        a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9\
+        c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1\
+        e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3\
+        a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5\
+        c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7";
+    BigUint::from_bytes_be(&hex_decode(n_hex))
+}
+
+fn hex_decode(s: &str) -> Vec<u8> {
+    let s: String = s.chars().filter(|c| !c.is_whitespace()).collect();
+    (0..s.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap())
+        .collect()
+}
+
+#[test]
+fn modexp_rsa2048_stable() {
+    let n = rsa2048_test_modulus();
+    let e = BigUint::from_u64(65537);
+    let m = BigUint::from_u64(12345);
+
+    let c1 = m.modexp(&e, &n).unwrap();
+    let c2 = m.modexp(&e, &n).unwrap();
+    assert_eq!(c1, c2);
+    // Result must be less than the modulus.
+    assert_eq!(c1.cmp(&n), Ordering::Less);
+}
+
+#[test]
+fn modexp_rsa2048_multiplicative_homomorphism() {
+    // (a * b)^e mod n == (a^e * b^e) mod n
+    let n = rsa2048_test_modulus();
+    let e = BigUint::from_u64(65537);
+    let a = BigUint::from_u64(7);
+    let b = BigUint::from_u64(11);
+
+    let ab = a.mul(&b);
+    let (_, ab_mod_n) = ab.div_rem(&n).unwrap();
+
+    let ab_e = ab_mod_n.modexp(&e, &n).unwrap();
+    let a_e = a.modexp(&e, &n).unwrap();
+    let b_e = b.modexp(&e, &n).unwrap();
+    let ae_be = a_e.mul(&b_e);
+    let (_, ae_be_mod) = ae_be.div_rem(&n).unwrap();
+
+    assert_eq!(ab_e, ae_be_mod);
+}
+
+#[test]
+fn modexp_rsa2048_timing_under_500ms() {
+    let n = rsa2048_test_modulus();
+    let e = BigUint::from_u64(65537);
+    let m = BigUint::from_u64(42);
+
+    let start = Instant::now();
+    let _c = m.modexp(&e, &n).unwrap();
+    let elapsed = start.elapsed();
+    assert!(
+        elapsed.as_millis() < 500,
+        "RSA-2048 modexp took {}ms, expected <500ms",
+        elapsed.as_millis()
+    );
 }
