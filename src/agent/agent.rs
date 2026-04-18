@@ -311,6 +311,26 @@ impl Agent {
                 }
             }
 
+            // After all tool results are collected, notify LSP of any file changes.
+            for tu in &tool_uses {
+                if let ContentBlock::ToolUse { name, input, .. } = tu {
+                    if matches!(name.as_str(), "FileEdit" | "FileWrite" | "MultiEdit") {
+                        if let Some(path) = input
+                            .get("file_path")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string())
+                        {
+                            let mut mgr = self.lsp.lock().unwrap();
+                            // Safe: single-threaded runtime, guard does not cross threads.
+                            #[allow(clippy::await_holding_lock)]
+                            if let Err(e) = mgr.notify_did_change(&path).await {
+                                tracing::warn!("[agent] failed to notify LSP of file change: {}", e);
+                            }
+                        }
+                    }
+                }
+            }
+
             self.messages.push(Message::User(tool_results));
         }
 
