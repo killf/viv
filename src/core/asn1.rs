@@ -284,6 +284,16 @@ impl<'a> Parser<'a> {
         Ok((tag, value))
     }
 
+    /// Read one TLV and return the complete raw bytes (tag + length + value).
+    /// Unlike `read_any`, which returns only the value, this is useful for
+    /// things like X.509 TBSCertificate that needs to be fed as-is to a
+    /// signature verifier.
+    pub fn read_any_raw(&mut self) -> crate::Result<&'a [u8]> {
+        let start = self.pos;
+        let _ = self.read_any()?;
+        Ok(&self.data[start..self.pos])
+    }
+
     /// Peek at the next tag without advancing.
     pub fn peek_tag(&self) -> crate::Result<Tag> {
         let (tag, _consumed) = Tag::from_bytes(&self.data[self.pos..])?;

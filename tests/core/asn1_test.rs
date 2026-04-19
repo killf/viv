@@ -468,3 +468,24 @@ fn parse_real_certificate_header() {
     cert.finish().unwrap();
     top.finish().unwrap();
 }
+
+#[test]
+fn read_any_raw_returns_complete_tlv() {
+    // 02 01 05 = INTEGER 5 — raw should be the whole TLV
+    let mut p = Parser::new(&[0x02, 0x01, 0x05, 0xaa, 0xbb]);
+    let raw = p.read_any_raw().unwrap();
+    assert_eq!(raw, &[0x02, 0x01, 0x05]);
+    // Remaining bytes stay in parser
+    assert_eq!(p.remaining(), &[0xaa, 0xbb]);
+}
+
+#[test]
+fn read_any_raw_with_long_length() {
+    // 04 82 01 00 <256 bytes> = OCTET STRING 256 bytes
+    let mut tlv = vec![0x04, 0x82, 0x01, 0x00];
+    tlv.extend_from_slice(&[0xff; 256]);
+    let mut p = Parser::new(&tlv);
+    let raw = p.read_any_raw().unwrap();
+    assert_eq!(raw.len(), 4 + 256);
+    assert_eq!(&raw[..4], &[0x04, 0x82, 0x01, 0x00]);
+}
