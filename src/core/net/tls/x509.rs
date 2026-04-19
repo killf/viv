@@ -337,6 +337,40 @@ impl<'a> X509Certificate<'a> {
             signature: sig_bits.bytes,
         })
     }
+
+    /// Wildcard-aware hostname match against SAN dNSName entries.
+    /// Leftmost-label wildcard per RFC 6125 §6.4.3; case-insensitive.
+    pub fn matches_hostname(&self, hostname: &str) -> bool {
+        let host_lc = hostname.to_ascii_lowercase();
+        for san in &self.san_dns_names {
+            if san_matches(san, &host_lc) {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Inclusive validity check: `not_before <= now <= not_after`.
+    pub fn is_valid_at(&self, now: &DateTime) -> bool {
+        &self.not_before <= now && now <= &self.not_after
+    }
+}
+
+/// SAN entry matcher per RFC 6125 §6.4.3. Leftmost-label wildcard only.
+fn san_matches(san: &str, host_lc: &str) -> bool {
+    let san_lc = san.to_ascii_lowercase();
+    if !san_lc.starts_with("*.") {
+        return san_lc == host_lc;
+    }
+    let suffix = &san_lc[1..];
+    if !host_lc.ends_with(suffix) {
+        return false;
+    }
+    let prefix_len = host_lc.len() - suffix.len();
+    if prefix_len == 0 {
+        return false;
+    }
+    !host_lc[..prefix_len].contains('.')
 }
 
 /// Read a Time (either UTCTime or GeneralizedTime) from `p`.

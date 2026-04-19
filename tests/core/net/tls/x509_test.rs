@@ -214,3 +214,69 @@ fn from_der_parses_basic_constraints_ca_true() {
     let cert = X509Certificate::from_der(&der).unwrap();
     assert_eq!(cert.is_ca, Some(true));
 }
+
+#[test]
+fn matches_hostname_exact() {
+    let der = hex_decode(CERT_DER_HEX);
+    let cert = X509Certificate::from_der(&der).unwrap();
+    assert!(cert.matches_hostname("test.example.com"));
+}
+
+#[test]
+fn matches_hostname_exact_case_insensitive() {
+    let der = hex_decode(CERT_DER_HEX);
+    let cert = X509Certificate::from_der(&der).unwrap();
+    assert!(cert.matches_hostname("Test.Example.COM"));
+}
+
+#[test]
+fn matches_hostname_wildcard_single_label() {
+    let der = hex_decode(CERT_DER_HEX);
+    let cert = X509Certificate::from_der(&der).unwrap();
+    assert!(cert.matches_hostname("foo.example.com"));
+}
+
+#[test]
+fn matches_hostname_wildcard_rejects_multi_label() {
+    let der = hex_decode(CERT_DER_HEX);
+    let cert = X509Certificate::from_der(&der).unwrap();
+    assert!(!cert.matches_hostname("foo.bar.example.com"));
+}
+
+#[test]
+fn matches_hostname_wildcard_rejects_parent() {
+    let der = hex_decode(CERT_DER_HEX);
+    let cert = X509Certificate::from_der(&der).unwrap();
+    assert!(!cert.matches_hostname("example.com"));
+}
+
+#[test]
+fn matches_hostname_unrelated_rejected() {
+    let der = hex_decode(CERT_DER_HEX);
+    let cert = X509Certificate::from_der(&der).unwrap();
+    assert!(!cert.matches_hostname("other.org"));
+}
+
+#[test]
+fn is_valid_at_within_window() {
+    let der = hex_decode(CERT_DER_HEX);
+    let cert = X509Certificate::from_der(&der).unwrap();
+    let now = DateTime { year: 2030, month: 6, day: 15, hour: 12, minute: 0, second: 0 };
+    assert!(cert.is_valid_at(&now));
+}
+
+#[test]
+fn is_valid_at_before_not_before() {
+    let der = hex_decode(CERT_DER_HEX);
+    let cert = X509Certificate::from_der(&der).unwrap();
+    let past = DateTime { year: 2020, month: 1, day: 1, hour: 0, minute: 0, second: 0 };
+    assert!(!cert.is_valid_at(&past));
+}
+
+#[test]
+fn is_valid_at_after_not_after() {
+    let der = hex_decode(CERT_DER_HEX);
+    let cert = X509Certificate::from_der(&der).unwrap();
+    let future = DateTime { year: 2050, month: 1, day: 1, hour: 0, minute: 0, second: 0 };
+    assert!(!cert.is_valid_at(&future));
+}
