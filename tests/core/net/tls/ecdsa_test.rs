@@ -30,3 +30,21 @@ fn test_vectors_sizes() {
     assert_eq!(hex_decode(SPKI_DER_HEX).len(), 91);
     assert_eq!(hex_decode(SIG_DER_HEX).len(), 71);
 }
+
+#[test]
+fn from_spki_real_ec_key() {
+    let der = hex_decode(SPKI_DER_HEX);
+    let pk = EcdsaPublicKey::from_spki(&der).unwrap();
+    assert!(!pk.point.is_infinity());
+    assert!(pk.point.is_on_curve());
+}
+
+#[test]
+fn from_spki_rejects_wrong_algorithm_oid() {
+    // rsaEncryption (1.2.840.113549.1.1.1) with a stub BIT STRING.
+    let der = hex_decode(
+        "30 1a 30 0d 06 09 2a 86 48 86 f7 0d 01 01 01 05 00 \
+         03 09 00 04 01 02 03 04 05 06 07",
+    );
+    assert!(EcdsaPublicKey::from_spki(&der).is_err());
+}
