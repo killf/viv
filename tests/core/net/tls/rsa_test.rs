@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use viv::core::net::tls::rsa::{
     RsaPublicKey, verify_pkcs1_sha256, verify_pkcs1_sha256_prehashed,
 };
@@ -173,4 +175,37 @@ fn verify_full_empty_message_rejected() {
     let pk = RsaPublicKey::from_spki(&hex_decode(SPKI_DER_HEX)).unwrap();
     let sig = hex_decode(SIG_HEX);
     assert!(verify_pkcs1_sha256(&pk, b"", &sig).is_err());
+}
+
+#[test]
+fn verify_rejects_bit_flip_in_signature() {
+    let pk = RsaPublicKey::from_spki(&hex_decode(SPKI_DER_HEX)).unwrap();
+    let mut sig = hex_decode(SIG_HEX);
+    sig[128] ^= 0x01;
+    assert!(verify_pkcs1_sha256(&pk, MSG, &sig).is_err());
+}
+
+#[test]
+fn verify_rejects_bit_flip_in_msg_hash() {
+    let pk = RsaPublicKey::from_spki(&hex_decode(SPKI_DER_HEX)).unwrap();
+    let sig = hex_decode(SIG_HEX);
+    let mut digest_bytes = hex_decode(MSG_SHA256_HEX);
+    digest_bytes[0] ^= 0x01;
+    let mut digest = [0u8; 32];
+    digest.copy_from_slice(&digest_bytes);
+    assert!(verify_pkcs1_sha256_prehashed(&pk, &digest, &sig).is_err());
+}
+
+#[test]
+fn verify_2048_bit_under_200ms() {
+    let pk = RsaPublicKey::from_spki(&hex_decode(SPKI_DER_HEX)).unwrap();
+    let sig = hex_decode(SIG_HEX);
+    let start = Instant::now();
+    verify_pkcs1_sha256(&pk, MSG, &sig).unwrap();
+    let elapsed = start.elapsed();
+    assert!(
+        elapsed.as_millis() < 200,
+        "RSA-2048 verify took {}ms, expected <200ms",
+        elapsed.as_millis()
+    );
 }
