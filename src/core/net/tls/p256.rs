@@ -85,6 +85,47 @@ impl FieldElement {
         out[dst_start..].copy_from_slice(&v[src_start..]);
         out
     }
+
+    pub fn add(&self, other: &Self) -> Self {
+        let sum = self.0.add(&other.0);
+        let p = p_modulus();
+        if sum.cmp(&p) != std::cmp::Ordering::Less {
+            FieldElement(sum.checked_sub(&p).unwrap_or(BigUint::zero()))
+        } else {
+            FieldElement(sum)
+        }
+    }
+
+    pub fn sub(&self, other: &Self) -> Self {
+        match self.0.checked_sub(&other.0) {
+            Some(d) => FieldElement(d),
+            None => {
+                let p = p_modulus();
+                let a_plus_p = self.0.add(&p);
+                FieldElement(a_plus_p.checked_sub(&other.0).unwrap_or(BigUint::zero()))
+            }
+        }
+    }
+
+    pub fn neg(&self) -> Self {
+        if self.0.is_zero() {
+            FieldElement::zero()
+        } else {
+            FieldElement(p_modulus().checked_sub(&self.0).unwrap_or(BigUint::zero()))
+        }
+    }
+
+    pub fn mul(&self, other: &Self) -> Self {
+        let product = self.0.mul(&other.0);
+        let (_, r) = product
+            .div_rem(&p_modulus())
+            .unwrap_or((BigUint::zero(), BigUint::zero()));
+        FieldElement(r)
+    }
+
+    pub fn square(&self) -> Self {
+        self.mul(self)
+    }
 }
 
 /// Point in Jacobian coordinates (X:Y:Z); z==0 means point at infinity.
