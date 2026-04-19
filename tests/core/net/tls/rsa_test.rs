@@ -1,4 +1,4 @@
-use viv::core::net::tls::rsa::RsaPublicKey;
+use viv::core::net::tls::rsa::{RsaPublicKey, verify_pkcs1_sha256_prehashed};
 
 const SPKI_DER_HEX: &str = "\
 30820122300d06092a864886f70d01010105000382010f003082010a0282010100\
@@ -103,4 +103,49 @@ fn from_spki_rejects_bit_string_with_unused_bits() {
          03020700",
     );
     assert!(RsaPublicKey::from_spki(&der).is_err());
+}
+
+#[test]
+fn verify_prehashed_valid_signature() {
+    let pk = RsaPublicKey::from_spki(&hex_decode(SPKI_DER_HEX)).unwrap();
+    let sig = hex_decode(SIG_HEX);
+    let digest_vec = hex_decode(MSG_SHA256_HEX);
+    let mut digest = [0u8; 32];
+    digest.copy_from_slice(&digest_vec);
+
+    verify_pkcs1_sha256_prehashed(&pk, &digest, &sig).unwrap();
+}
+
+#[test]
+fn verify_prehashed_wrong_digest() {
+    let pk = RsaPublicKey::from_spki(&hex_decode(SPKI_DER_HEX)).unwrap();
+    let sig = hex_decode(SIG_HEX);
+    let wrong_digest = [0u8; 32];
+    assert!(verify_pkcs1_sha256_prehashed(&pk, &wrong_digest, &sig).is_err());
+}
+
+#[test]
+fn verify_prehashed_wrong_signature_length() {
+    let pk = RsaPublicKey::from_spki(&hex_decode(SPKI_DER_HEX)).unwrap();
+    let sig = vec![0u8; 255];
+    let digest = [0u8; 32];
+    let err = verify_pkcs1_sha256_prehashed(&pk, &digest, &sig).unwrap_err();
+    assert!(format!("{err}").contains("length"));
+}
+
+#[test]
+fn verify_prehashed_signature_equals_n() {
+    let pk = RsaPublicKey::from_spki(&hex_decode(SPKI_DER_HEX)).unwrap();
+    let sig = pk.n.to_bytes_be(pk.n_byte_len());
+    let digest = [0u8; 32];
+    let err = verify_pkcs1_sha256_prehashed(&pk, &digest, &sig).unwrap_err();
+    assert!(format!("{err}").contains("range"));
+}
+
+#[test]
+fn verify_prehashed_signature_all_zeros() {
+    let pk = RsaPublicKey::from_spki(&hex_decode(SPKI_DER_HEX)).unwrap();
+    let sig = vec![0u8; 256];
+    let digest = [0u8; 32];
+    assert!(verify_pkcs1_sha256_prehashed(&pk, &digest, &sig).is_err());
 }
