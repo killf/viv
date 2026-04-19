@@ -43,7 +43,10 @@ fn inline_span_to_span(span: &InlineSpan, bold_context: bool) -> Span {
         InlineSpan::Text(s) => Span {
             text: s.clone(),
             fg: Some(theme::TEXT),
+            bg: None,
             bold: bold_context,
+            italic: false,
+            dim: false,
         },
         InlineSpan::Bold(s) => Span::styled(s.clone(), theme::TEXT, true),
         InlineSpan::Italic(s) => Span::styled(s.clone(), theme::DIM, false),

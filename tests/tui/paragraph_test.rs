@@ -81,3 +81,44 @@ fn multi_word_wrap() {
     assert_eq!(buf.get(0, 0).ch, 't');
     assert_eq!(buf.get(0, 1).ch, 'b');
 }
+
+#[test]
+fn span_italic_renders_to_cell() {
+    let line = Line::from_spans(vec![Span {
+        text: "hi".to_string(),
+        fg: None,
+        bg: None,
+        bold: false,
+        italic: true,
+        dim: false,
+    }]);
+    let p = Paragraph::new(vec![line]);
+    let mut buf = Buffer::empty(Rect::new(0, 0, 10, 1));
+    p.render(Rect::new(0, 0, 10, 1), &mut buf);
+    assert!(buf.get(0, 0).italic, "italic span should set cell.italic");
+}
+
+#[test]
+fn span_bg_renders_to_cell() {
+    use viv::core::terminal::style::Color;
+    let line = Line::from_spans(vec![Span {
+        text: "x".to_string(),
+        fg: None,
+        bg: Some(Color::Rgb(45, 40, 38)),
+        bold: false,
+        italic: false,
+        dim: false,
+    }]);
+    let p = Paragraph::new(vec![line]);
+    let mut buf = Buffer::empty(Rect::new(0, 0, 10, 1));
+    p.render(Rect::new(0, 0, 10, 1), &mut buf);
+    assert_eq!(buf.get(0, 0).bg, Some(Color::Rgb(45, 40, 38)));
+}
+
+#[test]
+fn wrap_line_is_accessible() {
+    use viv::tui::paragraph::wrap_line;
+    let line = Line::raw("hello world foo bar");
+    let rows = wrap_line(&line, 10);
+    assert!(rows.len() >= 2, "should wrap into multiple rows");
+}

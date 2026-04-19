@@ -7,7 +7,10 @@ use crate::tui::widget::Widget;
 pub struct Span {
     pub text: String,
     pub fg: Option<Color>,
+    pub bg: Option<Color>,
     pub bold: bool,
+    pub italic: bool,
+    pub dim: bool,
 }
 
 impl Span {
@@ -15,7 +18,10 @@ impl Span {
         Span {
             text: text.into(),
             fg: None,
+            bg: None,
             bold: false,
+            italic: false,
+            dim: false,
         }
     }
 
@@ -23,7 +29,10 @@ impl Span {
         Span {
             text: text.into(),
             fg: Some(fg),
+            bg: None,
             bold,
+            italic: false,
+            dim: false,
         }
     }
 }
@@ -64,15 +73,18 @@ impl Paragraph {
 }
 
 /// A single rendered character with its styling.
-struct StyledChar {
-    ch: char,
-    fg: Option<Color>,
-    bold: bool,
-    width: u16,
+pub struct StyledChar {
+    pub ch: char,
+    pub fg: Option<Color>,
+    pub bg: Option<Color>,
+    pub bold: bool,
+    pub italic: bool,
+    pub dim: bool,
+    pub width: u16,
 }
 
 /// Word-wrap a logical `Line` into physical rows fitting within `width` columns.
-fn wrap_line(line: &Line, width: usize) -> Vec<Vec<StyledChar>> {
+pub fn wrap_line(line: &Line, width: usize) -> Vec<Vec<StyledChar>> {
     if width == 0 {
         return vec![];
     }
@@ -83,7 +95,10 @@ fn wrap_line(line: &Line, width: usize) -> Vec<Vec<StyledChar>> {
             chars.push(StyledChar {
                 ch,
                 fg: span.fg,
+                bg: span.bg,
                 bold: span.bold,
+                italic: span.italic,
+                dim: span.dim,
                 width: char_width(ch),
             });
         }
@@ -108,7 +123,10 @@ fn wrap_line(line: &Line, width: usize) -> Vec<Vec<StyledChar>> {
             word.push(StyledChar {
                 ch: chars[i].ch,
                 fg: chars[i].fg,
+                bg: chars[i].bg,
                 bold: chars[i].bold,
+                italic: chars[i].italic,
+                dim: chars[i].dim,
                 width: chars[i].width,
             });
             i += 1;
@@ -119,7 +137,10 @@ fn wrap_line(line: &Line, width: usize) -> Vec<Vec<StyledChar>> {
             spaces.push(StyledChar {
                 ch: ' ',
                 fg: chars[i].fg,
+                bg: chars[i].bg,
                 bold: chars[i].bold,
+                italic: chars[i].italic,
+                dim: chars[i].dim,
                 width: 1,
             });
             i += 1;
@@ -222,12 +243,18 @@ impl Widget for Paragraph {
                 let cell = buf.get_mut(col, y);
                 cell.ch = sc.ch;
                 cell.fg = sc.fg;
+                cell.bg = sc.bg;
                 cell.bold = sc.bold;
+                cell.italic = sc.italic;
+                cell.dim = sc.dim;
                 if sc.width == 2 && col + 1 < area.x + area.width {
                     let cell2 = buf.get_mut(col + 1, y);
                     cell2.ch = '\0';
                     cell2.fg = sc.fg;
+                    cell2.bg = sc.bg;
                     cell2.bold = sc.bold;
+                    cell2.italic = sc.italic;
+                    cell2.dim = sc.dim;
                 }
                 col += sc.width;
             }
