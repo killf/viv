@@ -73,3 +73,105 @@ impl EcdsaPublicKey {
         Ok(EcdsaPublicKey { point })
     }
 }
+
+/// Verify ECDSA-SHA256 signature. `signature` is DER `SEQUENCE { r, s }`.
+pub fn verify_ecdsa_sha256(
+    pk: &EcdsaPublicKey,
+    msg: &[u8],
+    signature: &[u8],
+) -> crate::Result<()> {
+    use crate::core::net::tls::crypto::sha256::Sha256;
+    let digest = Sha256::hash(msg);
+    verify_ecdsa_sha256_prehashed(pk, &digest, signature)
+}
+
+/// Same as `verify_ecdsa_sha256` but accepts a precomputed SHA-256 digest.
+pub fn verify_ecdsa_sha256_prehashed(
+    pk: &EcdsaPublicKey,
+    digest: &[u8; 32],
+    signature: &[u8],
+) -> crate::Result<()> {
+    use crate::core::asn1::Parser;
+    use crate::core::bigint::BigUint;
+    use crate::core::net::tls::p256::{Point, n_order};
+
+    // 1. DER-decode signature into r, s.
+    let mut parser = Parser::new(signature);
+    let mut seq = parser
+        .read_sequence()
+        .map_err(|e| Error::Tls(format!("ECDSA sig seq: {e}")))?;
+    let r_bytes = seq
+        .read_integer()
+        .map_err(|e| Error::Tls(format!("ECDSA r: {e}")))?;
+    let s_bytes = seq
+        .read_integer()
+        .map_err(|e| Error::Tls(format!("ECDSA s: {e}")))?;
+    seq.finish()
+        .map_err(|e| Error::Tls(format!("ECDSA sig trailing: {e}")))?;
+    let r = BigUint::from_bytes_be(r_bytes);
+    let s = BigUint::from_bytes_be(s_bytes);
+
+    // 2. Range check 1 ≤ r, s < n.
+    let n = n_order();
+    if r.is_zero() || r.cmp(&n) != std::cmp::Ordering::Less {
+        return Err(Error::Tls("ECDSA: r out of range".to_string()));
+    }
+    if s.is_zero() || s.cmp(&n) != std::cmp::Ordering::Less {
+        return Err(Error::Tls("ECDSA: s out of range".to_string()));
+    }
+
+    // 3. e = digest as integer (SHA-256 is 256 bits, same as n bit-width).
+    let e = BigUint::from_bytes_be(digest);
+
+    // 4. w = s^-1 mod n.
+    let w = s
+        .mod_inverse(&n)
+        .ok_or_else(|| Error::Tls("ECDSA: s has no inverse mod n".to_string()))?;
+
+    // 5. u1 = e*w mod n, u2 = r*w mod n.
+    let (_, u1) = e
+        .mul(&w)
+        .div_rem(&n)
+        .ok_or_else(|| Error::Tls("ECDSA: u1 reduction failed".to_string()))?;
+    let (_, u2) = r
+        .mul(&w)
+        .div_rem(&n)
+        .ok_or_else(|| Error::Tls("ECDSA: u2 reduction failed".to_string()))?;
+
+    // 6. P = u1·G + u2·Q.
+    let u1_bytes = big_to_32_be(&u1);
+    let u2_bytes = big_to_32_be(&u2);
+
+    let g = Point::generator();
+    let u1g = g.scalar_mul(&u1_bytes);
+    let u2q = pk.point.scalar_mul(&u2_bytes);
+    let sum = u1g.add(&u2q);
+    if sum.is_infinity() {
+        return Err(Error::Tls("ECDSA: u1·G + u2·Q = infinity".to_string()));
+    }
+
+    // 7. v = x_P mod n; verify v == r.
+    let x_bytes = sum
+        .affine_x_bytes()
+        .ok_or_else(|| Error::Tls("ECDSA: failed to extract affine x".to_string()))?;
+    let x_big = BigUint::from_bytes_be(&x_bytes);
+    let (_, v) = x_big
+        .div_rem(&n)
+        .ok_or_else(|| Error::Tls("ECDSA: x mod n failed".to_string()))?;
+    if v == r {
+        Ok(())
+    } else {
+        Err(Error::Tls("ECDSA: signature mismatch".to_string()))
+    }
+}
+
+/// Encode a BigUint into exactly 32 big-endian bytes (left-padded with zeros).
+fn big_to_32_be(n: &crate::core::bigint::BigUint) -> [u8; 32] {
+    let v = n.to_bytes_be(32);
+    let mut out = [0u8; 32];
+    let copy_len = v.len().min(32);
+    let dst_start = 32 - copy_len;
+    let src_start = v.len() - copy_len;
+    out[dst_start..].copy_from_slice(&v[src_start..]);
+    out
+}

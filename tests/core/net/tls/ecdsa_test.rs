@@ -1,4 +1,4 @@
-use viv::core::net::tls::ecdsa::EcdsaPublicKey;
+use viv::core::net::tls::ecdsa::{EcdsaPublicKey, verify_ecdsa_sha256};
 
 const SPKI_DER_HEX: &str = "\
 3059301306072a8648ce3d020106082a8648ce3d0301070342000435c82a54589b8c2c\
@@ -47,4 +47,38 @@ fn from_spki_rejects_wrong_algorithm_oid() {
          03 09 00 04 01 02 03 04 05 06 07",
     );
     assert!(EcdsaPublicKey::from_spki(&der).is_err());
+}
+
+#[test]
+fn verify_valid_signature() {
+    let pk = EcdsaPublicKey::from_spki(&hex_decode(SPKI_DER_HEX)).unwrap();
+    let sig = hex_decode(SIG_DER_HEX);
+    verify_ecdsa_sha256(&pk, MSG, &sig).unwrap();
+}
+
+#[test]
+fn verify_rejects_tampered_msg() {
+    let pk = EcdsaPublicKey::from_spki(&hex_decode(SPKI_DER_HEX)).unwrap();
+    let sig = hex_decode(SIG_DER_HEX);
+    assert!(verify_ecdsa_sha256(&pk, b"HELLO WORLD", &sig).is_err());
+}
+
+#[test]
+fn verify_rejects_bit_flipped_signature() {
+    let pk = EcdsaPublicKey::from_spki(&hex_decode(SPKI_DER_HEX)).unwrap();
+    let mut sig = hex_decode(SIG_DER_HEX);
+    sig[10] ^= 0x01;
+    assert!(verify_ecdsa_sha256(&pk, MSG, &sig).is_err());
+}
+
+#[test]
+fn verify_rejects_malformed_der() {
+    let pk = EcdsaPublicKey::from_spki(&hex_decode(SPKI_DER_HEX)).unwrap();
+    assert!(verify_ecdsa_sha256(&pk, MSG, &[0x30, 0x01]).is_err());
+}
+
+#[test]
+fn verify_rejects_empty_signature() {
+    let pk = EcdsaPublicKey::from_spki(&hex_decode(SPKI_DER_HEX)).unwrap();
+    assert!(verify_ecdsa_sha256(&pk, MSG, &[]).is_err());
 }
