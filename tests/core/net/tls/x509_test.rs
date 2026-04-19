@@ -198,3 +198,19 @@ fn from_der_rejects_truncated() {
     assert!(X509Certificate::from_der(&[0x30]).is_err());
     assert!(X509Certificate::from_der(&[]).is_err());
 }
+
+#[test]
+fn from_der_parses_san_dns_names() {
+    let der = hex_decode(CERT_DER_HEX);
+    let cert = X509Certificate::from_der(&der).unwrap();
+    assert_eq!(cert.san_dns_names.len(), 2);
+    assert!(cert.san_dns_names.contains(&"test.example.com"));
+    assert!(cert.san_dns_names.contains(&"*.example.com"));
+}
+
+#[test]
+fn from_der_parses_basic_constraints_ca_true() {
+    let der = hex_decode(CERT_DER_HEX);
+    let cert = X509Certificate::from_der(&der).unwrap();
+    assert_eq!(cert.is_ca, Some(true));
+}

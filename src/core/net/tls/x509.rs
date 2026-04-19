@@ -258,14 +258,39 @@ impl<'a> X509Certificate<'a> {
             .map_err(|e| Error::Tls(format!("X509: SPKI: {e}")))?;
 
         // Task 5 will populate SAN / is_ca from extensions.
-        let san_dns_names: Vec<&'a str> = Vec::new();
-        let is_ca: Option<bool> = None;
+        let mut san_dns_names: Vec<&'a str> = Vec::new();
+        let mut is_ca: Option<bool> = None;
 
-        // Consume remaining TBS bytes (uniqueIDs and extensions), ignored for now.
-        while !tbs.is_empty() {
-            let _ = tbs
-                .read_any()
-                .map_err(|e| Error::Tls(format!("X509: tbs leftover: {e}")))?;
+        // Skip optional issuerUniqueID [1] IMPLICIT BIT STRING
+        let _ = tbs
+            .read_optional(crate::core::asn1::Tag::context(1, false))
+            .map_err(|e| Error::Tls(format!("X509: issuerUniqueID: {e}")))?;
+        // Skip optional subjectUniqueID [2] IMPLICIT BIT STRING
+        let _ = tbs
+            .read_optional(crate::core::asn1::Tag::context(2, false))
+            .map_err(|e| Error::Tls(format!("X509: subjectUniqueID: {e}")))?;
+
+        // extensions [3] EXPLICIT SEQUENCE OF Extension (OPTIONAL)
+        if let Some(mut ext_wrapper) = tbs
+            .read_optional_explicit(3)
+            .map_err(|e| Error::Tls(format!("X509: extensions wrapper: {e}")))?
+        {
+            let mut ext_seq = ext_wrapper
+                .read_sequence()
+                .map_err(|e| Error::Tls(format!("X509: extensions seq: {e}")))?;
+            while !ext_seq.is_empty() {
+                parse_one_extension(&mut ext_seq, &mut san_dns_names, &mut is_ca)?;
+            }
+            ext_wrapper
+                .finish()
+                .map_err(|e| Error::Tls(format!("X509: extensions end: {e}")))?;
+        }
+
+        if !tbs.is_empty() {
+            return Err(Error::Tls(format!(
+                "X509: {} bytes remain in TBS",
+                tbs.remaining().len()
+            )));
         }
 
         // Outer signatureAlgorithm
@@ -333,4 +358,103 @@ fn read_time(p: &mut crate::core::asn1::Parser<'_>) -> crate::Result<DateTime> {
     } else {
         Err(Error::Tls(format!("time: unexpected tag {:?}", tag)))
     }
+}
+
+/// OID 2.5.29.17 subjectAltName (DER content bytes).
+const OID_SAN: &[u8] = &[0x55, 0x1d, 0x11];
+/// OID 2.5.29.19 basicConstraints.
+const OID_BASIC_CONSTRAINTS: &[u8] = &[0x55, 0x1d, 0x13];
+/// Context-specific [2] IA5String — dNSName variant of GeneralName.
+const GENERAL_NAME_DNS_TAG: u8 = 0x82;
+
+fn parse_one_extension<'a>(
+    ext_seq: &mut crate::core::asn1::Parser<'a>,
+    san_dns_names: &mut Vec<&'a str>,
+    is_ca: &mut Option<bool>,
+) -> crate::Result<()> {
+    let mut ext = ext_seq
+        .read_sequence()
+        .map_err(|e| Error::Tls(format!("X509: ext seq: {e}")))?;
+    let oid = ext
+        .read_oid()
+        .map_err(|e| Error::Tls(format!("X509: ext OID: {e}")))?;
+    // critical BOOLEAN DEFAULT FALSE (optional)
+    let _critical = match ext
+        .read_optional(crate::core::asn1::Tag::BOOLEAN)
+        .map_err(|e| Error::Tls(format!("X509: ext critical: {e}")))?
+    {
+        Some(b) if b.len() == 1 => b[0] != 0,
+        Some(_) => {
+            return Err(Error::Tls(
+                "X509: ext critical BOOLEAN wrong length".to_string(),
+            ));
+        }
+        None => false,
+    };
+    let ext_value_bytes = ext
+        .read_octet_string()
+        .map_err(|e| Error::Tls(format!("X509: ext value: {e}")))?;
+    ext.finish()
+        .map_err(|e| Error::Tls(format!("X509: ext trailing: {e}")))?;
+
+    if oid == OID_SAN {
+        parse_san(ext_value_bytes, san_dns_names)?;
+    } else if oid == OID_BASIC_CONSTRAINTS {
+        parse_basic_constraints(ext_value_bytes, is_ca)?;
+    }
+    // Unknown extensions (including critical=true) are ignored per project spec.
+    Ok(())
+}
+
+fn parse_san<'a>(
+    ext_value: &'a [u8],
+    san_dns_names: &mut Vec<&'a str>,
+) -> crate::Result<()> {
+    use crate::core::asn1::Parser;
+    let mut p = Parser::new(ext_value);
+    let mut names = p
+        .read_sequence()
+        .map_err(|e| Error::Tls(format!("SAN seq: {e}")))?;
+    while !names.is_empty() {
+        let (tag, value) = names
+            .read_any()
+            .map_err(|e| Error::Tls(format!("SAN entry: {e}")))?;
+        if let Some(tb) = tag.to_short_byte() {
+            if tb == GENERAL_NAME_DNS_TAG {
+                let s = std::str::from_utf8(value).map_err(|e| {
+                    Error::Tls(format!("SAN dNSName: invalid UTF-8: {e}"))
+                })?;
+                san_dns_names.push(s);
+            }
+            // Other GeneralName variants ignored.
+        }
+    }
+    p.finish()
+        .map_err(|e| Error::Tls(format!("SAN trailing: {e}")))?;
+    Ok(())
+}
+
+fn parse_basic_constraints(
+    ext_value: &[u8],
+    is_ca: &mut Option<bool>,
+) -> crate::Result<()> {
+    use crate::core::asn1::Parser;
+    let mut p = Parser::new(ext_value);
+    let mut bc = p
+        .read_sequence()
+        .map_err(|e| Error::Tls(format!("BasicConstraints seq: {e}")))?;
+    let ca = match bc
+        .read_optional(crate::core::asn1::Tag::BOOLEAN)
+        .map_err(|e| Error::Tls(format!("BasicConstraints cA: {e}")))?
+    {
+        Some(b) if b.len() == 1 => b[0] != 0,
+        Some(_) => {
+            return Err(Error::Tls(
+                "BasicConstraints cA BOOLEAN wrong length".to_string(),
+            ));
+        }
+        None => false,
+    };
+    *is_ca = Some(ca);
+    Ok(())
 }
