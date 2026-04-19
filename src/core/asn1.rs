@@ -302,4 +302,56 @@ impl<'a> Parser<'a> {
         }
         Ok(())
     }
+
+    /// Read a SEQUENCE and return a sub-parser over its contents.
+    pub fn read_sequence(&mut self) -> crate::Result<Parser<'a>> {
+        let value = self.read_expect(Tag::SEQUENCE)?;
+        Ok(Parser::new(value))
+    }
+
+    /// Read a SET and return a sub-parser over its contents.
+    pub fn read_set(&mut self) -> crate::Result<Parser<'a>> {
+        let value = self.read_expect(Tag::SET)?;
+        Ok(Parser::new(value))
+    }
+
+    /// Read a context-specific constructed [N] EXPLICIT wrapper and return a
+    /// sub-parser over the wrapped value.
+    pub fn read_explicit(&mut self, context_number: u32) -> crate::Result<Parser<'a>> {
+        let expected = Tag::context(context_number, true);
+        let value = self.read_expect(expected)?;
+        Ok(Parser::new(value))
+    }
+
+    /// If the next TLV's tag matches `expected`, read and return its value.
+    /// Otherwise, leave the position unchanged and return `None`.
+    pub fn read_optional(&mut self, expected: Tag) -> crate::Result<Option<&'a [u8]>> {
+        if self.is_empty() {
+            return Ok(None);
+        }
+        let (tag, _consumed) = Tag::from_bytes(&self.data[self.pos..])?;
+        if tag != expected {
+            return Ok(None);
+        }
+        let value = self.read_expect(expected)?;
+        Ok(Some(value))
+    }
+
+    /// Like `read_explicit` but returns `None` when the next tag does not
+    /// match `[context_number] constructed`.
+    pub fn read_optional_explicit(
+        &mut self,
+        context_number: u32,
+    ) -> crate::Result<Option<Parser<'a>>> {
+        if self.is_empty() {
+            return Ok(None);
+        }
+        let (tag, _consumed) = Tag::from_bytes(&self.data[self.pos..])?;
+        let expected = Tag::context(context_number, true);
+        if tag != expected {
+            return Ok(None);
+        }
+        let inner = self.read_explicit(context_number)?;
+        Ok(Some(inner))
+    }
 }

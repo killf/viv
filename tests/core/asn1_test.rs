@@ -222,3 +222,89 @@ fn finish_leftover_errors() {
     let _ = p.read_any().unwrap();
     assert!(p.finish().is_err());
 }
+
+#[test]
+fn read_sequence_yields_sub_parser() {
+    // 30 06 02 01 01 02 01 02 = SEQUENCE { INTEGER 1, INTEGER 2 }
+    let mut p = Parser::new(&[0x30, 0x06, 0x02, 0x01, 0x01, 0x02, 0x01, 0x02]);
+    let mut seq = p.read_sequence().unwrap();
+    assert_eq!(seq.read_expect(Tag::INTEGER).unwrap(), &[0x01]);
+    assert_eq!(seq.read_expect(Tag::INTEGER).unwrap(), &[0x02]);
+    assert!(seq.finish().is_ok());
+    assert!(p.is_empty());
+}
+
+#[test]
+fn read_sequence_wrong_tag_errors() {
+    let mut p = Parser::new(&[0x04, 0x00]);
+    assert!(p.read_sequence().is_err());
+}
+
+#[test]
+fn read_set_yields_sub_parser() {
+    // 31 03 02 01 07 = SET { INTEGER 7 }
+    let mut p = Parser::new(&[0x31, 0x03, 0x02, 0x01, 0x07]);
+    let mut s = p.read_set().unwrap();
+    assert_eq!(s.read_expect(Tag::INTEGER).unwrap(), &[0x07]);
+    assert!(s.finish().is_ok());
+}
+
+#[test]
+fn read_explicit_unwraps() {
+    // A0 03 02 01 05 = [0] EXPLICIT INTEGER 5
+    let mut p = Parser::new(&[0xA0, 0x03, 0x02, 0x01, 0x05]);
+    let mut inner = p.read_explicit(0).unwrap();
+    assert_eq!(inner.read_expect(Tag::INTEGER).unwrap(), &[0x05]);
+    assert!(inner.finish().is_ok());
+}
+
+#[test]
+fn read_explicit_wrong_number_errors() {
+    // A1 ... = [1] EXPLICIT; we ask for [0]
+    let mut p = Parser::new(&[0xA1, 0x03, 0x02, 0x01, 0x05]);
+    assert!(p.read_explicit(0).is_err());
+}
+
+#[test]
+fn read_optional_present() {
+    let mut p = Parser::new(&[0x02, 0x01, 0x05, 0x04, 0x01, 0xaa]);
+    let value = p.read_optional(Tag::INTEGER).unwrap();
+    assert_eq!(value, Some(&[0x05][..]));
+    let v2 = p.read_expect(Tag::OCTET_STRING).unwrap();
+    assert_eq!(v2, &[0xaa]);
+}
+
+#[test]
+fn read_optional_absent_does_not_advance() {
+    let mut p = Parser::new(&[0x04, 0x01, 0xaa]);
+    let value = p.read_optional(Tag::INTEGER).unwrap();
+    assert_eq!(value, None);
+    let (tag, _) = p.read_any().unwrap();
+    assert_eq!(tag, Tag::OCTET_STRING);
+}
+
+#[test]
+fn read_optional_explicit_present() {
+    let mut p = Parser::new(&[0xA0, 0x03, 0x02, 0x01, 0x05, 0x02, 0x01, 0x07]);
+    let inner = p.read_optional_explicit(0).unwrap();
+    assert!(inner.is_some());
+    let mut inner = inner.unwrap();
+    assert_eq!(inner.read_expect(Tag::INTEGER).unwrap(), &[0x05]);
+    inner.finish().unwrap();
+    assert_eq!(p.read_expect(Tag::INTEGER).unwrap(), &[0x07]);
+}
+
+#[test]
+fn read_optional_explicit_absent() {
+    let mut p = Parser::new(&[0x02, 0x01, 0x07]);
+    let inner = p.read_optional_explicit(0).unwrap();
+    assert!(inner.is_none());
+    assert_eq!(p.read_expect(Tag::INTEGER).unwrap(), &[0x07]);
+}
+
+#[test]
+fn read_optional_at_end_of_input() {
+    let mut p = Parser::new(&[]);
+    let v = p.read_optional(Tag::INTEGER).unwrap();
+    assert_eq!(v, None);
+}
