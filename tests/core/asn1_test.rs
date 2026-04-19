@@ -442,3 +442,29 @@ fn read_generalized_time_sample() {
     ]);
     assert_eq!(p.read_generalized_time().unwrap(), "20250102123456Z");
 }
+
+/// Exercise SEQUENCE -> SEQUENCE -> [0] EXPLICIT -> INTEGER nesting,
+/// which is the prefix pattern of every X.509 v3 certificate.
+#[test]
+fn parse_real_certificate_header() {
+    let der: &[u8] = &[
+        0x30, 0x82, 0x00, 0x0c, // Certificate SEQUENCE, length 12
+        0x30, 0x0a, // TBSCertificate SEQUENCE, length 10
+        0xa0, 0x03, // [0] EXPLICIT, length 3
+        0x02, 0x01, 0x02, // INTEGER 2 (version = v3)
+        0x02, 0x03, 0x01, 0x02, 0x03, // serialNumber INTEGER
+    ];
+
+    let mut top = Parser::new(der);
+    let mut cert = top.read_sequence().unwrap();
+    let mut tbs = cert.read_sequence().unwrap();
+    let mut version_wrapper = tbs.read_explicit(0).unwrap();
+    let version = version_wrapper.read_integer().unwrap();
+    assert_eq!(version, &[0x02]);
+    version_wrapper.finish().unwrap();
+    let serial = tbs.read_integer().unwrap();
+    assert_eq!(serial, &[0x01, 0x02, 0x03]);
+    tbs.finish().unwrap();
+    cert.finish().unwrap();
+    top.finish().unwrap();
+}
