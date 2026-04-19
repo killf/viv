@@ -250,4 +250,56 @@ impl<'a> Parser<'a> {
     pub fn read_length_for_test(&mut self) -> crate::Result<usize> {
         self.read_length()
     }
+
+    /// Read one TLV, returning (tag, value bytes). Advances past the value.
+    pub fn read_any(&mut self) -> crate::Result<(Tag, &'a [u8])> {
+        let (tag, tag_bytes) = Tag::from_bytes(&self.data[self.pos..])?;
+        self.pos += tag_bytes;
+
+        let len = self.read_length()?;
+
+        let end = self
+            .pos
+            .checked_add(len)
+            .ok_or_else(|| Error::Asn1("value: length overflow".to_string()))?;
+        if end > self.data.len() {
+            return Err(Error::Asn1(format!(
+                "value: truncated, need {} bytes, have {}",
+                len,
+                self.data.len() - self.pos
+            )));
+        }
+        let value = &self.data[self.pos..end];
+        self.pos = end;
+        Ok((tag, value))
+    }
+
+    /// Peek at the next tag without advancing.
+    pub fn peek_tag(&self) -> crate::Result<Tag> {
+        let (tag, _consumed) = Tag::from_bytes(&self.data[self.pos..])?;
+        Ok(tag)
+    }
+
+    /// Read one TLV and assert its tag matches `expected`. Returns the value.
+    pub fn read_expect(&mut self, expected: Tag) -> crate::Result<&'a [u8]> {
+        let (tag, value) = self.read_any()?;
+        if tag != expected {
+            return Err(Error::Asn1(format!(
+                "expected tag {:?}, got {:?}",
+                expected, tag
+            )));
+        }
+        Ok(value)
+    }
+
+    /// Assert the parser has consumed all input.
+    pub fn finish(self) -> crate::Result<()> {
+        if self.pos != self.data.len() {
+            return Err(Error::Asn1(format!(
+                "finish: {} unconsumed bytes remain",
+                self.data.len() - self.pos
+            )));
+        }
+        Ok(())
+    }
 }

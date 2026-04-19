@@ -154,3 +154,71 @@ fn read_length_rejects_over_4_bytes() {
     let mut p = Parser::new(&[0x85, 0x00, 0x00, 0x00, 0x00, 0x01]);
     assert!(p.read_length_for_test().is_err());
 }
+
+#[test]
+fn read_any_simple_integer() {
+    // 02 01 05 = INTEGER 5
+    let mut p = Parser::new(&[0x02, 0x01, 0x05]);
+    let (tag, value) = p.read_any().unwrap();
+    assert_eq!(tag, Tag::INTEGER);
+    assert_eq!(value, &[0x05]);
+    assert!(p.is_empty());
+}
+
+#[test]
+fn read_any_sequence_header() {
+    // 30 03 02 01 05 = SEQUENCE { INTEGER 5 }
+    let mut p = Parser::new(&[0x30, 0x03, 0x02, 0x01, 0x05]);
+    let (tag, value) = p.read_any().unwrap();
+    assert_eq!(tag, Tag::SEQUENCE);
+    assert_eq!(value, &[0x02, 0x01, 0x05]);
+    assert!(p.is_empty());
+}
+
+#[test]
+fn read_any_truncated_value() {
+    let mut p = Parser::new(&[0x04, 0x05, 0xaa, 0xbb]);
+    assert!(p.read_any().is_err());
+}
+
+#[test]
+fn read_expect_matches() {
+    let mut p = Parser::new(&[0x02, 0x01, 0x42]);
+    let value = p.read_expect(Tag::INTEGER).unwrap();
+    assert_eq!(value, &[0x42]);
+}
+
+#[test]
+fn read_expect_mismatches() {
+    let mut p = Parser::new(&[0x04, 0x01, 0xaa]);
+    assert!(p.read_expect(Tag::INTEGER).is_err());
+}
+
+#[test]
+fn peek_tag_does_not_advance() {
+    let mut p = Parser::new(&[0x02, 0x01, 0x05]);
+    let t = p.peek_tag().unwrap();
+    assert_eq!(t, Tag::INTEGER);
+    let (tag, _) = p.read_any().unwrap();
+    assert_eq!(tag, Tag::INTEGER);
+}
+
+#[test]
+fn peek_tag_empty_is_err() {
+    let p = Parser::new(&[]);
+    assert!(p.peek_tag().is_err());
+}
+
+#[test]
+fn finish_consumed_ok() {
+    let mut p = Parser::new(&[0x02, 0x01, 0x05]);
+    let _ = p.read_any().unwrap();
+    assert!(p.finish().is_ok());
+}
+
+#[test]
+fn finish_leftover_errors() {
+    let mut p = Parser::new(&[0x02, 0x01, 0x05, 0xff]);
+    let _ = p.read_any().unwrap();
+    assert!(p.finish().is_err());
+}
