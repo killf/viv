@@ -1,4 +1,4 @@
-use viv::core::asn1::{Parser, Tag, TagClass};
+use viv::core::asn1::{BitString, Parser, Tag, TagClass};
 
 #[test]
 fn tag_class_discriminated() {
@@ -308,3 +308,90 @@ fn read_optional_at_end_of_input() {
     let v = p.read_optional(Tag::INTEGER).unwrap();
     assert_eq!(v, None);
 }
+
+#[test]
+fn read_bool_true() {
+    let mut p = Parser::new(&[0x01, 0x01, 0xff]);
+    assert_eq!(p.read_bool().unwrap(), true);
+}
+
+#[test]
+fn read_bool_false() {
+    let mut p = Parser::new(&[0x01, 0x01, 0x00]);
+    assert_eq!(p.read_bool().unwrap(), false);
+}
+
+#[test]
+fn read_bool_rejects_wrong_length() {
+    let mut p = Parser::new(&[0x01, 0x02, 0x00, 0x00]);
+    assert!(p.read_bool().is_err());
+}
+
+#[test]
+fn read_null_ok() {
+    let mut p = Parser::new(&[0x05, 0x00]);
+    assert!(p.read_null().is_ok());
+    assert!(p.is_empty());
+}
+
+#[test]
+fn read_null_rejects_nonzero_length() {
+    let mut p = Parser::new(&[0x05, 0x01, 0x00]);
+    assert!(p.read_null().is_err());
+}
+
+#[test]
+fn read_integer_positive() {
+    let mut p = Parser::new(&[0x02, 0x01, 0x05]);
+    assert_eq!(p.read_integer().unwrap(), &[0x05]);
+}
+
+#[test]
+fn read_integer_multi_byte() {
+    let mut p = Parser::new(&[0x02, 0x02, 0x01, 0x00]);
+    assert_eq!(p.read_integer().unwrap(), &[0x01, 0x00]);
+}
+
+#[test]
+fn read_oid_simple() {
+    let mut p = Parser::new(&[0x06, 0x03, 0x2a, 0x86, 0x48]);
+    assert_eq!(p.read_oid().unwrap(), &[0x2a, 0x86, 0x48]);
+}
+
+#[test]
+fn read_octet_string_basic() {
+    let mut p = Parser::new(&[0x04, 0x04, 0xde, 0xad, 0xbe, 0xef]);
+    assert_eq!(p.read_octet_string().unwrap(), &[0xde, 0xad, 0xbe, 0xef]);
+}
+
+#[test]
+fn read_bit_string_no_unused() {
+    let mut p = Parser::new(&[0x03, 0x04, 0x00, 0xab, 0xcd, 0xef]);
+    let bs = p.read_bit_string().unwrap();
+    assert_eq!(bs.unused_bits, 0);
+    assert_eq!(bs.bytes, &[0xab, 0xcd, 0xef]);
+}
+
+#[test]
+fn read_bit_string_with_unused() {
+    let mut p = Parser::new(&[0x03, 0x04, 0x06, 0x01, 0x23, 0x45]);
+    let bs = p.read_bit_string().unwrap();
+    assert_eq!(bs.unused_bits, 6);
+    assert_eq!(bs.bytes, &[0x01, 0x23, 0x45]);
+}
+
+#[test]
+fn read_bit_string_rejects_empty_value() {
+    let mut p = Parser::new(&[0x03, 0x00]);
+    assert!(p.read_bit_string().is_err());
+}
+
+#[test]
+fn read_bit_string_rejects_unused_over_7() {
+    let mut p = Parser::new(&[0x03, 0x02, 0x08, 0xff]);
+    assert!(p.read_bit_string().is_err());
+}
+
+// Suppress unused-import lint when BitString is only used via inference below.
+#[allow(dead_code)]
+fn _bitstring_used(_bs: BitString<'_>) {}

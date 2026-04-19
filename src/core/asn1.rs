@@ -45,6 +45,16 @@ pub struct Tag {
     pub number: u32,
 }
 
+/// DER-encoded BIT STRING.
+///
+/// The first byte of the value in DER encoding is the number of unused bits
+/// in the final byte (0-7). `bytes` is the payload after that prefix byte.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BitString<'a> {
+    pub unused_bits: u8,
+    pub bytes: &'a [u8],
+}
+
 impl Tag {
     // Universal primitive
     pub const BOOLEAN: Tag = Tag {
@@ -353,5 +363,58 @@ impl<'a> Parser<'a> {
         }
         let inner = self.read_explicit(context_number)?;
         Ok(Some(inner))
+    }
+
+    pub fn read_bool(&mut self) -> crate::Result<bool> {
+        let value = self.read_expect(Tag::BOOLEAN)?;
+        if value.len() != 1 {
+            return Err(Error::Asn1(format!(
+                "BOOLEAN: expected 1-byte value, got {}",
+                value.len()
+            )));
+        }
+        Ok(value[0] != 0)
+    }
+
+    pub fn read_integer(&mut self) -> crate::Result<&'a [u8]> {
+        self.read_expect(Tag::INTEGER)
+    }
+
+    pub fn read_null(&mut self) -> crate::Result<()> {
+        let value = self.read_expect(Tag::NULL)?;
+        if !value.is_empty() {
+            return Err(Error::Asn1(format!(
+                "NULL: expected empty value, got {} bytes",
+                value.len()
+            )));
+        }
+        Ok(())
+    }
+
+    pub fn read_oid(&mut self) -> crate::Result<&'a [u8]> {
+        self.read_expect(Tag::OID)
+    }
+
+    pub fn read_octet_string(&mut self) -> crate::Result<&'a [u8]> {
+        self.read_expect(Tag::OCTET_STRING)
+    }
+
+    pub fn read_bit_string(&mut self) -> crate::Result<BitString<'a>> {
+        let value = self.read_expect(Tag::BIT_STRING)?;
+        if value.is_empty() {
+            return Err(Error::Asn1(
+                "BIT STRING: missing unused-bits prefix byte".to_string(),
+            ));
+        }
+        let unused_bits = value[0];
+        if unused_bits > 7 {
+            return Err(Error::Asn1(format!(
+                "BIT STRING: invalid unused-bits value {unused_bits} (>7)"
+            )));
+        }
+        Ok(BitString {
+            unused_bits,
+            bytes: &value[1..],
+        })
     }
 }
