@@ -480,3 +480,60 @@ fn modexp_rsa2048_timing_under_500ms() {
         elapsed.as_millis()
     );
 }
+
+#[test]
+fn mod_inverse_small_known() {
+    // 3 * 4 = 12 ≡ 1 mod 11
+    assert_eq!(
+        BigUint::from_u64(3).mod_inverse(&BigUint::from_u64(11)),
+        Some(BigUint::from_u64(4))
+    );
+}
+
+#[test]
+fn mod_inverse_another() {
+    // 7 * 13 = 91 ≡ 1 mod 15
+    assert_eq!(
+        BigUint::from_u64(7).mod_inverse(&BigUint::from_u64(15)),
+        Some(BigUint::from_u64(13))
+    );
+}
+
+#[test]
+fn mod_inverse_not_coprime() {
+    assert_eq!(
+        BigUint::from_u64(4).mod_inverse(&BigUint::from_u64(6)),
+        None
+    );
+}
+
+#[test]
+fn mod_inverse_zero_modulus() {
+    assert_eq!(
+        BigUint::from_u64(3).mod_inverse(&BigUint::zero()),
+        None
+    );
+}
+
+#[test]
+fn mod_inverse_modulus_one() {
+    assert_eq!(
+        BigUint::from_u64(3).mod_inverse(&BigUint::one()),
+        None
+    );
+}
+
+#[test]
+fn mod_inverse_identity() {
+    let m = BigUint::from_u64(97);
+    assert_eq!(BigUint::one().mod_inverse(&m), Some(BigUint::one()));
+}
+
+#[test]
+fn mod_inverse_large_prime_roundtrip() {
+    let p = BigUint::from_u64(2147483647);
+    let a = BigUint::from_u64(123456789);
+    let inv = a.mod_inverse(&p).unwrap();
+    let (_, r) = a.mul(&inv).div_rem(&p).unwrap();
+    assert_eq!(r, BigUint::one());
+}

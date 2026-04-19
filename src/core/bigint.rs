@@ -245,6 +245,79 @@ impl BigUint {
         }
         Some(result)
     }
+
+    /// Modular inverse via the extended Euclidean algorithm with signed
+    /// coefficients represented as `(BigUint, bool)` (bool = true means negative).
+    ///
+    /// Returns `Some(x)` such that `(self * x) mod modulus == 1`, or `None`
+    /// when `gcd(self, modulus) != 1`, `modulus` is zero, or `modulus` is one.
+    pub fn mod_inverse(&self, modulus: &Self) -> Option<Self> {
+        if modulus.is_zero() || modulus == &Self::one() {
+            return None;
+        }
+        let (_, a0) = self.div_rem(modulus)?;
+        if a0.is_zero() {
+            return None;
+        }
+
+        let mut old_r = a0;
+        let mut r = modulus.clone();
+        let mut old_s: (BigUint, bool) = (Self::one(), false);
+        let mut s: (BigUint, bool) = (Self::zero(), false);
+
+        while !r.is_zero() {
+            let (q, new_r) = old_r.div_rem(&r)?;
+            old_r = r;
+            r = new_r;
+            let q_s = signed_mul(&q, &s);
+            let next_s = signed_sub(&old_s, &q_s);
+            old_s = s;
+            s = next_s;
+        }
+
+        if old_r != Self::one() {
+            return None;
+        }
+
+        if old_s.1 {
+            let (_, reduced) = old_s.0.div_rem(modulus)?;
+            if reduced.is_zero() {
+                Some(Self::zero())
+            } else {
+                modulus.checked_sub(&reduced)
+            }
+        } else {
+            let (_, reduced) = old_s.0.div_rem(modulus)?;
+            Some(reduced)
+        }
+    }
+}
+
+/// Signed multiply helper for mod_inverse: (|a|, _) * (|b|, sign_b) = (|a|*|b|, sign_b).
+fn signed_mul(a: &BigUint, b: &(BigUint, bool)) -> (BigUint, bool) {
+    (a.mul(&b.0), b.1)
+}
+
+/// Signed subtract helper for mod_inverse: (a, a_sign) - (b, b_sign).
+fn signed_sub(a: &(BigUint, bool), b: &(BigUint, bool)) -> (BigUint, bool) {
+    match (a.1, b.1) {
+        (false, false) => {
+            if a.0.cmp(&b.0) != Ordering::Less {
+                (a.0.checked_sub(&b.0).unwrap_or(BigUint::zero()), false)
+            } else {
+                (b.0.checked_sub(&a.0).unwrap_or(BigUint::zero()), true)
+            }
+        }
+        (false, true) => (a.0.add(&b.0), false),
+        (true, false) => (a.0.add(&b.0), true),
+        (true, true) => {
+            if b.0.cmp(&a.0) != Ordering::Less {
+                (b.0.checked_sub(&a.0).unwrap_or(BigUint::zero()), false)
+            } else {
+                (a.0.checked_sub(&b.0).unwrap_or(BigUint::zero()), true)
+            }
+        }
+    }
 }
 
 /// Shift `limbs` left by one bit in place.
