@@ -502,7 +502,9 @@ impl TerminalUI {
                 if !line.trim().is_empty() {
                     self.blocks
                         .push(ContentBlock::UserMessage { text: line.clone() });
-                    self.conversation_state.append_item_height(1);
+                    let msg_block = self.blocks.last().unwrap();
+                    let h = self.block_height(msg_block);
+                    self.conversation_state.append_item_height(h);
                     self.conversation_state.auto_scroll();
                     let _ = self.event_tx.send(AgentEvent::Input(line));
                 }
@@ -709,7 +711,12 @@ fn main_layout(input_height: u16) -> Layout {
 /// Compute a block's height given an explicit width.
 fn block_height_with_width(block: &ContentBlock, width: u16) -> u16 {
     match block {
-        ContentBlock::UserMessage { .. } => 1,
+        ContentBlock::UserMessage { text } => {
+            use crate::tui::paragraph::{Line, Span, wrap_line};
+            let line = Line::from_spans(vec![Span::raw(text.clone())]);
+            let effective_width = width.saturating_sub(2) as usize; // "> " prefix
+            wrap_line(&line, effective_width.max(1)).len() as u16
+        }
         ContentBlock::Markdown { nodes } => MarkdownBlockWidget::height(nodes, width),
         ContentBlock::CodeBlock { code, .. } => CodeBlockWidget::height(code, width),
         ContentBlock::ToolCall { .. } => 1, // folded by default
@@ -731,10 +738,40 @@ fn render_block(
     }
     match block {
         ContentBlock::UserMessage { text } => {
+            use crate::tui::paragraph::{Line, Span, wrap_line};
+            // Render "> " prefix on first row
             buf.set_str(area.x, area.y, "> ", Some(theme::CLAUDE), false);
-            let text_x = area.x + 2;
-            if text_x < area.x + area.width {
-                buf.set_str(text_x, area.y, text, Some(theme::TEXT), false);
+
+            // Wrap the user text within available width after prefix
+            let effective_width = area.width.saturating_sub(2) as usize;
+            let line = Line::from_spans(vec![Span::raw(text.clone())]);
+            let rows = wrap_line(&line, effective_width.max(1));
+
+            for (row_idx, row) in rows.iter().enumerate() {
+                let y = area.y + row_idx as u16;
+                if y >= area.y + area.height {
+                    break;
+                }
+                let start_x = area.x + 2;
+                let mut x = start_x;
+                for sc in row {
+                    if sc.width == 0 {
+                        continue;
+                    }
+                    if x + sc.width > area.x + area.width {
+                        break;
+                    }
+                    let cell = buf.get_mut(x, y);
+                    cell.ch = sc.ch;
+                    cell.fg = Some(theme::TEXT);
+                    cell.bold = false;
+                    if sc.width == 2 && x + 1 < area.x + area.width {
+                        let cell2 = buf.get_mut(x + 1, y);
+                        cell2.ch = '\0';
+                        cell2.fg = Some(theme::TEXT);
+                    }
+                    x += sc.width;
+                }
             }
         }
         ContentBlock::Markdown { nodes } => {
