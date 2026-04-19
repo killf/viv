@@ -121,6 +121,49 @@ Change `InlineSpan::Italic` from:
 To:
 - fg `theme::TEXT` (white), bold false, italic true
 
+### 9. Neofetch-Style Welcome Screen
+
+Replace the current single-line welcome (`● viv  <cwd>  ⎇ <branch>  ready`) with a neofetch-style startup screen: ASCII art logo on the left, system info on the right.
+
+**Layout:**
+
+```
+       _            Model:     claude-sonnet-4-6
+__   _(_)_   __     CWD:       ~/data/dlab/viv
+\ \ / / \ \ / /    Branch:    main
+ \ V /| |\ V /     Platform:  Linux x86_64
+  \_/ |_| \_/      Shell:     zsh
+```
+
+**Style:**
+- Logo: CLAUDE orange `Rgb(215, 119, 87)`
+- Info labels (Model, CWD, ...): CLAUDE orange, bold
+- Info values: TEXT white
+- Gap between logo and info: 4 columns
+
+**Info items:**
+
+| Item | Source |
+|------|--------|
+| Model | `self.model_name` from `AgentMessage::Ready` |
+| CWD | `std::env::current_dir()`, `~`-collapsed |
+| Branch | `.git/HEAD` parse |
+| Platform | compile-time `cfg!(target_os)` + `cfg!(target_arch)` |
+| Shell | `$SHELL` env var, basename only |
+
+**Implementation:**
+
+- Add `ContentBlock::Welcome` variant with fields: `model: Option<String>`, `cwd: String`, `branch: Option<String>`.
+- New `WelcomeWidget` in `src/tui/welcome.rs`. The logo is a `const &str` array (5 lines). Info items are rendered line-by-line to the right of the logo.
+- Fixed height: 5 rows (matching the logo height).
+- On startup, push `ContentBlock::Welcome` with `model: None`. When `AgentMessage::Ready { model }` arrives, update the existing Welcome block's model field and mark dirty. Before the model arrives, display `"..."` as placeholder.
+
+**Files:**
+- New: `src/tui/welcome.rs`
+- Modified: `src/tui/content.rs` (add `ContentBlock::Welcome`)
+- Modified: `src/bus/terminal.rs` (replace welcome init + handle Ready update + `render_block` + `block_height_with_width`)
+- Modified: `src/tui/mod.rs` (add `pub mod welcome`)
+
 ## Files Modified
 
 | File | Changes |
@@ -129,7 +172,10 @@ To:
 | `src/tui/paragraph.rs` | Span: +italic, +dim, +bg. StyledChar: same. `wrap_line` made pub. Propagate new fields in render. |
 | `src/tui/markdown.rs` | Rewrite render to use wrap_line. Update node_height. Block spacing. Heading levels. Quote italic. Inline code style. Italic span. |
 | `src/tui/code_block.rs` | Fill inner bg before token rendering. |
-| `src/bus/terminal.rs` | UserMessage wrap + height. render_block UserMessage multi-row. |
+| `src/tui/welcome.rs` | NEW: WelcomeWidget with ASCII art logo + system info. |
+| `src/tui/content.rs` | Add `ContentBlock::Welcome` variant. |
+| `src/tui/mod.rs` | Add `pub mod welcome`. |
+| `src/bus/terminal.rs` | Welcome screen init + Ready update. UserMessage wrap + height. render_block for Welcome/UserMessage. |
 
 ## Not In Scope
 
