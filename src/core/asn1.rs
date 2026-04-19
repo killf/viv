@@ -190,3 +190,64 @@ impl Tag {
         Some(b)
     }
 }
+
+/// Cursor-style DER parser over a borrowed byte slice.
+pub struct Parser<'a> {
+    data: &'a [u8],
+    pos: usize,
+}
+
+impl<'a> Parser<'a> {
+    pub fn new(data: &'a [u8]) -> Self {
+        Parser { data, pos: 0 }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.pos >= self.data.len()
+    }
+
+    pub fn remaining(&self) -> &'a [u8] {
+        &self.data[self.pos..]
+    }
+
+    /// Read a DER length encoding. Advances `pos`.
+    /// Rejects indefinite length (0x80) and lengths needing >4 follow-up bytes.
+    fn read_length(&mut self) -> crate::Result<usize> {
+        let first = *self
+            .data
+            .get(self.pos)
+            .ok_or_else(|| Error::Asn1("length: unexpected end of input".to_string()))?;
+        self.pos += 1;
+
+        if first < 0x80 {
+            return Ok(first as usize);
+        }
+        if first == 0x80 {
+            return Err(Error::Asn1(
+                "length: indefinite form (BER) not allowed in DER".to_string(),
+            ));
+        }
+        let n = (first & 0x7f) as usize;
+        if n > 4 {
+            return Err(Error::Asn1(format!(
+                "length: long form with {n} follow-up bytes exceeds 4"
+            )));
+        }
+        let mut len: usize = 0;
+        for _ in 0..n {
+            let b = *self
+                .data
+                .get(self.pos)
+                .ok_or_else(|| Error::Asn1("length: truncated long form".to_string()))?;
+            self.pos += 1;
+            len = (len << 8) | (b as usize);
+        }
+        Ok(len)
+    }
+
+    /// Test-only accessor for `read_length`.
+    #[doc(hidden)]
+    pub fn read_length_for_test(&mut self) -> crate::Result<usize> {
+        self.read_length()
+    }
+}

@@ -1,4 +1,4 @@
-use viv::core::asn1::{Tag, TagClass};
+use viv::core::asn1::{Parser, Tag, TagClass};
 
 #[test]
 fn tag_class_discriminated() {
@@ -90,4 +90,67 @@ fn tag_to_short_byte_none_for_high_tag_number() {
         number: 31,
     };
     assert_eq!(big.to_short_byte(), None);
+}
+
+#[test]
+fn parser_new_and_empty() {
+    let p = Parser::new(&[]);
+    assert!(p.is_empty());
+    assert_eq!(p.remaining(), &[] as &[u8]);
+}
+
+#[test]
+fn parser_new_nonempty() {
+    let p = Parser::new(&[0x30, 0x00]);
+    assert!(!p.is_empty());
+    assert_eq!(p.remaining(), &[0x30, 0x00]);
+}
+
+#[test]
+fn read_length_short_form() {
+    let mut p = Parser::new(&[0x05]);
+    assert_eq!(p.read_length_for_test().unwrap(), 5);
+    assert!(p.is_empty());
+}
+
+#[test]
+fn read_length_long_form_1byte() {
+    let mut p = Parser::new(&[0x81, 0xff]);
+    assert_eq!(p.read_length_for_test().unwrap(), 255);
+}
+
+#[test]
+fn read_length_long_form_2byte() {
+    let mut p = Parser::new(&[0x82, 0x01, 0x00]);
+    assert_eq!(p.read_length_for_test().unwrap(), 256);
+}
+
+#[test]
+fn read_length_long_form_4byte() {
+    let mut p = Parser::new(&[0x84, 0x00, 0x01, 0x00, 0x00]);
+    assert_eq!(p.read_length_for_test().unwrap(), 65536);
+}
+
+#[test]
+fn read_length_rejects_indefinite() {
+    let mut p = Parser::new(&[0x80]);
+    assert!(p.read_length_for_test().is_err());
+}
+
+#[test]
+fn read_length_rejects_empty() {
+    let mut p = Parser::new(&[]);
+    assert!(p.read_length_for_test().is_err());
+}
+
+#[test]
+fn read_length_rejects_truncated_long_form() {
+    let mut p = Parser::new(&[0x82, 0x01]);
+    assert!(p.read_length_for_test().is_err());
+}
+
+#[test]
+fn read_length_rejects_over_4_bytes() {
+    let mut p = Parser::new(&[0x85, 0x00, 0x00, 0x00, 0x00, 0x01]);
+    assert!(p.read_length_for_test().is_err());
 }
