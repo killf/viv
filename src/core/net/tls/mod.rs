@@ -6,8 +6,10 @@
 
 pub mod codec;
 pub mod crypto;
+pub mod ecdsa;
 pub mod handshake;
 pub mod key_schedule;
+pub mod p256;
 pub mod record;
 pub mod rsa;
 pub mod x509;
