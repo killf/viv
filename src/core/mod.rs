@@ -1,3 +1,4 @@
+pub mod asn1;
 pub mod bigint;
 pub mod json;
 pub mod jsonrpc;

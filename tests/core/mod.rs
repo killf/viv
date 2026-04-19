@@ -1,3 +1,4 @@
+mod asn1_test;
 mod bigint_test;
 mod jsonrpc_test;
 mod net;
