@@ -321,4 +321,28 @@ impl Point {
             z: z3,
         }
     }
+
+    /// Left-to-right double-and-add scalar multiplication.
+    /// Scalar is 32 big-endian bytes treated as an integer.
+    /// Not constant-time — verification only.
+    pub fn scalar_mul(&self, scalar: &[u8; 32]) -> Self {
+        let mut result = Point::infinity();
+        let mut seen_one = false;
+        for byte in scalar.iter() {
+            for bit_pos in (0..8).rev() {
+                if seen_one {
+                    result = result.double();
+                }
+                if (byte >> bit_pos) & 1 == 1 {
+                    if seen_one {
+                        result = result.add(self);
+                    } else {
+                        result = self.clone();
+                        seen_one = true;
+                    }
+                }
+            }
+        }
+        result
+    }
 }

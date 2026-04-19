@@ -229,3 +229,51 @@ fn point_add_negation_is_infinity() {
 fn point_affine_x_of_infinity_is_none() {
     assert!(Point::infinity().affine_x_bytes().is_none());
 }
+
+#[test]
+fn scalar_mul_by_zero_is_infinity() {
+    let result = Point::generator().scalar_mul(&[0u8; 32]);
+    assert!(result.is_infinity());
+}
+
+#[test]
+fn scalar_mul_by_one_is_identity() {
+    let g = Point::generator();
+    let mut one = [0u8; 32];
+    one[31] = 1;
+    assert_eq!(g.scalar_mul(&one).affine_x_bytes(), g.affine_x_bytes());
+}
+
+#[test]
+fn scalar_mul_by_two_equals_double() {
+    let g = Point::generator();
+    let mut two = [0u8; 32];
+    two[31] = 2;
+    assert_eq!(
+        g.scalar_mul(&two).affine_x_bytes(),
+        g.double().affine_x_bytes()
+    );
+}
+
+#[test]
+fn scalar_mul_by_three_equals_2g_plus_g() {
+    let g = Point::generator();
+    let mut three = [0u8; 32];
+    three[31] = 3;
+    let expected = g.double().add(&g);
+    assert_eq!(
+        g.scalar_mul(&three).affine_x_bytes(),
+        expected.affine_x_bytes()
+    );
+}
+
+#[test]
+fn scalar_mul_by_order_is_infinity() {
+    let g = Point::generator();
+    let n_bytes: [u8; 32] = [
+        0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+        0xff, 0xbc, 0xe6, 0xfa, 0xad, 0xa7, 0x17, 0x9e, 0x84, 0xf3, 0xb9, 0xca, 0xc2, 0xfc, 0x63,
+        0x25, 0x51,
+    ];
+    assert!(g.scalar_mul(&n_bytes).is_infinity());
+}
