@@ -1,4 +1,4 @@
-use crate::qrcode::tables;
+use crate::tui::qrcode::tables;
 
 /// A QR code module matrix.
 ///

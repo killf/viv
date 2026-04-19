@@ -1,7 +1,7 @@
 use crate::Result;
 use crate::error::Error;
-use crate::qrcode::rs::rs_encode;
-use crate::qrcode::tables::{BYTE_CAPACITY_M, EC_TABLE_M};
+use crate::tui::qrcode::rs::rs_encode;
+use crate::tui::qrcode::tables::{BYTE_CAPACITY_M, EC_TABLE_M};
 
 /// Interleaved data + ECC codewords and the QR version used.
 pub struct EncodedData {
