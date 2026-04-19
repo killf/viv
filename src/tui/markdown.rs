@@ -73,12 +73,47 @@ fn inline_span_to_span(span: &InlineSpan, bold_context: bool) -> Span {
             italic: false,
             dim: false,
         },
-        InlineSpan::Bold(s) => Span::styled(s.clone(), theme::TEXT, true),
-        InlineSpan::Italic(s) => Span::styled(s.clone(), theme::DIM, false),
-        InlineSpan::Code(s) => Span::styled(s.clone(), Color::Rgb(215, 119, 87), false),
-        InlineSpan::Link { text, .. } => {
-            Span::styled(text.clone(), Color::Rgb(100, 150, 255), false)
-        }
+        InlineSpan::Bold(s) => Span {
+            text: s.clone(),
+            fg: Some(theme::TEXT),
+            bg: None,
+            bold: true,
+            italic: false,
+            dim: false,
+        },
+        InlineSpan::Italic(s) => Span {
+            text: s.clone(),
+            fg: Some(theme::TEXT),
+            bg: None,
+            bold: false,
+            italic: true,
+            dim: false,
+        },
+        InlineSpan::Code(s) => Span {
+            text: s.clone(),
+            fg: Some(Color::Rgb(230, 150, 100)),
+            bg: Some(Color::Rgb(45, 40, 38)),
+            bold: false,
+            italic: false,
+            dim: false,
+        },
+        InlineSpan::Link { text, .. } => Span {
+            text: text.clone(),
+            fg: Some(Color::Rgb(100, 150, 255)),
+            bg: None,
+            bold: false,
+            italic: false,
+            dim: false,
+        },
+    }
+}
+
+/// Return the foreground color for a heading based on its level.
+fn heading_fg(level: u8) -> Color {
+    match level {
+        1 => theme::CLAUDE,
+        2 => theme::TEXT,
+        _ => theme::DIM, // h3-h6
     }
 }
 
@@ -145,8 +180,21 @@ impl<'a> Widget for MarkdownBlockWidget<'a> {
             }
 
             match node {
-                MarkdownNode::Heading { text, .. } => {
+                MarkdownNode::Heading { level, text } => {
+                    let fg = heading_fg(*level);
                     let rows = render_wrapped_spans(text, area.x, row, buf, area, true, area.width);
+                    // Override fg color based on heading level
+                    for r in row..row + rows {
+                        if r >= area.y + area.height {
+                            break;
+                        }
+                        for x in area.x..area.x + area.width {
+                            let cell = buf.get_mut(x, r);
+                            if cell.fg.is_some() {
+                                cell.fg = Some(fg);
+                            }
+                        }
+                    }
                     row += rows;
                 }
 
@@ -223,7 +271,7 @@ impl<'a> Widget for MarkdownBlockWidget<'a> {
                             cell.bold = false;
                             cur_x += 1;
                         }
-                        // Render content with dim styling
+                        // Render content: preserve original fg, add italic
                         for sc in wrapped_row {
                             if sc.width == 0 {
                                 continue;
@@ -233,18 +281,18 @@ impl<'a> Widget for MarkdownBlockWidget<'a> {
                             }
                             let cell = buf.get_mut(cur_x, y);
                             cell.ch = sc.ch;
-                            cell.fg = Some(theme::DIM);
+                            cell.fg = sc.fg;
                             cell.bg = sc.bg;
-                            cell.bold = false;
-                            cell.italic = sc.italic;
+                            cell.bold = sc.bold;
+                            cell.italic = true;
                             cell.dim = sc.dim;
                             if sc.width == 2 && cur_x + 1 < max_x {
                                 let cell2 = buf.get_mut(cur_x + 1, y);
                                 cell2.ch = '\0';
-                                cell2.fg = Some(theme::DIM);
+                                cell2.fg = sc.fg;
                                 cell2.bg = sc.bg;
-                                cell2.bold = false;
-                                cell2.italic = sc.italic;
+                                cell2.bold = sc.bold;
+                                cell2.italic = true;
                                 cell2.dim = sc.dim;
                             }
                             cur_x += sc.width;
@@ -302,8 +350,16 @@ pub fn render_markdown(text: &str) -> Vec<Line> {
 
     for node in &nodes {
         match node {
-            MarkdownNode::Heading { text, .. } => {
-                let spans: Vec<Span> = text.iter().map(|s| inline_span_to_span(s, true)).collect();
+            MarkdownNode::Heading { level, text } => {
+                let fg = heading_fg(*level);
+                let spans: Vec<Span> = text
+                    .iter()
+                    .map(|s| {
+                        let mut sp = inline_span_to_span(s, true);
+                        sp.fg = Some(fg);
+                        sp
+                    })
+                    .collect();
                 lines.push(Line::from_spans(spans));
             }
 
@@ -333,8 +389,7 @@ pub fn render_markdown(text: &str) -> Vec<Line> {
                     vec![Span::styled("\u{2502} ", Color::Rgb(100, 100, 100), false)];
                 line_spans.extend(spans.iter().map(|s| {
                     let mut sp = inline_span_to_span(s, false);
-                    sp.fg = Some(theme::DIM);
-                    sp.bold = false;
+                    sp.italic = true;
                     sp
                 }));
                 lines.push(Line::from_spans(line_spans));

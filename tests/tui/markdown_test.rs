@@ -36,16 +36,15 @@ fn renders_inline_code_with_color() {
     let area = Rect::new(0, 0, 40, 5);
     let mut buf = Buffer::empty(area);
     widget.render(area, &mut buf);
-    // Find the 'c' of "cargo" and check it has a non-None fg color
+    // Find the 'c' of "cargo" and check it has the new inline code color
     let code_cell = (0..area.width).map(|x| buf.get(x, 0)).find(|c| c.ch == 'c');
     let cell = code_cell.expect("should find 'c' from 'cargo'");
     assert!(
         cell.fg.is_some(),
         "inline code should have a foreground color"
     );
-    // The color should be the CLAUDE orange Rgb(215,119,87)
     use viv::core::terminal::style::Color;
-    assert_eq!(cell.fg, Some(Color::Rgb(215, 119, 87)));
+    assert_eq!(cell.fg, Some(Color::Rgb(230, 150, 100)));
 }
 
 #[test]
@@ -137,7 +136,7 @@ fn bold_text_is_rendered_bold() {
 }
 
 #[test]
-fn inline_code_uses_claude_color() {
+fn inline_code_uses_new_orange_color() {
     use viv::core::terminal::style::Color;
     let lines = render_markdown("use `cargo test` to run");
     let code_span = lines[0]
@@ -147,8 +146,8 @@ fn inline_code_uses_claude_color() {
         .unwrap();
     assert_eq!(
         code_span.fg,
-        Some(Color::Rgb(215, 119, 87)),
-        "inline code should use CLAUDE orange color"
+        Some(Color::Rgb(230, 150, 100)),
+        "inline code should use new orange color"
     );
 }
 
@@ -207,4 +206,91 @@ fn empty_input_returns_one_line() {
         !lines.is_empty(),
         "empty input should return at least one line"
     );
+}
+
+// ── Visual styling tests ─────────────────────────────────────────────────────
+
+#[test]
+fn heading_h1_uses_claude_color() {
+    use viv::core::terminal::style::Color;
+    let nodes = parse_markdown("# Title");
+    let widget = MarkdownBlockWidget::new(&nodes);
+    let area = Rect::new(0, 0, 40, 5);
+    let mut buf = Buffer::empty(area);
+    widget.render(area, &mut buf);
+    let cell = buf.get(0, 0);
+    assert_eq!(
+        cell.fg,
+        Some(Color::Rgb(215, 119, 87)),
+        "h1 should use CLAUDE orange"
+    );
+    assert!(cell.bold, "h1 should be bold");
+}
+
+#[test]
+fn heading_h3_uses_dim_color() {
+    use viv::core::terminal::style::Color;
+    let nodes = parse_markdown("### Subtitle");
+    let widget = MarkdownBlockWidget::new(&nodes);
+    let area = Rect::new(0, 0, 40, 5);
+    let mut buf = Buffer::empty(area);
+    widget.render(area, &mut buf);
+    let cell = buf.get(0, 0);
+    assert_eq!(
+        cell.fg,
+        Some(Color::Rgb(136, 136, 136)),
+        "h3 should use DIM gray"
+    );
+    assert!(cell.bold, "h3 should be bold");
+}
+
+#[test]
+fn inline_code_uses_new_color() {
+    use viv::core::terminal::style::Color;
+    let nodes = parse_markdown("use `cargo`");
+    let widget = MarkdownBlockWidget::new(&nodes);
+    let area = Rect::new(0, 0, 40, 5);
+    let mut buf = Buffer::empty(area);
+    widget.render(area, &mut buf);
+    let code_cell = (0..area.width).map(|x| buf.get(x, 0)).find(|c| c.ch == 'c');
+    let cell = code_cell.expect("should find 'c'");
+    assert_eq!(
+        cell.fg,
+        Some(Color::Rgb(230, 150, 100)),
+        "inline code new orange"
+    );
+    assert_eq!(
+        cell.bg,
+        Some(Color::Rgb(45, 40, 38)),
+        "inline code subtle bg"
+    );
+}
+
+#[test]
+fn italic_uses_italic_flag() {
+    let nodes = parse_markdown("*hello*");
+    let widget = MarkdownBlockWidget::new(&nodes);
+    let area = Rect::new(0, 0, 40, 5);
+    let mut buf = Buffer::empty(area);
+    widget.render(area, &mut buf);
+    let cell = buf.get(0, 0);
+    assert!(cell.italic, "italic text should set cell.italic");
+    assert_eq!(
+        cell.fg,
+        Some(viv::core::terminal::style::Color::Rgb(255, 255, 255)),
+        "italic should use TEXT white"
+    );
+}
+
+#[test]
+fn quote_preserves_bold_and_adds_italic() {
+    let nodes = parse_markdown("> **bold** text");
+    let widget = MarkdownBlockWidget::new(&nodes);
+    let area = Rect::new(0, 0, 40, 5);
+    let mut buf = Buffer::empty(area);
+    widget.render(area, &mut buf);
+    // After "\u{2502} " (2 chars), bold text starts at x=2
+    let bold_cell = buf.get(2, 0);
+    assert!(bold_cell.bold, "bold inside quote should stay bold");
+    assert!(bold_cell.italic, "quote content should be italic");
 }
