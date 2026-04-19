@@ -7,3 +7,4 @@ pub mod key_schedule_test;
 pub mod record_test;
 pub mod rsa_test;
 pub mod stream_test;
+pub mod x509_test;
