@@ -57,3 +57,81 @@ fn smoke_type_compiles() {
     // Ensure X509Certificate compiles with the expected fields.
     let _placeholder: Option<X509Certificate<'static>> = None;
 }
+
+#[test]
+fn parse_utc_time_2020s() {
+    let dt = DateTime::from_utc_time("260419012110Z").unwrap();
+    assert_eq!(
+        dt,
+        DateTime {
+            year: 2026,
+            month: 4,
+            day: 19,
+            hour: 1,
+            minute: 21,
+            second: 10
+        }
+    );
+}
+
+#[test]
+fn parse_utc_time_year_boundary_2049() {
+    let dt = DateTime::from_utc_time("490101000000Z").unwrap();
+    assert_eq!(dt.year, 2049);
+}
+
+#[test]
+fn parse_utc_time_year_boundary_1950() {
+    let dt = DateTime::from_utc_time("500101000000Z").unwrap();
+    assert_eq!(dt.year, 1950);
+}
+
+#[test]
+fn parse_utc_time_rejects_wrong_length() {
+    assert!(DateTime::from_utc_time("26041901211").is_err());
+    assert!(DateTime::from_utc_time("260419012110").is_err());
+}
+
+#[test]
+fn parse_utc_time_rejects_non_z_suffix() {
+    assert!(DateTime::from_utc_time("260419012110X").is_err());
+}
+
+#[test]
+fn parse_utc_time_rejects_non_digit() {
+    assert!(DateTime::from_utc_time("26041a012110Z").is_err());
+}
+
+#[test]
+fn parse_utc_time_rejects_bad_month() {
+    assert!(DateTime::from_utc_time("261319012110Z").is_err());
+}
+
+#[test]
+fn parse_generalized_time_basic() {
+    let dt = DateTime::from_generalized_time("20250102123456Z").unwrap();
+    assert_eq!(
+        dt,
+        DateTime {
+            year: 2025,
+            month: 1,
+            day: 2,
+            hour: 12,
+            minute: 34,
+            second: 56
+        }
+    );
+}
+
+#[test]
+fn parse_generalized_time_rejects_wrong_length() {
+    assert!(DateTime::from_generalized_time("2025010212345Z").is_err());
+}
+
+#[test]
+fn now_utc_has_plausible_year() {
+    let dt = DateTime::now_utc();
+    assert!(dt.year >= 2026 && dt.year < 2100);
+    assert!((1..=12).contains(&dt.month));
+    assert!((1..=31).contains(&dt.day));
+}
