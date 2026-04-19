@@ -1,8 +1,8 @@
-use crate::Result;
 use crate::agent::evolution::evolve_from_session;
 use crate::agent::message::{ContentBlock, Message, PromptCache};
-use crate::agent::prompt::{SystemPrompt, build_system_prompt};
+use crate::agent::prompt::{build_system_prompt, SystemPrompt};
 use crate::bus::{AgentEvent, AgentMessage};
+use crate::config::ConfigPaths;
 use crate::core::json::JsonValue;
 use crate::core::runtime::channel::AsyncReceiver;
 use crate::core::sync::lock_or_recover;
@@ -23,6 +23,7 @@ use crate::permissions::PermissionManager;
 use crate::skill::SkillRegistry;
 use crate::skill::tool::SkillTool;
 use crate::tools::{PermissionLevel, ToolRegistry};
+use crate::{Result};
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 
@@ -125,15 +126,23 @@ impl Agent {
         event_rx: AsyncReceiver<AgentEvent>,
         msg_tx: Sender<AgentMessage>,
     ) -> Result<Self> {
-        let llm_config = LLMConfig::from_env()?;
+        // Cascading config paths: `.viv/settings.json` > `~/.viv/settings.json`
+        let config_paths = ConfigPaths::new();
+
+        // Model config: project → user → env vars (handled inside from_env)
+        let model_config = config_paths.model_config()?;
+        let llm_config = LLMConfig::from_env(&model_config)?;
         let model_name = llm_config.model(config.model_tier.clone()).to_string();
         let llm = Arc::new(LLMClient::new(llm_config));
         let store = Arc::new(MemoryStore::new(config.memory_dir.clone())?);
         let index = Arc::new(Mutex::new(MemoryIndex::load(&store)?));
         let mut tools = ToolRegistry::default_tools(Arc::clone(&llm));
 
-        // Load MCP config (if file doesn't exist, returns empty config)
-        let mcp_config = McpConfig::load(".viv/settings.json")?;
+        // Load MCP config (project first, fall back to user home)
+        let mcp_config = match config_paths.settings_path() {
+            Some(path) => McpConfig::load(path.to_string_lossy().as_ref())?,
+            None => McpConfig { servers: vec![] },
+        };
 
         // Connect to MCP servers
         let mcp_manager = McpManager::from_config(&mcp_config).await;
@@ -159,8 +168,11 @@ impl Agent {
         tools.register(Box::new(ListMcpPromptsTool::new(mcp.clone())));
         tools.register(Box::new(GetMcpPromptTool::new(mcp.clone())));
 
-        // Load LSP config (reuse same settings.json)
-        let lsp_config = LspConfig::load(".viv/settings.json")?;
+        // Load LSP config (reuse same cascading settings path)
+        let lsp_config = match config_paths.settings_path() {
+            Some(path) => LspConfig::load(path.to_string_lossy().as_ref())?,
+            None => LspConfig { servers: vec![] },
+        };
         let lsp = Arc::new(Mutex::new(LspManager::new(lsp_config)));
 
         // Register LSP tools
@@ -169,11 +181,14 @@ impl Agent {
         tools.register(Box::new(LspHoverTool::new(lsp.clone())));
         tools.register(Box::new(LspDiagnosticsTool::new(lsp.clone())));
 
-        // Load skills and register SkillTool
-        let home = std::env::var("HOME").unwrap_or_default();
-        let user_skills = format!("{}/.viv/skills", home);
-        let project_skills = ".viv/skills".to_string();
-        let skill_registry = Arc::new(SkillRegistry::load(&user_skills, &project_skills));
+        // Load skills: project `.viv/skills` takes priority over user `~/.viv/skills`
+        let skills_dirs = config_paths.skills_dirs();
+        let project_skills = skills_dirs.first().map(|p| p.to_string_lossy().into_owned());
+        let user_skills = skills_dirs.get(1).map(|p| p.to_string_lossy().into_owned());
+        let skill_registry = Arc::new(SkillRegistry::load(
+            user_skills.as_deref().unwrap_or("~/.viv/skills"),
+            project_skills.as_deref().unwrap_or(".viv/skills"),
+        ));
         tools.register(Box::new(SkillTool::new(skill_registry.clone())));
 
         let _ = msg_tx.send(AgentMessage::Ready { model: model_name });

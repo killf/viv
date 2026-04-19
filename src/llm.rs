@@ -1,5 +1,6 @@
 use std::io::{Read, Write};
 
+use crate::config::ModelConfig;
 use crate::core::json::{JsonValue, ToJson};
 use crate::core::net::http::HttpRequest;
 use crate::core::net::sse::{SseEvent, SseParser};
@@ -85,35 +86,51 @@ fn parse_base_url(base_url: &str) -> UrlParts {
 }
 
 impl LLMConfig {
-    /// Build an `LLMConfig` from environment variables.
+    /// Build an `LLMConfig` from cascading sources (highest to lowest priority):
+    ///   1. `model_config` fields that are set
+    ///   2. Environment variables
+    ///   3. Built-in defaults
     ///
-    /// - `VIV_API_KEY` — required
-    /// - `VIV_BASE_URL` — optional (default: "api.anthropic.com")
-    /// - `VIV_MODEL_FAST` — optional, falls back to `VIV_MODEL`, then default
-    /// - `VIV_MODEL_MEDIUM` — optional, falls back to `VIV_MODEL`, then default
-    /// - `VIV_MODEL_SLOW` — optional, falls back to `VIV_MODEL`, then default
-    /// - `VIV_MODEL` — optional fallback for all three tiers
-    pub fn from_env() -> crate::Result<Self> {
-        let api_key = std::env::var("VIV_API_KEY").map_err(|_| Error::LLM {
-            status: 0,
-            message: "VIV_API_KEY not set".into(),
-        })?;
+    /// Pass a merged `ModelConfig` where project settings already override user
+    /// settings — see `VivConfigPaths::model_config()`.
+    pub fn from_env(model_config: &ModelConfig) -> crate::Result<Self> {
+        let api_key = model_config
+            .api_key
+            .clone()
+            .or_else(|| std::env::var("VIV_API_KEY").ok())
+            .ok_or_else(|| Error::LLM {
+                status: 0,
+                message: "VIV_API_KEY not set (in settings or environment)".into(),
+            })?;
 
-        let base_url = std::env::var("VIV_BASE_URL").unwrap_or_else(|_| "api.anthropic.com".into());
+        let base_url = model_config
+            .base_url
+            .clone()
+            .or_else(|| std::env::var("VIV_BASE_URL").ok())
+            .unwrap_or_else(|| "api.anthropic.com".into());
 
-        let fallback_model = std::env::var("VIV_MODEL").ok();
+        let env_fallback = std::env::var("VIV_MODEL").ok();
 
-        let model_fast = std::env::var("VIV_MODEL_FAST")
-            .or_else(|_| fallback_model.clone().ok_or(std::env::VarError::NotPresent))
-            .unwrap_or_else(|_| "claude-haiku-4-5".into());
+        let model_fast = model_config
+            .model_fast
+            .clone()
+            .or_else(|| std::env::var("VIV_MODEL_FAST").ok())
+            .or_else(|| env_fallback.clone())
+            .unwrap_or_else(|| "claude-haiku-4-5".into());
 
-        let model_medium = std::env::var("VIV_MODEL_MEDIUM")
-            .or_else(|_| fallback_model.clone().ok_or(std::env::VarError::NotPresent))
-            .unwrap_or_else(|_| "claude-sonnet-4-6".into());
+        let model_medium = model_config
+            .model_medium
+            .clone()
+            .or_else(|| std::env::var("VIV_MODEL_MEDIUM").ok())
+            .or_else(|| env_fallback.clone())
+            .unwrap_or_else(|| "claude-sonnet-4-6".into());
 
-        let model_slow = std::env::var("VIV_MODEL_SLOW")
-            .or_else(|_| fallback_model.ok_or(std::env::VarError::NotPresent))
-            .unwrap_or_else(|_| "claude-opus-4-6".into());
+        let model_slow = model_config
+            .model_slow
+            .clone()
+            .or_else(|| std::env::var("VIV_MODEL_SLOW").ok())
+            .or_else(|| env_fallback)
+            .unwrap_or_else(|| "claude-opus-4-6".into());
 
         Ok(LLMConfig {
             api_key,
