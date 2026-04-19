@@ -417,4 +417,34 @@ impl<'a> Parser<'a> {
             bytes: &value[1..],
         })
     }
+
+    pub fn read_utf8_string(&mut self) -> crate::Result<&'a str> {
+        let bytes = self.read_expect(Tag::UTF8_STRING)?;
+        std::str::from_utf8(bytes)
+            .map_err(|e| Error::Asn1(format!("UTF8String: invalid UTF-8: {e}")))
+    }
+
+    pub fn read_printable_string(&mut self) -> crate::Result<&'a str> {
+        let bytes = self.read_expect(Tag::PRINTABLE_STRING)?;
+        std::str::from_utf8(bytes)
+            .map_err(|e| Error::Asn1(format!("PrintableString: invalid ASCII: {e}")))
+    }
+
+    pub fn read_ia5_string(&mut self) -> crate::Result<&'a str> {
+        let bytes = self.read_expect(Tag::IA5_STRING)?;
+        std::str::from_utf8(bytes)
+            .map_err(|e| Error::Asn1(format!("IA5String: invalid ASCII: {e}")))
+    }
+
+    pub fn read_utc_time(&mut self) -> crate::Result<&'a str> {
+        let bytes = self.read_expect(Tag::UTC_TIME)?;
+        std::str::from_utf8(bytes)
+            .map_err(|e| Error::Asn1(format!("UTCTime: invalid ASCII: {e}")))
+    }
+
+    pub fn read_generalized_time(&mut self) -> crate::Result<&'a str> {
+        let bytes = self.read_expect(Tag::GENERALIZED_TIME)?;
+        std::str::from_utf8(bytes)
+            .map_err(|e| Error::Asn1(format!("GeneralizedTime: invalid ASCII: {e}")))
+    }
 }

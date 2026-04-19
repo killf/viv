@@ -395,3 +395,50 @@ fn read_bit_string_rejects_unused_over_7() {
 // Suppress unused-import lint when BitString is only used via inference below.
 #[allow(dead_code)]
 fn _bitstring_used(_bs: BitString<'_>) {}
+
+#[test]
+fn read_utf8_string_hello() {
+    let mut p = Parser::new(&[0x0c, 0x05, 0x68, 0x65, 0x6c, 0x6c, 0x6f]);
+    assert_eq!(p.read_utf8_string().unwrap(), "hello");
+}
+
+#[test]
+fn read_utf8_string_chinese() {
+    let mut p = Parser::new(&[0x0c, 0x06, 0xe4, 0xbd, 0xa0, 0xe5, 0xa5, 0xbd]);
+    assert_eq!(p.read_utf8_string().unwrap(), "你好");
+}
+
+#[test]
+fn read_utf8_string_rejects_invalid_utf8() {
+    let mut p = Parser::new(&[0x0c, 0x02, 0xff, 0xfe]);
+    assert!(p.read_utf8_string().is_err());
+}
+
+#[test]
+fn read_printable_string_hello() {
+    let mut p = Parser::new(&[0x13, 0x05, 0x48, 0x65, 0x6c, 0x6c, 0x6f]);
+    assert_eq!(p.read_printable_string().unwrap(), "Hello");
+}
+
+#[test]
+fn read_ia5_string_abc() {
+    let mut p = Parser::new(&[0x16, 0x03, 0x61, 0x62, 0x63]);
+    assert_eq!(p.read_ia5_string().unwrap(), "abc");
+}
+
+#[test]
+fn read_utc_time_sample() {
+    let mut p = Parser::new(&[
+        0x17, 0x0d, 0x39, 0x33, 0x30, 0x39, 0x31, 0x33, 0x31, 0x36, 0x34, 0x35, 0x30, 0x30, 0x5a,
+    ]);
+    assert_eq!(p.read_utc_time().unwrap(), "930913164500Z");
+}
+
+#[test]
+fn read_generalized_time_sample() {
+    let mut p = Parser::new(&[
+        0x18, 0x0f, 0x32, 0x30, 0x32, 0x35, 0x30, 0x31, 0x30, 0x32, 0x31, 0x32, 0x33, 0x34, 0x35,
+        0x36, 0x5a,
+    ]);
+    assert_eq!(p.read_generalized_time().unwrap(), "20250102123456Z");
+}
