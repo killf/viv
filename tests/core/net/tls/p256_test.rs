@@ -138,3 +138,55 @@ fn field_invert_self_multiply_is_one() {
     let inv = a.invert().unwrap();
     assert_eq!(a.mul(&inv), FieldElement::one());
 }
+
+/// 65-byte uncompressed encoding of generator G.
+fn generator_bytes() -> [u8; 65] {
+    let mut bytes = [0u8; 65];
+    bytes[0] = 0x04;
+    bytes[1..33].copy_from_slice(&[
+        0x6b, 0x17, 0xd1, 0xf2, 0xe1, 0x2c, 0x42, 0x47, 0xf8, 0xbc, 0xe6, 0xe5, 0x63, 0xa4, 0x40,
+        0xf2, 0x77, 0x03, 0x7d, 0x81, 0x2d, 0xeb, 0x33, 0xa0, 0xf4, 0xa1, 0x39, 0x45, 0xd8, 0x98,
+        0xc2, 0x96,
+    ]);
+    bytes[33..65].copy_from_slice(&[
+        0x4f, 0xe3, 0x42, 0xe2, 0xfe, 0x1a, 0x7f, 0x9b, 0x8e, 0xe7, 0xeb, 0x4a, 0x7c, 0x0f, 0x9e,
+        0x16, 0x2b, 0xce, 0x33, 0x57, 0x6b, 0x31, 0x5e, 0xce, 0xcb, 0xb6, 0x40, 0x68, 0x37, 0xbf,
+        0x51, 0xf5,
+    ]);
+    bytes
+}
+
+#[test]
+fn point_infinity() {
+    assert!(Point::infinity().is_infinity());
+}
+
+#[test]
+fn point_generator_on_curve() {
+    let g = Point::generator();
+    assert!(!g.is_infinity());
+    assert!(g.is_on_curve());
+}
+
+#[test]
+fn point_from_uncompressed_generator() {
+    let bytes = generator_bytes();
+    let p = Point::from_uncompressed(&bytes).unwrap();
+    assert!(p.is_on_curve());
+    assert!(!p.is_infinity());
+}
+
+#[test]
+fn point_from_uncompressed_rejects_compressed_prefix() {
+    let mut bytes = [0u8; 65];
+    bytes[0] = 0x02;
+    assert!(Point::from_uncompressed(&bytes).is_err());
+}
+
+#[test]
+fn point_from_uncompressed_rejects_off_curve() {
+    let mut bytes = [0u8; 65];
+    bytes[0] = 0x04;
+    // x = y = 0; not on y² = x³ - 3x + b.
+    assert!(Point::from_uncompressed(&bytes).is_err());
+}

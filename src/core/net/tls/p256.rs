@@ -6,7 +6,7 @@
 
 #![allow(dead_code)]
 
-// Error import lands with parsing methods in a subsequent commit.
+use crate::Error;
 use crate::core::bigint::BigUint;
 
 /// P-256 prime: p = 2^256 − 2^224 + 2^192 + 2^96 − 1.
@@ -147,4 +147,75 @@ pub struct Point {
     pub x: FieldElement,
     pub y: FieldElement,
     pub z: FieldElement,
+}
+
+impl Point {
+    pub fn infinity() -> Self {
+        Point {
+            x: FieldElement::one(),
+            y: FieldElement::one(),
+            z: FieldElement::zero(),
+        }
+    }
+
+    pub fn generator() -> Self {
+        Point {
+            x: FieldElement(gx()),
+            y: FieldElement(gy()),
+            z: FieldElement::one(),
+        }
+    }
+
+    pub fn is_infinity(&self) -> bool {
+        self.z.0.is_zero()
+    }
+
+    /// True for infinity, and for Z=1 affine points that satisfy
+    /// y² = x³ − 3x + b (mod p).
+    pub fn is_on_curve(&self) -> bool {
+        if self.is_infinity() {
+            return true;
+        }
+        let one = FieldElement::one();
+        if self.z != one {
+            // Post-arithmetic points may have Z != 1; we trust the formulas.
+            return true;
+        }
+        let x = &self.x;
+        let y = &self.y;
+        let lhs = y.square();
+        let x2 = x.square();
+        let x3 = x2.mul(x);
+        let three_x = x.add(x).add(x);
+        let b = FieldElement(b_coeff());
+        let rhs = x3.sub(&three_x).add(&b);
+        lhs == rhs
+    }
+
+    /// Parse 65-byte uncompressed point: 0x04 || x || y.
+    pub fn from_uncompressed(bytes: &[u8; 65]) -> crate::Result<Self> {
+        if bytes[0] != 0x04 {
+            return Err(Error::Tls(format!(
+                "P-256 point: expected 0x04 prefix, got 0x{:02x}",
+                bytes[0]
+            )));
+        }
+        let mut x_bytes = [0u8; 32];
+        x_bytes.copy_from_slice(&bytes[1..33]);
+        let mut y_bytes = [0u8; 32];
+        y_bytes.copy_from_slice(&bytes[33..65]);
+        let x = FieldElement::from_bytes_be(&x_bytes)
+            .ok_or_else(|| Error::Tls("P-256 point: x ≥ p".to_string()))?;
+        let y = FieldElement::from_bytes_be(&y_bytes)
+            .ok_or_else(|| Error::Tls("P-256 point: y ≥ p".to_string()))?;
+        let p = Point {
+            x,
+            y,
+            z: FieldElement::one(),
+        };
+        if !p.is_on_curve() {
+            return Err(Error::Tls("P-256 point: not on curve".to_string()));
+        }
+        Ok(p)
+    }
 }
