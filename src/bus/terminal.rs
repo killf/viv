@@ -720,6 +720,7 @@ fn block_height_with_width(block: &ContentBlock, width: u16) -> u16 {
         ContentBlock::Markdown { nodes } => MarkdownBlockWidget::height(nodes, width),
         ContentBlock::CodeBlock { code, .. } => CodeBlockWidget::height(code, width),
         ContentBlock::ToolCall { .. } => 1, // folded by default
+        ContentBlock::Welcome { .. } => 5,
     }
 }
 
@@ -791,6 +792,15 @@ fn render_block(
                 widget.render(area, buf, state);
             }
             *tool_idx += 1;
+        }
+        ContentBlock::Welcome { model, cwd, branch } => {
+            use crate::tui::welcome::WelcomeWidget;
+            let widget = WelcomeWidget::new(
+                model.as_deref(),
+                cwd.as_str(),
+                branch.as_deref(),
+            );
+            widget.render(area, buf);
         }
     }
 }

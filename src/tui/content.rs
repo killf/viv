@@ -52,6 +52,11 @@ pub enum ContentBlock {
         output: Option<String>,
         error: Option<String>,
     },
+    Welcome {
+        model: Option<String>,
+        cwd: String,
+        branch: Option<String>,
+    },
 }
 
 /// Parse inline Markdown in `line` into a sequence of [`InlineSpan`]s.
