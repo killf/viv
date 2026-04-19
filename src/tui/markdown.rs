@@ -5,7 +5,7 @@ use crate::tui::code_block::CodeBlockWidget;
 use crate::tui::content::{
     InlineSpan, MarkdownNode, parse_inline as parse_inline_content, parse_markdown as parse_md,
 };
-use crate::tui::paragraph::{Line, Span};
+use crate::tui::paragraph::{Line, Span, wrap_line};
 use crate::tui::widget::Widget;
 
 pub struct MarkdownBlockWidget<'a> {
@@ -17,25 +17,50 @@ impl<'a> MarkdownBlockWidget<'a> {
         MarkdownBlockWidget { nodes }
     }
 
-    /// Sum of heights of all nodes given the available width.
+    /// Sum of heights of all nodes given the available width, including
+    /// one blank row between adjacent nodes.
     pub fn height(nodes: &[MarkdownNode], width: u16) -> u16 {
         let mut total: u16 = 0;
-        for node in nodes {
+        for (i, node) in nodes.iter().enumerate() {
             total = total.saturating_add(node_height(node, width));
+            if i + 1 < nodes.len() {
+                total = total.saturating_add(1); // spacing between nodes
+            }
         }
         total
     }
 }
 
 fn node_height(node: &MarkdownNode, width: u16) -> u16 {
+    let w = width as usize;
     match node {
-        MarkdownNode::Heading { .. } => 1,
-        MarkdownNode::Paragraph { .. } => 1,
-        MarkdownNode::List { items, .. } => items.len() as u16,
-        MarkdownNode::Quote { .. } => 1,
+        MarkdownNode::Heading { text, .. } => wrap_line(&spans_to_line(text, true), w).len() as u16,
+        MarkdownNode::Paragraph { spans } => {
+            wrap_line(&spans_to_line(spans, false), w).len() as u16
+        }
+        MarkdownNode::List { ordered, items } => {
+            let prefix_width = if *ordered { 5 } else { 4 }; // "  1. " or "  • "
+            let inner_w = w.saturating_sub(prefix_width);
+            items
+                .iter()
+                .map(|item| wrap_line(&spans_to_line(item, false), inner_w.max(1)).len() as u16)
+                .sum()
+        }
+        MarkdownNode::Quote { spans } => {
+            let inner_w = w.saturating_sub(2); // "│ " prefix
+            wrap_line(&spans_to_line(spans, false), inner_w.max(1)).len() as u16
+        }
         MarkdownNode::CodeBlock { code, .. } => CodeBlockWidget::height(code, width),
         MarkdownNode::HorizontalRule => 1,
     }
+}
+
+fn spans_to_line(spans: &[InlineSpan], bold_context: bool) -> Line {
+    let line_spans: Vec<Span> = spans
+        .iter()
+        .map(|s| inline_span_to_span(s, bold_context))
+        .collect();
+    Line::from_spans(line_spans)
 }
 
 fn inline_span_to_span(span: &InlineSpan, bold_context: bool) -> Span {
@@ -57,32 +82,52 @@ fn inline_span_to_span(span: &InlineSpan, bold_context: bool) -> Span {
     }
 }
 
-fn render_inline_spans(
+fn render_wrapped_spans(
     spans: &[InlineSpan],
-    x: u16,
-    y: u16,
+    start_x: u16,
+    start_y: u16,
     buf: &mut Buffer,
     area: Rect,
     bold_context: bool,
-) {
-    let mut cur_x = x;
-    let max_x = area.x + area.width;
-    for inline in spans {
-        let sp = inline_span_to_span(inline, bold_context);
-        for ch in sp.text.chars() {
-            if cur_x >= max_x {
-                break;
-            }
-            let cell = buf.get_mut(cur_x, y);
-            cell.ch = ch;
-            cell.fg = sp.fg;
-            cell.bold = sp.bold;
-            cur_x += 1;
-        }
-        if cur_x >= max_x {
+    available_width: u16,
+) -> u16 {
+    let line = spans_to_line(spans, bold_context);
+    let rows = wrap_line(&line, available_width as usize);
+    let mut rows_rendered: u16 = 0;
+    for (row_idx, row) in rows.iter().enumerate() {
+        let y = start_y + row_idx as u16;
+        if y >= area.y + area.height {
             break;
         }
+        let mut x = start_x;
+        for sc in row {
+            if sc.width == 0 {
+                continue;
+            }
+            if x + sc.width > area.x + area.width {
+                break;
+            }
+            let cell = buf.get_mut(x, y);
+            cell.ch = sc.ch;
+            cell.fg = sc.fg;
+            cell.bg = sc.bg;
+            cell.bold = sc.bold;
+            cell.italic = sc.italic;
+            cell.dim = sc.dim;
+            if sc.width == 2 && x + 1 < area.x + area.width {
+                let cell2 = buf.get_mut(x + 1, y);
+                cell2.ch = '\0';
+                cell2.fg = sc.fg;
+                cell2.bg = sc.bg;
+                cell2.bold = sc.bold;
+                cell2.italic = sc.italic;
+                cell2.dim = sc.dim;
+            }
+            x += sc.width;
+        }
+        rows_rendered += 1;
     }
+    rows_rendered
 }
 
 impl<'a> Widget for MarkdownBlockWidget<'a> {
@@ -92,21 +137,23 @@ impl<'a> Widget for MarkdownBlockWidget<'a> {
         }
 
         let mut row = area.y;
+        let node_count = self.nodes.len();
 
-        for node in self.nodes {
+        for (node_idx, node) in self.nodes.iter().enumerate() {
             if row >= area.y + area.height {
                 break;
             }
 
             match node {
                 MarkdownNode::Heading { text, .. } => {
-                    render_inline_spans(text, area.x, row, buf, area, true);
-                    row += 1;
+                    let rows = render_wrapped_spans(text, area.x, row, buf, area, true, area.width);
+                    row += rows;
                 }
 
                 MarkdownNode::Paragraph { spans } => {
-                    render_inline_spans(spans, area.x, row, buf, area, false);
-                    row += 1;
+                    let rows =
+                        render_wrapped_spans(spans, area.x, row, buf, area, false, area.width);
+                    row += rows;
                 }
 
                 MarkdownNode::List { ordered, items } => {
@@ -119,57 +166,92 @@ impl<'a> Widget for MarkdownBlockWidget<'a> {
                         } else {
                             "  \u{2022} ".to_string()
                         };
+                        let prefix_len = prefix.len() as u16;
+                        let inner_width = area.width.saturating_sub(prefix_len);
+
+                        // Render prefix on first row
+                        let max_x = area.x + area.width;
+                        for (i, ch) in prefix.chars().enumerate() {
+                            let cx = area.x + i as u16;
+                            if cx >= max_x {
+                                break;
+                            }
+                            let cell = buf.get_mut(cx, row);
+                            cell.ch = ch;
+                            cell.fg = Some(theme::DIM);
+                            cell.bold = false;
+                        }
+
+                        // Render wrapped content
+                        let rows = render_wrapped_spans(
+                            item,
+                            area.x + prefix_len,
+                            row,
+                            buf,
+                            area,
+                            false,
+                            inner_width.max(1),
+                        );
+                        // Continuation rows are already rendered at the correct
+                        // indent by render_wrapped_spans; the prefix area on
+                        // continuation rows is left blank (spaces from Buffer default).
+                        row += rows;
+                    }
+                }
+
+                MarkdownNode::Quote { spans } => {
+                    let inner_width = area.width.saturating_sub(2);
+                    let line = spans_to_line(spans, false);
+                    let rows = wrap_line(&line, inner_width.max(1) as usize);
+                    let mut rows_rendered: u16 = 0;
+                    for (row_idx, wrapped_row) in rows.iter().enumerate() {
+                        let y = row + row_idx as u16;
+                        if y >= area.y + area.height {
+                            break;
+                        }
+                        // Render "│ " prefix on each row
+                        let prefix = "\u{2502} ";
                         let mut cur_x = area.x;
                         let max_x = area.x + area.width;
                         for ch in prefix.chars() {
                             if cur_x >= max_x {
                                 break;
                             }
-                            let cell = buf.get_mut(cur_x, row);
+                            let cell = buf.get_mut(cur_x, y);
                             cell.ch = ch;
-                            cell.fg = Some(theme::DIM);
+                            cell.fg = Some(Color::Rgb(100, 100, 100));
                             cell.bold = false;
                             cur_x += 1;
                         }
-                        render_inline_spans(item, cur_x, row, buf, area, false);
-                        row += 1;
-                    }
-                }
-
-                MarkdownNode::Quote { spans } => {
-                    let prefix = "\u{2502} "; // "│ "
-                    let mut cur_x = area.x;
-                    let max_x = area.x + area.width;
-                    for ch in prefix.chars() {
-                        if cur_x >= max_x {
-                            break;
-                        }
-                        let cell = buf.get_mut(cur_x, row);
-                        cell.ch = ch;
-                        cell.fg = Some(Color::Rgb(100, 100, 100));
-                        cell.bold = false;
-                        cur_x += 1;
-                    }
-                    // Quote content rendered dim
-                    for inline in spans {
-                        let mut sp = inline_span_to_span(inline, false);
-                        sp.fg = Some(theme::DIM);
-                        sp.bold = false;
-                        for ch in sp.text.chars() {
-                            if cur_x >= max_x {
+                        // Render content with dim styling
+                        for sc in wrapped_row {
+                            if sc.width == 0 {
+                                continue;
+                            }
+                            if cur_x + sc.width > max_x {
                                 break;
                             }
-                            let cell = buf.get_mut(cur_x, row);
-                            cell.ch = ch;
-                            cell.fg = sp.fg;
-                            cell.bold = sp.bold;
-                            cur_x += 1;
+                            let cell = buf.get_mut(cur_x, y);
+                            cell.ch = sc.ch;
+                            cell.fg = Some(theme::DIM);
+                            cell.bg = sc.bg;
+                            cell.bold = false;
+                            cell.italic = sc.italic;
+                            cell.dim = sc.dim;
+                            if sc.width == 2 && cur_x + 1 < max_x {
+                                let cell2 = buf.get_mut(cur_x + 1, y);
+                                cell2.ch = '\0';
+                                cell2.fg = Some(theme::DIM);
+                                cell2.bg = sc.bg;
+                                cell2.bold = false;
+                                cell2.italic = sc.italic;
+                                cell2.dim = sc.dim;
+                            }
+                            cur_x += sc.width;
                         }
-                        if cur_x >= max_x {
-                            break;
-                        }
+                        rows_rendered += 1;
                     }
-                    row += 1;
+                    row += rows_rendered;
                 }
 
                 MarkdownNode::CodeBlock { language, code } => {
@@ -195,6 +277,11 @@ impl<'a> Widget for MarkdownBlockWidget<'a> {
                     }
                     row += 1;
                 }
+            }
+
+            // Add spacing between nodes (not after the last)
+            if node_idx + 1 < node_count && row < area.y + area.height {
+                row += 1;
             }
         }
     }

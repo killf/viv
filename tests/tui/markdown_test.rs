@@ -76,10 +76,42 @@ fn renders_horizontal_rule() {
 
 #[test]
 fn height_calculation() {
-    // heading(1) + paragraph(1) + list with 2 items(2) + hr(1) = 5
+    // heading(1) + spacing(1) + paragraph(1) + spacing(1) + list(2) + spacing(1) + hr(1) = 8
     let nodes = parse_markdown("# Title\nSome text\n- one\n- two\n---");
     let h = MarkdownBlockWidget::height(&nodes, 80);
-    assert_eq!(h, 5, "height should be sum of node heights");
+    assert_eq!(h, 8, "height should include spacing between nodes");
+}
+
+#[test]
+fn paragraph_wraps_long_text() {
+    let nodes = parse_markdown("hello world");
+    let h = MarkdownBlockWidget::height(&nodes, 6);
+    assert_eq!(h, 2, "long paragraph should wrap to 2 rows in width 6");
+}
+
+#[test]
+fn paragraph_renders_wrapped_second_row() {
+    let nodes = parse_markdown("hello world");
+    let widget = MarkdownBlockWidget::new(&nodes);
+    let area = Rect::new(0, 0, 6, 5);
+    let mut buf = Buffer::empty(area);
+    widget.render(area, &mut buf);
+    assert_eq!(buf.get(0, 0).ch, 'h');
+    assert_eq!(buf.get(0, 1).ch, 'w', "wrapped word should appear on row 1");
+}
+
+#[test]
+fn block_spacing_between_nodes() {
+    let nodes = parse_markdown("Hello\n\nWorld");
+    let h = MarkdownBlockWidget::height(&nodes, 80);
+    assert_eq!(h, 3, "two paragraphs should have 1 row spacing: 1+1+1=3");
+}
+
+#[test]
+fn list_item_wraps_long_text() {
+    let nodes = parse_markdown("- hello world");
+    let h = MarkdownBlockWidget::height(&nodes, 10);
+    assert_eq!(h, 2, "long list item should wrap");
 }
 
 // ── render_markdown backward compat tests ─────────────────────────────────────
