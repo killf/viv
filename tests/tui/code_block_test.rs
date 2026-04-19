@@ -78,7 +78,11 @@ fn code_block_inner_has_background() {
     widget.render(Rect::new(0, 0, 20, 5), &mut buf);
     // Inner cell at (1, 1) should have dark background
     let cell = buf.get(1, 1);
-    assert_eq!(cell.bg, Some(Color::Rgb(30, 30, 30)), "code block inner should have dark bg");
+    assert_eq!(
+        cell.bg,
+        Some(Color::Rgb(30, 30, 30)),
+        "code block inner should have dark bg"
+    );
 }
 
 #[test]

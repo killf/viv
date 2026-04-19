@@ -1,5 +1,5 @@
-use viv::core::terminal::screen::{Cell, Screen};
 use viv::core::terminal::buffer::{Buffer, Rect};
+use viv::core::terminal::screen::{Cell, Screen};
 
 // --- Cell default ---
 
@@ -176,7 +176,10 @@ fn diff_emits_italic_ansi() {
     let bytes = curr.diff(&prev);
     let output = String::from_utf8_lossy(&bytes);
     // \x1b[3m is ANSI italic
-    assert!(output.contains("\x1b[3m"), "diff should emit italic ANSI: {output:?}");
+    assert!(
+        output.contains("\x1b[3m"),
+        "diff should emit italic ANSI: {output:?}"
+    );
 }
 
 #[test]
@@ -190,5 +193,8 @@ fn diff_emits_dim_ansi() {
     let bytes = curr.diff(&prev);
     let output = String::from_utf8_lossy(&bytes);
     // \x1b[2m is ANSI dim
-    assert!(output.contains("\x1b[2m"), "diff should emit dim ANSI: {output:?}");
+    assert!(
+        output.contains("\x1b[2m"),
+        "diff should emit dim ANSI: {output:?}"
+    );
 }

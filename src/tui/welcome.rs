@@ -22,11 +22,7 @@ pub struct WelcomeWidget<'a> {
 impl<'a> WelcomeWidget<'a> {
     pub const HEIGHT: u16 = 5;
 
-    pub fn new(
-        model: Option<&'a str>,
-        cwd: &'a str,
-        branch: Option<&'a str>,
-    ) -> Self {
+    pub fn new(model: Option<&'a str>, cwd: &'a str, branch: Option<&'a str>) -> Self {
         WelcomeWidget { model, cwd, branch }
     }
 
@@ -35,10 +31,7 @@ impl<'a> WelcomeWidget<'a> {
         let cwd_val = self.cwd.to_string();
         let branch_val = self.branch.unwrap_or("-").to_string();
 
-        let platform = format!("{} {}",
-            std::env::consts::OS,
-            std::env::consts::ARCH,
-        );
+        let platform = format!("{} {}", std::env::consts::OS, std::env::consts::ARCH,);
 
         let shell = std::env::var("SHELL")
             .ok()

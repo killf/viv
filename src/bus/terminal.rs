@@ -789,11 +789,7 @@ fn render_block(
         }
         ContentBlock::Welcome { model, cwd, branch } => {
             use crate::tui::welcome::WelcomeWidget;
-            let widget = WelcomeWidget::new(
-                model.as_deref(),
-                cwd.as_str(),
-                branch.as_deref(),
-            );
+            let widget = WelcomeWidget::new(model.as_deref(), cwd.as_str(), branch.as_deref());
             widget.render(area, buf);
         }
     }
