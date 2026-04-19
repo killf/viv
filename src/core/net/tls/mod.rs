@@ -9,6 +9,7 @@ pub mod crypto;
 pub mod handshake;
 pub mod key_schedule;
 pub mod record;
+pub mod rsa;
 pub mod x509;
 
 use std::io::{self, Read, Write};
