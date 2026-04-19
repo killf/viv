@@ -16,7 +16,6 @@ use crate::tui::header::HeaderWidget;
 use crate::tui::input::InputWidget;
 use crate::tui::layout::{Constraint, Direction, Layout};
 use crate::tui::markdown::MarkdownBlockWidget;
-use crate::tui::message_style::format_welcome;
 use crate::tui::renderer::Renderer;
 use crate::tui::spinner::{Spinner, random_verb};
 use crate::tui::status::StatusWidget;
@@ -87,25 +86,16 @@ impl TerminalUI {
 
         let header = HeaderWidget::from_env();
 
-        // Build the welcome message as a ContentBlock
-        let welcome_line = format_welcome(&header.cwd, header.branch.as_deref());
-        let welcome_text = welcome_line
-            .spans
-            .iter()
-            .map(|s| s.text.as_str())
-            .collect::<String>();
-
         let mut blocks = Vec::new();
         let mut conversation_state = ConversationState::new();
 
-        // Push welcome as a Markdown block (plain text paragraph)
-        let welcome_nodes = vec![MarkdownNode::Paragraph {
-            spans: vec![crate::tui::content::InlineSpan::Text(welcome_text)],
-        }];
-        blocks.push(ContentBlock::Markdown {
-            nodes: welcome_nodes.clone(),
+        // Push welcome screen as first content block
+        blocks.push(ContentBlock::Welcome {
+            model: None,
+            cwd: header.cwd.clone(),
+            branch: header.branch.clone(),
         });
-        conversation_state.append_item_height(1);
+        conversation_state.append_item_height(5); // WelcomeWidget::HEIGHT
 
         // Empty line separator
         blocks.push(ContentBlock::Markdown {
@@ -258,7 +248,11 @@ impl TerminalUI {
     fn handle_agent_message(&mut self, msg: AgentMessage) {
         match msg {
             AgentMessage::Ready { model } => {
-                self.model_name = model;
+                self.model_name = model.clone();
+                // Update the Welcome block's model field
+                if let Some(ContentBlock::Welcome { model: m, .. }) = self.blocks.first_mut() {
+                    *m = Some(model);
+                }
             }
 
             AgentMessage::Thinking => {
