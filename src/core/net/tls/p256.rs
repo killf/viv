@@ -126,6 +126,19 @@ impl FieldElement {
     pub fn square(&self) -> Self {
         self.mul(self)
     }
+
+    /// Multiplicative inverse via Fermat's little theorem: a^(p-2) mod p.
+    /// Returns `None` if `self` is zero.
+    pub fn invert(&self) -> Option<Self> {
+        if self.0.is_zero() {
+            return None;
+        }
+        let p = p_modulus();
+        let two = BigUint::from_u64(2);
+        let exp = p.checked_sub(&two)?;
+        let inv = self.0.modexp(&exp, &p)?;
+        Some(FieldElement(inv))
+    }
 }
 
 /// Point in Jacobian coordinates (X:Y:Z); z==0 means point at infinity.

@@ -121,3 +121,20 @@ fn field_mul_p_minus_one_squared_is_one() {
     let a = fe_p_minus_one();
     assert_eq!(a.mul(&a), FieldElement::one());
 }
+
+#[test]
+fn field_invert_zero_is_none() {
+    assert!(FieldElement::zero().invert().is_none());
+}
+
+#[test]
+fn field_invert_one() {
+    assert_eq!(FieldElement::one().invert().unwrap(), FieldElement::one());
+}
+
+#[test]
+fn field_invert_self_multiply_is_one() {
+    let a = fe_small(0x1234);
+    let inv = a.invert().unwrap();
+    assert_eq!(a.mul(&inv), FieldElement::one());
+}
