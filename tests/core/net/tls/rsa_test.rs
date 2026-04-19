@@ -72,3 +72,35 @@ fn from_n_e_strips_leading_zeros() {
     let pk = RsaPublicKey::from_n_e(&[0x00, 0x00, 0x01, 0x23], &[0x03]);
     assert_eq!(pk.n_byte_len(), 2);
 }
+
+#[test]
+fn from_spki_real_2048() {
+    let der = hex_decode(SPKI_DER_HEX);
+    let pk = RsaPublicKey::from_spki(&der).unwrap();
+    assert_eq!(pk.n_byte_len(), 256);
+    assert_eq!(pk.e, viv::core::bigint::BigUint::from_u64(65537));
+}
+
+#[test]
+fn from_spki_rejects_wrong_algorithm_oid() {
+    // OID 1.2.840.10045.2.1 (id-ecPublicKey): 2a 86 48 ce 3d 02 01
+    let der = hex_decode("30103009060 72a8648ce3d020103030001 02");
+    assert!(RsaPublicKey::from_spki(&der).is_err());
+}
+
+#[test]
+fn from_spki_rejects_truncated() {
+    let der = hex_decode("3082");
+    assert!(RsaPublicKey::from_spki(&der).is_err());
+}
+
+#[test]
+fn from_spki_rejects_bit_string_with_unused_bits() {
+    // SPKI with rsaEncryption algorithm but BIT STRING reporting 7 unused bits.
+    let der = hex_decode(
+        "3013 \
+         300d06092a864886f70d010101 0500 \
+         03020700",
+    );
+    assert!(RsaPublicKey::from_spki(&der).is_err());
+}
