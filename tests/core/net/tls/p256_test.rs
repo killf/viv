@@ -190,3 +190,42 @@ fn point_from_uncompressed_rejects_off_curve() {
     // x = y = 0; not on y² = x³ - 3x + b.
     assert!(Point::from_uncompressed(&bytes).is_err());
 }
+
+#[test]
+fn point_add_infinity_is_identity() {
+    let g = Point::generator();
+    let inf = Point::infinity();
+    let sum = g.add(&inf);
+    assert!(!sum.is_infinity());
+    assert_eq!(sum.affine_x_bytes().unwrap(), g.affine_x_bytes().unwrap());
+}
+
+#[test]
+fn point_double_infinity_is_infinity() {
+    assert!(Point::infinity().double().is_infinity());
+}
+
+#[test]
+fn point_add_self_equals_double() {
+    let g = Point::generator();
+    let g_plus_g = g.add(&g);
+    let two_g = g.double();
+    assert_eq!(g_plus_g.affine_x_bytes(), two_g.affine_x_bytes());
+}
+
+#[test]
+fn point_add_negation_is_infinity() {
+    let g = Point::generator();
+    let neg_g = Point {
+        x: g.x.clone(),
+        y: g.y.neg(),
+        z: g.z.clone(),
+    };
+    let sum = g.add(&neg_g);
+    assert!(sum.is_infinity());
+}
+
+#[test]
+fn point_affine_x_of_infinity_is_none() {
+    assert!(Point::infinity().affine_x_bytes().is_none());
+}

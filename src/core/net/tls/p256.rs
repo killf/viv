@@ -218,4 +218,107 @@ impl Point {
         }
         Ok(p)
     }
+
+    /// Convert Jacobian to affine x-coordinate only.
+    /// Returns `None` for infinity.
+    pub fn affine_x_bytes(&self) -> Option<[u8; 32]> {
+        if self.is_infinity() {
+            return None;
+        }
+        let z2 = self.z.square();
+        let z2_inv = z2.invert()?;
+        Some(self.x.mul(&z2_inv).to_bytes_be())
+    }
+
+    /// Point doubling in Jacobian coordinates (a = -3 specialization).
+    pub fn double(&self) -> Self {
+        if self.is_infinity() || self.y.0.is_zero() {
+            return Point::infinity();
+        }
+        let x1 = &self.x;
+        let y1 = &self.y;
+        let z1 = &self.z;
+        let delta = z1.square();
+        let gamma = y1.square();
+        let beta = x1.mul(&gamma);
+        let t = x1.sub(&delta).mul(&x1.add(&delta));
+        let alpha = t.add(&t).add(&t);
+        let alpha2 = alpha.square();
+        let eight_beta = {
+            let b2 = beta.add(&beta);
+            let b4 = b2.add(&b2);
+            b4.add(&b4)
+        };
+        let x3 = alpha2.sub(&eight_beta);
+        let z3 = y1.add(z1).square().sub(&gamma).sub(&delta);
+        let four_beta = {
+            let b2 = beta.add(&beta);
+            b2.add(&b2)
+        };
+        let gamma2 = gamma.square();
+        let eight_gamma2 = {
+            let g2 = gamma2.add(&gamma2);
+            let g4 = g2.add(&g2);
+            g4.add(&g4)
+        };
+        let y3 = alpha.mul(&four_beta.sub(&x3)).sub(&eight_gamma2);
+        Point {
+            x: x3,
+            y: y3,
+            z: z3,
+        }
+    }
+
+    /// Point addition in Jacobian coordinates (add-2007-bl).
+    pub fn add(&self, other: &Self) -> Self {
+        if self.is_infinity() {
+            return other.clone();
+        }
+        if other.is_infinity() {
+            return self.clone();
+        }
+        let x1 = &self.x;
+        let y1 = &self.y;
+        let z1 = &self.z;
+        let x2 = &other.x;
+        let y2 = &other.y;
+        let z2 = &other.z;
+        let z1z1 = z1.square();
+        let z2z2 = z2.square();
+        let u1 = x1.mul(&z2z2);
+        let u2 = x2.mul(&z1z1);
+        let s1 = y1.mul(&z2.mul(&z2z2));
+        let s2 = y2.mul(&z1.mul(&z1z1));
+
+        if u1 == u2 {
+            if s1 == s2 {
+                return self.double();
+            }
+            return Point::infinity();
+        }
+
+        let h = u2.sub(&u1);
+        let two_h = h.add(&h);
+        let i = two_h.square();
+        let j = h.mul(&i);
+        let r_diff = s2.sub(&s1);
+        let r = r_diff.add(&r_diff);
+        let v = u1.mul(&i);
+        let two_v = v.add(&v);
+        let x3 = r.square().sub(&j).sub(&two_v);
+        let s1_j = s1.mul(&j);
+        let two_s1_j = s1_j.add(&s1_j);
+        let y3 = r.mul(&v.sub(&x3)).sub(&two_s1_j);
+        let z3 = z1
+            .add(z2)
+            .square()
+            .sub(&z1z1)
+            .sub(&z2z2)
+            .mul(&h);
+        Point {
+            x: x3,
+            y: y3,
+            z: z3,
+        }
+    }
 }
