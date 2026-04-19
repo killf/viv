@@ -58,6 +58,35 @@ pub(crate) fn gy() -> BigUint {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FieldElement(pub(crate) BigUint);
 
+impl FieldElement {
+    pub fn zero() -> Self {
+        FieldElement(BigUint::zero())
+    }
+
+    pub fn one() -> Self {
+        FieldElement(BigUint::one())
+    }
+
+    /// Parse 32-byte big-endian value. Returns `None` if ≥ p.
+    pub fn from_bytes_be(bytes: &[u8; 32]) -> Option<Self> {
+        let n = BigUint::from_bytes_be(bytes);
+        if n.cmp(&p_modulus()) != std::cmp::Ordering::Less {
+            return None;
+        }
+        Some(FieldElement(n))
+    }
+
+    pub fn to_bytes_be(&self) -> [u8; 32] {
+        let v = self.0.to_bytes_be(32);
+        let mut out = [0u8; 32];
+        let copy_len = v.len().min(32);
+        let dst_start = 32 - copy_len;
+        let src_start = v.len() - copy_len;
+        out[dst_start..].copy_from_slice(&v[src_start..]);
+        out
+    }
+}
+
 /// Point in Jacobian coordinates (X:Y:Z); z==0 means point at infinity.
 #[derive(Debug, Clone)]
 pub struct Point {
