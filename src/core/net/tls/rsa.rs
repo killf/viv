@@ -196,3 +196,17 @@ pub fn verify_pkcs1_sha256_prehashed(
 
     Ok(())
 }
+
+/// Verify an RSA PKCS#1 v1.5 signature over a raw message.
+///
+/// Internally hashes `msg` with SHA-256, then delegates to
+/// [`verify_pkcs1_sha256_prehashed`].
+pub fn verify_pkcs1_sha256(
+    pk: &RsaPublicKey,
+    msg: &[u8],
+    signature: &[u8],
+) -> crate::Result<()> {
+    use crate::core::net::tls::crypto::sha256::Sha256;
+    let digest = Sha256::hash(msg);
+    verify_pkcs1_sha256_prehashed(pk, &digest, signature)
+}

@@ -1,4 +1,6 @@
-use viv::core::net::tls::rsa::{RsaPublicKey, verify_pkcs1_sha256_prehashed};
+use viv::core::net::tls::rsa::{
+    RsaPublicKey, verify_pkcs1_sha256, verify_pkcs1_sha256_prehashed,
+};
 
 const SPKI_DER_HEX: &str = "\
 30820122300d06092a864886f70d01010105000382010f003082010a0282010100\
@@ -148,4 +150,27 @@ fn verify_prehashed_signature_all_zeros() {
     let sig = vec![0u8; 256];
     let digest = [0u8; 32];
     assert!(verify_pkcs1_sha256_prehashed(&pk, &digest, &sig).is_err());
+}
+
+#[test]
+fn verify_full_message_valid() {
+    let pk = RsaPublicKey::from_spki(&hex_decode(SPKI_DER_HEX)).unwrap();
+    let sig = hex_decode(SIG_HEX);
+    verify_pkcs1_sha256(&pk, MSG, &sig).unwrap();
+}
+
+#[test]
+fn verify_full_message_tampered() {
+    let pk = RsaPublicKey::from_spki(&hex_decode(SPKI_DER_HEX)).unwrap();
+    let sig = hex_decode(SIG_HEX);
+    let tampered = b"hello world!";
+    let err = verify_pkcs1_sha256(&pk, tampered, &sig).unwrap_err();
+    assert!(format!("{err}").contains("digest"));
+}
+
+#[test]
+fn verify_full_empty_message_rejected() {
+    let pk = RsaPublicKey::from_spki(&hex_decode(SPKI_DER_HEX)).unwrap();
+    let sig = hex_decode(SIG_HEX);
+    assert!(verify_pkcs1_sha256(&pk, b"", &sig).is_err());
 }
