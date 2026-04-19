@@ -104,6 +104,8 @@ pub struct Cell {
     pub fg: Option<Color>,
     pub bg: Option<Color>,
     pub bold: bool,
+    pub italic: bool,
+    pub dim: bool,
 }
 
 impl Default for Cell {
@@ -113,6 +115,8 @@ impl Default for Cell {
             fg: None,
             bg: None,
             bold: false,
+            italic: false,
+            dim: false,
         }
     }
 }
@@ -177,6 +181,8 @@ impl Buffer {
                 fg,
                 bg: None,
                 bold,
+                italic: false,
+                dim: false,
             };
             // For wide chars, fill the next cell with a placeholder
             if w == 2 && cur_x + 1 < max_x {
@@ -186,6 +192,8 @@ impl Buffer {
                     fg,
                     bg: None,
                     bold,
+                    italic: false,
+                    dim: false,
                 };
             }
             cur_x += w;
@@ -235,6 +243,14 @@ impl Buffer {
             // Apply bold if set
             if cell.bold {
                 writer.bold();
+            }
+
+            if cell.italic {
+                writer.write_bytes(b"\x1b[3m");
+            }
+
+            if cell.dim {
+                writer.write_bytes(b"\x1b[2m");
             }
 
             // Write the character

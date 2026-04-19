@@ -1,4 +1,5 @@
 use viv::core::terminal::screen::{Cell, Screen};
+use viv::core::terminal::buffer::{Buffer, Rect};
 
 // --- Cell default ---
 
@@ -153,4 +154,41 @@ fn clear_back_resets_cells() {
     s.put(2, 2, 'Q');
     s.clear_back();
     assert_eq!(s.get(2, 2), Cell::default());
+}
+
+// --- Cell italic/dim fields ---
+
+#[test]
+fn cell_italic_default_false() {
+    let cell = viv::core::terminal::buffer::Cell::default();
+    assert!(!cell.italic);
+    assert!(!cell.dim);
+}
+
+#[test]
+fn diff_emits_italic_ansi() {
+    let area = Rect::new(0, 0, 3, 1);
+    let prev = Buffer::empty(area);
+    let mut curr = Buffer::empty(area);
+    let cell = curr.get_mut(0, 0);
+    cell.ch = 'a';
+    cell.italic = true;
+    let bytes = curr.diff(&prev);
+    let output = String::from_utf8_lossy(&bytes);
+    // \x1b[3m is ANSI italic
+    assert!(output.contains("\x1b[3m"), "diff should emit italic ANSI: {output:?}");
+}
+
+#[test]
+fn diff_emits_dim_ansi() {
+    let area = Rect::new(0, 0, 3, 1);
+    let prev = Buffer::empty(area);
+    let mut curr = Buffer::empty(area);
+    let cell = curr.get_mut(0, 0);
+    cell.ch = 'a';
+    cell.dim = true;
+    let bytes = curr.diff(&prev);
+    let output = String::from_utf8_lossy(&bytes);
+    // \x1b[2m is ANSI dim
+    assert!(output.contains("\x1b[2m"), "diff should emit dim ANSI: {output:?}");
 }

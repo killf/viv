@@ -61,6 +61,8 @@ fn buffer_set_get() {
         fg: Some(Color::Ansi(31)),
         bg: None,
         bold: true,
+        italic: false,
+        dim: false,
     };
     buf.set(3, 2, cell);
     assert_eq!(*buf.get(3, 2), cell);
