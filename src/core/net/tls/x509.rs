@@ -180,3 +180,157 @@ fn rata_die(days: i64) -> (i64, u8, u8) {
     let y = y + if m <= 2 { 1 } else { 0 };
     (y, m as u8, d as u8)
 }
+
+impl<'a> X509Certificate<'a> {
+    pub fn from_der(der: &'a [u8]) -> crate::Result<Self> {
+        use crate::core::asn1::Parser;
+
+        // Certificate ::= SEQUENCE { tbsCertificate, signatureAlgorithm, signatureValue }
+        let mut top = Parser::new(der);
+        let mut certificate = top
+            .read_sequence()
+            .map_err(|e| Error::Tls(format!("X509: Certificate: {e}")))?;
+
+        // tbsCertificate — capture raw bytes (tag+length+value) for signature coverage
+        let tbs_bytes = certificate
+            .read_any_raw()
+            .map_err(|e| Error::Tls(format!("X509: TBS raw: {e}")))?;
+        // Re-parse TBSCertificate internals from the captured bytes.
+        let mut tbs_outer = Parser::new(tbs_bytes);
+        let mut tbs = tbs_outer
+            .read_sequence()
+            .map_err(|e| Error::Tls(format!("X509: TBS seq: {e}")))?;
+
+        // version [0] EXPLICIT INTEGER DEFAULT v1
+        let version: u32 = match tbs
+            .read_optional_explicit(0)
+            .map_err(|e| Error::Tls(format!("X509: version wrap: {e}")))?
+        {
+            Some(mut v) => {
+                let bytes = v
+                    .read_integer()
+                    .map_err(|e| Error::Tls(format!("X509: version int: {e}")))?;
+                if bytes.len() != 1 {
+                    return Err(Error::Tls(format!(
+                        "X509: version: unexpected length {}",
+                        bytes.len()
+                    )));
+                }
+                v.finish().map_err(|e| Error::Tls(format!("X509: version: {e}")))?;
+                bytes[0] as u32
+            }
+            None => 0,
+        };
+
+        // serialNumber INTEGER
+        let serial = tbs
+            .read_integer()
+            .map_err(|e| Error::Tls(format!("X509: serial: {e}")))?;
+
+        // signature (tbs-inner AlgorithmIdentifier) — skip
+        let _ = tbs
+            .read_any()
+            .map_err(|e| Error::Tls(format!("X509: tbs sig algo: {e}")))?;
+
+        // issuer Name (raw bytes)
+        let issuer_dn = tbs
+            .read_any_raw()
+            .map_err(|e| Error::Tls(format!("X509: issuer: {e}")))?;
+
+        // validity SEQUENCE { notBefore Time, notAfter Time }
+        let mut validity = tbs
+            .read_sequence()
+            .map_err(|e| Error::Tls(format!("X509: validity: {e}")))?;
+        let not_before = read_time(&mut validity)?;
+        let not_after = read_time(&mut validity)?;
+        validity
+            .finish()
+            .map_err(|e| Error::Tls(format!("X509: validity end: {e}")))?;
+
+        // subject Name (raw bytes)
+        let subject_dn = tbs
+            .read_any_raw()
+            .map_err(|e| Error::Tls(format!("X509: subject: {e}")))?;
+
+        // subjectPublicKeyInfo (raw bytes)
+        let spki = tbs
+            .read_any_raw()
+            .map_err(|e| Error::Tls(format!("X509: SPKI: {e}")))?;
+
+        // Task 5 will populate SAN / is_ca from extensions.
+        let san_dns_names: Vec<&'a str> = Vec::new();
+        let is_ca: Option<bool> = None;
+
+        // Consume remaining TBS bytes (uniqueIDs and extensions), ignored for now.
+        while !tbs.is_empty() {
+            let _ = tbs
+                .read_any()
+                .map_err(|e| Error::Tls(format!("X509: tbs leftover: {e}")))?;
+        }
+
+        // Outer signatureAlgorithm
+        let mut sig_algo = certificate
+            .read_sequence()
+            .map_err(|e| Error::Tls(format!("X509: outer alg: {e}")))?;
+        let signature_algorithm = sig_algo
+            .read_oid()
+            .map_err(|e| Error::Tls(format!("X509: outer alg OID: {e}")))?;
+        while !sig_algo.is_empty() {
+            let _ = sig_algo
+                .read_any()
+                .map_err(|e| Error::Tls(format!("X509: outer alg params: {e}")))?;
+        }
+
+        // Outer signatureValue BIT STRING
+        let sig_bits = certificate
+            .read_bit_string()
+            .map_err(|e| Error::Tls(format!("X509: signature: {e}")))?;
+        if sig_bits.unused_bits != 0 {
+            return Err(Error::Tls(format!(
+                "X509: signature BIT STRING unused_bits = {}",
+                sig_bits.unused_bits
+            )));
+        }
+
+        certificate
+            .finish()
+            .map_err(|e| Error::Tls(format!("X509: trailing after signature: {e}")))?;
+
+        Ok(X509Certificate {
+            raw: der,
+            tbs_bytes,
+            version,
+            serial,
+            signature_algorithm,
+            issuer_dn,
+            subject_dn,
+            not_before,
+            not_after,
+            spki,
+            san_dns_names,
+            is_ca,
+            signature: sig_bits.bytes,
+        })
+    }
+}
+
+/// Read a Time (either UTCTime or GeneralizedTime) from `p`.
+fn read_time(p: &mut crate::core::asn1::Parser<'_>) -> crate::Result<DateTime> {
+    use crate::core::asn1::Tag;
+    let tag = p
+        .peek_tag()
+        .map_err(|e| Error::Tls(format!("time: peek: {e}")))?;
+    if tag == Tag::UTC_TIME {
+        let s = p
+            .read_utc_time()
+            .map_err(|e| Error::Tls(format!("time: {e}")))?;
+        DateTime::from_utc_time(s)
+    } else if tag == Tag::GENERALIZED_TIME {
+        let s = p
+            .read_generalized_time()
+            .map_err(|e| Error::Tls(format!("time: {e}")))?;
+        DateTime::from_generalized_time(s)
+    } else {
+        Err(Error::Tls(format!("time: unexpected tag {:?}", tag)))
+    }
+}

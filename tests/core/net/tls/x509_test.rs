@@ -135,3 +135,66 @@ fn now_utc_has_plausible_year() {
     assert!((1..=12).contains(&dt.month));
     assert!((1..=31).contains(&dt.day));
 }
+
+#[test]
+fn from_der_parses_version_and_serial() {
+    let der = hex_decode(CERT_DER_HEX);
+    let cert = X509Certificate::from_der(&der).unwrap();
+    assert_eq!(cert.version, 2);
+    assert_eq!(cert.serial.len(), 20);
+    assert_eq!(cert.serial[0], 0x78);
+}
+
+#[test]
+fn from_der_parses_validity() {
+    let der = hex_decode(CERT_DER_HEX);
+    let cert = X509Certificate::from_der(&der).unwrap();
+    assert_eq!(
+        cert.not_before,
+        DateTime { year: 2026, month: 4, day: 19, hour: 1, minute: 21, second: 10 }
+    );
+    assert_eq!(
+        cert.not_after,
+        DateTime { year: 2036, month: 4, day: 16, hour: 1, minute: 21, second: 10 }
+    );
+}
+
+#[test]
+fn from_der_exposes_tbs_bytes() {
+    let der = hex_decode(CERT_DER_HEX);
+    let cert = X509Certificate::from_der(&der).unwrap();
+    assert_eq!(cert.tbs_bytes[0], 0x30);
+    assert!(cert.tbs_bytes.len() < cert.raw.len());
+    assert!(!cert.tbs_bytes.is_empty());
+}
+
+#[test]
+fn from_der_exposes_spki_and_phase3_parses_it() {
+    let der = hex_decode(CERT_DER_HEX);
+    let cert = X509Certificate::from_der(&der).unwrap();
+    assert_eq!(cert.spki[0], 0x30);
+    use viv::core::net::tls::rsa::RsaPublicKey;
+    let pk = RsaPublicKey::from_spki(cert.spki).unwrap();
+    assert_eq!(pk.n_byte_len(), 256);
+}
+
+#[test]
+fn from_der_issuer_equals_subject_self_signed() {
+    let der = hex_decode(CERT_DER_HEX);
+    let cert = X509Certificate::from_der(&der).unwrap();
+    assert_eq!(cert.issuer_dn, cert.subject_dn);
+    assert_eq!(cert.subject_dn[0], 0x30);
+}
+
+#[test]
+fn from_der_exposes_signature() {
+    let der = hex_decode(CERT_DER_HEX);
+    let cert = X509Certificate::from_der(&der).unwrap();
+    assert_eq!(cert.signature.len(), 256);
+}
+
+#[test]
+fn from_der_rejects_truncated() {
+    assert!(X509Certificate::from_der(&[0x30]).is_err());
+    assert!(X509Certificate::from_der(&[]).is_err());
+}
