@@ -71,6 +71,17 @@ fn code_block_empty_code() {
 }
 
 #[test]
+fn code_block_inner_has_background() {
+    use viv::core::terminal::style::Color;
+    let widget = CodeBlockWidget::new("let x = 1;", Some("rust"));
+    let mut buf = make_buf(20, 5);
+    widget.render(Rect::new(0, 0, 20, 5), &mut buf);
+    // Inner cell at (1, 1) should have dark background
+    let cell = buf.get(1, 1);
+    assert_eq!(cell.bg, Some(Color::Rgb(30, 30, 30)), "code block inner should have dark bg");
+}
+
+#[test]
 fn code_block_no_language() {
     let widget = CodeBlockWidget::new("some code", None);
     let mut buf = make_buf(20, 5);
