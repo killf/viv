@@ -13,3 +13,18 @@ pub struct RsaPublicKey {
     pub n: BigUint,
     pub e: BigUint,
 }
+
+impl RsaPublicKey {
+    /// Construct from raw big-endian bytes.
+    pub fn from_n_e(n_be: &[u8], e_be: &[u8]) -> Self {
+        RsaPublicKey {
+            n: BigUint::from_bytes_be(n_be),
+            e: BigUint::from_bytes_be(e_be),
+        }
+    }
+
+    /// Modulus byte length. Signatures must match this.
+    pub fn n_byte_len(&self) -> usize {
+        self.n.bit_len().div_ceil(8)
+    }
+}

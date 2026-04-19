@@ -49,8 +49,26 @@ fn test_vectors_sizes_sanity() {
 
 #[test]
 fn smoke_rsa_pk_constructs() {
-    let _pk = RsaPublicKey {
-        n: viv::core::bigint::BigUint::zero(),
-        e: viv::core::bigint::BigUint::zero(),
-    };
+    let pk = RsaPublicKey::from_n_e(&[0x01, 0x00, 0x01], &[0x03]);
+    assert!(pk.n_byte_len() > 0);
+}
+
+#[test]
+fn from_n_e_basic() {
+    let pk = RsaPublicKey::from_n_e(&[0xff], &[0x03]);
+    assert_eq!(pk.n_byte_len(), 1);
+}
+
+#[test]
+fn from_n_e_2048_bit() {
+    let mut n = vec![0xffu8; 256];
+    n[0] = 0x80;
+    let pk = RsaPublicKey::from_n_e(&n, &[0x01, 0x00, 0x01]);
+    assert_eq!(pk.n_byte_len(), 256);
+}
+
+#[test]
+fn from_n_e_strips_leading_zeros() {
+    let pk = RsaPublicKey::from_n_e(&[0x00, 0x00, 0x01, 0x23], &[0x03]);
+    assert_eq!(pk.n_byte_len(), 2);
 }
