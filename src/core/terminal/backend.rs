@@ -144,7 +144,6 @@ impl Backend for LinuxBackend {
     fn enter_alt_screen(&mut self) -> crate::Result<()> {
         if !self.in_alt_screen {
             self.stdout.write_all(ENTER_ALT_SCREEN)?;
-            self.stdout.write_all(ENABLE_MOUSE_1000)?;
             self.stdout.write_all(ENABLE_SGR_MOUSE)?;
             self.stdout.write_all(ENABLE_URXVT_MOUSE)?;
             self.stdout.flush()?;
@@ -249,7 +248,6 @@ impl Backend for CrossBackend {
     fn enter_alt_screen(&mut self) -> crate::Result<()> {
         if !self.in_alt_screen {
             self.stdout.write_all(ENTER_ALT_SCREEN)?;
-            self.stdout.write_all(ENABLE_MOUSE_1000)?;
             self.stdout.write_all(ENABLE_SGR_MOUSE)?;
             self.stdout.write_all(ENABLE_URXVT_MOUSE)?;
             self.stdout.flush()?;

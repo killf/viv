@@ -344,7 +344,6 @@ impl TerminalUI {
                         self.selection_state.clear(); // clear selection on scroll
                         dirty = true;
                     }
-                    Event::Mouse(_) => {} // Middle/right click, ignore
                 }
             }
         }

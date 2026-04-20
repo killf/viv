@@ -143,14 +143,14 @@ fn test_key_event_debug_clone_partialeq() {
 fn test_sgr_mouse_left_press() {
     // ESC [ < 0 ; 10 ; 20 M  — left button press at (10, 20)
     let bytes: &[u8] = b"\x1b[<0;10;20M";
-    assert_eq!(parse_single(bytes), Some(InputEvent::Mouse(MouseEvent::LeftPress)));
+    assert_eq!(parse_single(bytes), Some(InputEvent::Mouse(MouseEvent::LeftPress { x: 10, y: 20 })));
 }
 
 #[test]
 fn test_sgr_mouse_left_release() {
     // ESC [ < 0 ; 10 ; 20 m  — left button release at (10, 20)
     let bytes: &[u8] = b"\x1b[<0;10;20m";
-    assert_eq!(parse_single(bytes), Some(InputEvent::Mouse(MouseEvent::LeftRelease)));
+    assert_eq!(parse_single(bytes), Some(InputEvent::Mouse(MouseEvent::LeftRelease { x: 10, y: 20 })));
 }
 
 #[test]
@@ -174,7 +174,7 @@ fn test_sgr_mouse_after_key_event() {
     parser.feed(b"a\x1b[<0;5;5M");
 
     assert_eq!(parser.next_event(), Some(InputEvent::Key(KeyEvent::Char('a'))));
-    assert_eq!(parser.next_event(), Some(InputEvent::Mouse(MouseEvent::LeftPress)));
+    assert_eq!(parser.next_event(), Some(InputEvent::Mouse(MouseEvent::LeftPress { x: 5, y: 5 })));
     assert_eq!(parser.next_event(), None);
 }
 
@@ -184,4 +184,46 @@ fn test_non_mouse_csi_unknown() {
     let bytes: &[u8] = b"\x1b[Z";
     let result = parse_single(bytes);
     assert!(matches!(result, Some(InputEvent::Key(KeyEvent::Unknown(_)))));
+}
+
+// XTerm 1000 mode mouse sequence tests
+
+#[test]
+fn test_mouse_1000_left_press() {
+    // button=0, col=40, row=10
+    // button+32=32, col+33=73='I', row+33=43='+'
+    let bytes = [0x1b, b'[', b'M', 32u8, 73u8, 43u8];
+    assert_eq!(parse_single(&bytes), Some(InputEvent::Mouse(MouseEvent::LeftPress { x: 40, y: 10 })));
+}
+
+#[test]
+fn test_mouse_1000_left_release() {
+    // button=3, col=40, row=10
+    // button+32=35='#', col+33=73='I', row+33=43='+'
+    let bytes = [0x1b, b'[', b'M', 35u8, 73u8, 43u8];
+    assert_eq!(parse_single(&bytes), Some(InputEvent::Mouse(MouseEvent::LeftRelease { x: 40, y: 10 })));
+}
+
+#[test]
+fn test_mouse_1000_wheel_up() {
+    // button=64 (wheel up), col=40, row=10
+    // 64+32=96='`', col+33=73='I', row+33=43='+'
+    let bytes = [0x1b, b'[', b'M', 96u8, 73u8, 43u8];
+    assert_eq!(parse_single(&bytes), Some(InputEvent::Mouse(MouseEvent::WheelUp)));
+}
+
+#[test]
+fn test_mouse_1000_wheel_down() {
+    // button=65 (wheel down), col=40, row=10
+    // 65+32=97='a', col+33=73='I', row+33=43='+'
+    let bytes = [0x1b, b'[', b'M', 97u8, 73u8, 43u8];
+    assert_eq!(parse_single(&bytes), Some(InputEvent::Mouse(MouseEvent::WheelDown)));
+}
+
+#[test]
+fn test_mouse_1000_at_origin() {
+    // button=0, col=0, row=0 (top-left corner)
+    // button+32=32, col+33=33='!', row+33=33='!'
+    let bytes = [0x1b, b'[', b'M', 32u8, 33u8, 33u8];
+    assert_eq!(parse_single(&bytes), Some(InputEvent::Mouse(MouseEvent::LeftPress { x: 0, y: 0 })));
 }

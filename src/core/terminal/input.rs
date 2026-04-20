@@ -21,11 +21,13 @@ pub enum KeyEvent {
 
 /// Represents a parsed mouse event from raw terminal input bytes.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub enum MouseEvent {
     WheelUp,
     WheelDown,
-    LeftPress,
-    LeftRelease,
+    LeftPress { x: u16, y: u16 },
+    LeftRelease { x: u16, y: u16 },
+    LeftDrag { x: u16, y: u16 },
 }
 
 /// Represents a parsed input event from raw terminal input bytes.
@@ -61,6 +63,33 @@ impl InputParser {
             val = val.saturating_mul(10) + (b - b'0');
         }
         Some(val)
+    }
+
+    /// Parse XTerm 1000 mode mouse sequence: ESC [ M C b C
+    /// C = button + 32, C = col + 33, C = row + 33
+    fn parse_mouse_1000(&mut self) -> Option<InputEvent> {
+        if self.buf.len() < 6 {
+            return None;
+        }
+        // Check ESC [ M prefix
+        if self.buf.get(0) != Some(&b'\x1b')
+            || self.buf.get(1) != Some(&b'[')
+            || self.buf.get(2) != Some(&b'M')
+        {
+            return None;
+        }
+        let button = self.buf[3].saturating_sub(32);
+        let col = self.buf[4].saturating_sub(33);
+        let row = self.buf[5].saturating_sub(33);
+        self.buf.drain(..6);
+        let event = match button {
+            0 => MouseEvent::LeftPress { x: u16::from(col), y: u16::from(row) },
+            3 => MouseEvent::LeftRelease { x: u16::from(col), y: u16::from(row) },
+            32 | 64 => MouseEvent::WheelUp,
+            1 | 65 => MouseEvent::WheelDown,
+            _ => return None, // unknown button, consume and skip
+        };
+        Some(InputEvent::Mouse(event))
     }
 
     /// Attempt to parse and consume the next input event from the buffer.
@@ -153,6 +182,10 @@ impl InputParser {
                             return Some(InputEvent::Key(KeyEvent::Unknown(consumed)));
                         }
                         Some(_) => {
+                            // Try XTerm 1000 mode first (ESC [ M b x y)
+                            if let Some(evt) = self.parse_mouse_1000() {
+                                return Some(evt);
+                            }
                             // Try URXVT mouse mode (1015 / 1000): ESC [ M b x y
                             // b = button + 32 (64=wheel up, 65=wheel down), x = col + 33, y = row + 33
                             if self.buf.get(2) == Some(&b'M') && self.buf.len() >= 6 {
@@ -178,16 +211,21 @@ impl InputParser {
                                         params.split(|&b| b == b';').collect();
                                     if parts.len() == 3 {
                                         let n = Self::parse_u8(parts[0]);
-                                        let _y = Self::parse_u8(parts[2]);
+                                        let y = Self::parse_u8(parts[2]);
+                                        let x = Self::parse_u8(parts[1]);
                                         let is_release = body[pos] == b'm';
                                         match (n, is_release) {
                                             (Some(0), false) => {
                                                 self.buf.drain(..3 + pos + 1);
-                                                return Some(InputEvent::Mouse(MouseEvent::LeftPress));
+                                                let x = u16::from(x.unwrap_or(0));
+                                                let y = u16::from(y.unwrap_or(0));
+                                                return Some(InputEvent::Mouse(MouseEvent::LeftPress { x, y }));
                                             }
                                             (Some(0), true) => {
                                                 self.buf.drain(..3 + pos + 1);
-                                                return Some(InputEvent::Mouse(MouseEvent::LeftRelease));
+                                                let x = u16::from(x.unwrap_or(0));
+                                                let y = u16::from(y.unwrap_or(0));
+                                                return Some(InputEvent::Mouse(MouseEvent::LeftRelease { x, y }));
                                             }
                                             (Some(64), _) => {
                                                 self.buf.drain(..3 + pos + 1);
