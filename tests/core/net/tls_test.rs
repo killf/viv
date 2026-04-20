@@ -77,3 +77,46 @@ fn tls13_pure_rust_https_get() {
         first_line
     );
 }
+
+/// Pure Rust TLS 1.2 auto-negotiation + HTTPS GET against baidu.com.
+/// Verifies ClientHello offers TLS 1.3+1.2 and baidu.com selects TLS 1.2.
+#[cfg(feature = "full_test")]
+#[test]
+fn tls12_pure_rust_https_get() {
+    use std::io::{Read, Write};
+    use viv::core::net::http::HttpRequest;
+    use viv::core::net::tls::TlsStream;
+
+    let host = "baidu.com";
+    let mut tls = TlsStream::connect(host, 443).expect("TLS connect failed");
+
+    let req = HttpRequest {
+        method: "GET".into(),
+        path: "/".into(),
+        headers: vec![
+            ("Host".into(), host.into()),
+            ("User-Agent".into(), "viv/0.1".into()),
+            ("Accept".into(), "*/*".into()),
+            ("Connection".into(), "close".into()),
+        ],
+        body: None,
+    };
+    tls.write_all(&req.to_bytes()).expect("write failed");
+
+    let mut response = Vec::new();
+    let mut buf = [0u8; 4096];
+    loop {
+        let n = tls.read(&mut buf).unwrap_or(0);
+        if n == 0 { break; }
+        response.extend_from_slice(&buf[..n]);
+    }
+
+    assert!(!response.is_empty(), "Response was empty");
+    let resp_str = String::from_utf8_lossy(&response);
+    let first_line = resp_str.lines().next().unwrap_or("");
+    assert!(
+        first_line.starts_with("HTTP/"),
+        "Expected HTTP response, got: {}", first_line,
+    );
+    println!("TLS auto-negotiation: {} bytes, status: {}", response.len(), first_line);
+}

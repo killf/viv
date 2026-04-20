@@ -1,14 +1,14 @@
 pub mod channel;
-pub mod combinator;
 pub mod executor;
+pub mod join;
 pub mod reactor;
 pub mod task;
 pub mod timer;
 
 pub use channel::{AsyncReceiver, NotifySender, async_channel};
-pub use combinator::{join, join_all};
 pub use executor::{Executor, block_on, block_on_local, noop_waker};
-pub use reactor::reactor;
+pub use join::{join, join_all};
+pub use reactor::with_reactor;
 pub use task::JoinHandle;
 pub use timer::sleep;
 
@@ -17,9 +17,6 @@ use std::pin::Pin;
 use std::sync::mpsc;
 use std::thread;
 
-use crate::core::sync::lock_or_recover;
-
-/// Runtime 运行在独立线程，暴露 spawn 接口
 type SpawnFn = Box<dyn FnOnce(&mut Executor) + Send>;
 
 pub struct Runtime {
@@ -43,8 +40,7 @@ impl Runtime {
                 }
                 let did_work = exec.run_ready();
                 if !did_work {
-                    let r = reactor();
-                    lock_or_recover(&r).wait(std::time::Duration::from_millis(10));
+                    with_reactor(|r| r.wait(std::time::Duration::from_millis(10))).ok();
                 }
             }
         });
