@@ -65,15 +65,15 @@ fn breath_alpha(elapsed_ms: u64) -> f32 {
 pub struct LineEditor {
     // ...existing fields
     history: Vec<String>,           // 所有已发送的用户消息
-    history_idx: Option<usize>,    // None=当前输入, Some(n)=浏览第 n 条
-    original: String,               // 切换历史时保存当前输入
+    history_idx: Option<usize>,   // None=当前输入, Some(n)=浏览第 n 条
+    original: String,              // 切换历史时保存当前输入
 }
 ```
 
 ### 行为
 - **↑**：首次按 → 保存当前输入到 `original`，显示 `history[last]`；再次按 → `history_idx -= 1`
 - **↓**：如果已到最后一条 → 恢复 `original`，清空输入
-- **任意编辑操作**：立即退出历史浏览模式
+- **任意编辑操作**：立即退出历史浏览模式，恢复 `original` 内容
 - **提交**：正常提交，清空输入
 
 ### 交互细节
@@ -82,37 +82,48 @@ pub struct LineEditor {
 
 ---
 
-## 4. 鼠标滚轮支持
+## 4. 全局滚动（Ctrl+K/J + 鼠标滚轮）
 
 ### 现状
-Event 系统不支持鼠标事件。
+滚动依赖 Browse 模式，交互不直观。
 
 ### 方案
+**去除 Browse/Normal 模式区分**，滚动操作全局生效：
 
-#### 4.1 InputParser — 解析 SGR 鼠标序列
+#### 4.1 Ctrl+K / Ctrl+J 全局滚动
+
+在 `TerminalUI.handle_key` 中处理（非 busy 状态同样生效）：
 
 ```rust
-#[derive(Debug, Clone)]
+KeyEvent::Ctrl('k') => {
+    self.conversation_state.scroll_up(3);
+}
+KeyEvent::Ctrl('j') => {
+    self.conversation_state.scroll_down(3);
+}
+```
+
+- Ctrl+K：向上滚动 3 行（历史消息方向）
+- Ctrl+J：向下滚动 3 行
+- 手动滚动后自动禁用 auto_follow，收到新消息时恢复
+
+#### 4.2 鼠标滚轮支持
+
+##### InputParser — 解析 SGR 鼠标序列
+
+```rust
+#[derive(Debug, Clone, PartialEq)]
 pub enum MouseEvent {
     WheelUp,
     WheelDown,
-    LeftPress,
-    LeftRelease,
 }
 
-// CSI SGR 序列: ESC [ < N ; X ; Y (M 或 m)
-// N < 0: 按钮事件, N >= 64: 滚轮
+// CSI SGR 序列: ESC [ < N ; X ; Y M
+// N >= 64: 滚轮事件
+// N = 64: 滚轮上, N = 65: 滚轮下
 ```
 
-支持的序列：
-| 序列 | 含义 |
-|------|------|
-| `\x1b[<0;x;yM` | 左键按下 |
-| `\x1b[<0;x;ym` | 左键释放 |
-| `\x1b[<64;x;yM` | 滚轮上 |
-| `\x1b[<65;x;yM` | 滚轮下 |
-
-#### 4.2 Event — 新增 Mouse 变体
+##### Event — 新增 Mouse 变体
 
 ```rust
 pub enum Event {
@@ -123,7 +134,7 @@ pub enum Event {
 }
 ```
 
-#### 4.3 TerminalUI — 鼠标滚轮映射
+##### TerminalUI — 鼠标滚轮映射
 
 ```rust
 Event::Mouse(MouseEvent::WheelUp) => {
@@ -136,37 +147,23 @@ Event::Mouse(MouseEvent::WheelDown) => {
 
 ---
 
-## 5. k/j 滚动确认
-
-### 现状
-代码逻辑正确，需确认端到端工作正常。
-
-### 行为
-- `Escape`（非 busy 时）→ 进入 Browse 模式
-- Browse 模式下 `k`/`j` → 上下滚动
-- `g` → 回到顶部，`G` → 到底部
-- `n` → 切换工具焦点
-- `Enter` → 展开/折叠工具
-- `Escape` → 退出 Browse 模式
-
----
-
-## 实现顺序
-
-1. **输入历史** — `LineEditor` 增加 history（最常用）
-2. **鼠标支持** — `input.rs` + `events.rs` + `terminal.rs`
-3. **欢迎页动画** — `TerminalUI` + `WelcomeWidget`
-4. **工具调用呼吸动画** — `TerminalUI`
-5. **k/j 滚动确认** — 验证测试
-
----
-
 ## 涉及文件
 
 | 文件 | 改动 |
 |------|------|
 | `src/core/terminal/input.rs` | 新增 MouseEvent，解析 SGR 鼠标序列 |
 | `src/core/event.rs` | Event::Mouse 变体 |
-| `src/tui/terminal.rs` | 欢迎动画、工具呼吸、鼠标处理、输入历史 |
+| `src/tui/terminal.rs` | 欢迎动画、工具呼吸、鼠标处理、Ctrl+K/J 滚动、输入历史 |
 | `src/tui/welcome.rs` | 淡入动画支持 |
-| `src/tui/line_editor.rs` | 输入历史（若拆分出来） |
+| `src/tui/focus.rs` | 移除 Browse/Normal 模式区分 |
+
+---
+
+## 实现顺序
+
+1. **输入历史** — `LineEditor` 增加 history（最常用，影响最大）
+2. **鼠标支持** — `input.rs` + `events.rs` + `terminal.rs`（独立，可先实现）
+3. **Ctrl+K/J 滚动** — `terminal.rs` 中 `handle_key`
+4. **欢迎页动画** — `TerminalUI` + `WelcomeWidget`
+5. **工具调用呼吸动画** — `TerminalUI`
+6. **移除 Browse 模式** — 清理 `focus.rs` 和 `terminal.rs` 中的 UIMode 逻辑
