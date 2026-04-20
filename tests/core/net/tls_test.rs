@@ -15,7 +15,8 @@ fn tls13_pure_rust_https_get() {
     use viv::core::net::http::HttpRequest;
     use viv::core::net::tls::TlsStream;
 
-    use viv::core::runtime::executor::block_on;(Box::pin(async {
+    use viv::core::runtime::executor::block_on;
+    block_on(async {
         let host = "www.wechat.com";
         let mut tls = TlsStream::connect(host, 443).await.expect("TLS 1.3 connect failed");
 
@@ -56,7 +57,7 @@ fn tls13_pure_rust_https_get() {
             response.len(),
             first_line
         );
-    }));
+    });
 }
 
 /// Pure Rust TLS 1.2 auto-negotiation + HTTPS GET against baidu.com.
@@ -67,7 +68,8 @@ fn tls12_pure_rust_https_get() {
     use viv::core::net::http::HttpRequest;
     use viv::core::net::tls::TlsStream;
 
-    use viv::core::runtime::executor::block_on;(Box::pin(async {
+    use viv::core::runtime::executor::block_on;
+    block_on(async {
         let host = "www.wechat.com";
         let mut tls = TlsStream::connect(host, 443).await.expect("TLS connect failed");
 
@@ -100,5 +102,5 @@ fn tls12_pure_rust_https_get() {
             "Expected HTTP response, got: {}", first_line,
         );
         println!("TLS auto-negotiation: {} bytes, status: {}", response.len(), first_line);
-    }));
+    });
 }

@@ -6,7 +6,8 @@
 //     → ServerChangeCipherSpec → ServerFinished → Complete
 
 use crate::core::crypto::sha256::Sha256;
-use crate::core::net::tls::codec::{self, HandshakeMessage, encode_client_key_exchange, encode_change_cipher_spec};
+use crate::core::crypto::x25519;
+use crate::core::net::tls::codec::{self, HandshakeMessage, encode_client_key_exchange, encode_client_key_exchange_x25519, encode_change_cipher_spec};
 use crate::core::net::tls::p256::Point;
 use crate::core::net::tls::tls12::key_schedule::{
     derive_key_block, finished_verify_data, master_secret,
@@ -44,6 +45,9 @@ pub struct Tls12Handshake {
     cipher_suite: u16,
     p256_secret: [u8; 32],
     p256_public: [u8; 65],
+    x25519_secret: Option<[u8; 32]>,
+    x25519_public: Option<[u8; 32]>,
+    negotiated_curve: Option<u16>, // Some(0x0017) = P-256, Some(0x001d) = X25519
     master_secret: Option<[u8; 48]>,
 }
 
@@ -61,6 +65,7 @@ impl Tls12Handshake {
         let p256_public = public_point
             .to_uncompressed()
             .ok_or_else(|| crate::Error::Tls("P-256 keygen produced infinity".into()))?;
+        let (x25519_secret, x25519_public) = x25519::keypair()?;
         Ok(Self {
             state: State::ExpectCertificate,
             transcript,
@@ -69,6 +74,9 @@ impl Tls12Handshake {
             cipher_suite,
             p256_secret: secret,
             p256_public,
+            x25519_secret: Some(x25519_secret),
+            x25519_public: Some(x25519_public),
+            negotiated_curve: None,
             master_secret: None,
         })
     }
@@ -105,23 +113,44 @@ impl Tls12Handshake {
             // ── ServerKeyExchange ──────────────────────────────────
             (State::ExpectServerKeyExchange, HandshakeMessage::ServerKeyExchange(ske)) => {
                 self.transcript.update(msg_bytes);
-                if ske.named_curve != 0x0017 {
-                    return Err(crate::Error::Tls(format!(
-                        "unsupported TLS 1.2 named curve: 0x{:04x}", ske.named_curve
-                    )));
+                match ske.named_curve {
+                    0x0017 => {
+                        // P-256 ECDH
+                        if ske.public_key.len() != 65 {
+                            return Err(crate::Error::Tls("SKE public key is not 65 bytes".into()));
+                        }
+                        let mut pk_bytes = [0u8; 65];
+                        pk_bytes.copy_from_slice(&ske.public_key);
+                        let server_point = Point::from_uncompressed(&pk_bytes)?;
+                        let shared_point = server_point.scalar_mul(&self.p256_secret);
+                        let shared_x = shared_point
+                            .affine_x_bytes()
+                            .ok_or_else(|| crate::Error::Tls("ECDH produced infinity".into()))?;
+                        let ms = master_secret(&shared_x, &self.client_random, &self.server_random);
+                        self.master_secret = Some(ms);
+                        self.negotiated_curve = Some(0x0017);
+                    }
+                    0x001d => {
+                        // X25519 ECDH
+                        if ske.public_key.len() != 32 {
+                            return Err(crate::Error::Tls("X25519 SKE public key is not 32 bytes".into()));
+                        }
+                        let x25519_secret = self.x25519_secret.ok_or_else(|| {
+                            crate::Error::Tls("X25519 secret not initialized".into())
+                        })?;
+                        let mut server_pub = [0u8; 32];
+                        server_pub.copy_from_slice(&ske.public_key);
+                        let shared = x25519::shared_secret(&x25519_secret, &server_pub);
+                        let ms = master_secret(&shared, &self.client_random, &self.server_random);
+                        self.master_secret = Some(ms);
+                        self.negotiated_curve = Some(0x001d);
+                    }
+                    _ => {
+                        return Err(crate::Error::Tls(format!(
+                            "unsupported TLS 1.2 named curve: 0x{:04x}", ske.named_curve
+                        )));
+                    }
                 }
-                if ske.public_key.len() != 65 {
-                    return Err(crate::Error::Tls("SKE public key is not 65 bytes".into()));
-                }
-                let mut pk_bytes = [0u8; 65];
-                pk_bytes.copy_from_slice(&ske.public_key);
-                let server_point = Point::from_uncompressed(&pk_bytes)?;
-                let shared_point = server_point.scalar_mul(&self.p256_secret);
-                let shared_x = shared_point
-                    .affine_x_bytes()
-                    .ok_or_else(|| crate::Error::Tls("ECDH produced infinity".into()))?;
-                let ms = master_secret(&shared_x, &self.client_random, &self.server_random);
-                self.master_secret = Some(ms);
                 self.state = State::ExpectServerHelloDone;
                 Ok(Tls12HandshakeResult::Continue)
             }
@@ -136,7 +165,17 @@ impl Tls12Handshake {
 
                 // Build ClientKeyExchange message bytes
                 let mut cke_msg = Vec::new();
-                encode_client_key_exchange(&self.p256_public, &mut cke_msg);
+                match self.negotiated_curve {
+                    Some(0x001d) => {
+                        let pubkey = self.x25519_public.ok_or_else(|| {
+                            crate::Error::Tls("X25519 public not initialized".into())
+                        })?;
+                        encode_client_key_exchange_x25519(&pubkey, &mut cke_msg);
+                    }
+                    _ => {
+                        encode_client_key_exchange(&self.p256_public, &mut cke_msg);
+                    }
+                }
                 self.transcript.update(&cke_msg);
 
                 // Install client-side keys

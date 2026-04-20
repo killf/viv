@@ -473,3 +473,12 @@ pub fn encode_client_key_exchange(pubkey: &[u8; 65], out: &mut Vec<u8>) {
     out.push(65);
     out.extend_from_slice(pubkey);
 }
+
+/// Encode a TLS 1.2 ClientKeyExchange message (X25519 key exchange).
+pub fn encode_client_key_exchange_x25519(pubkey: &[u8; 32], out: &mut Vec<u8>) {
+    // type(1) + len(3) + pubkey_len(1) + pubkey(32)
+    out.push(CLIENT_KEY_EXCHANGE);
+    push_u24(out, 33); // 1 + 32
+    out.push(32);
+    out.extend_from_slice(pubkey);
+}
