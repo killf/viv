@@ -12,8 +12,14 @@ pub const LEAVE_ALT_SCREEN: &[u8] = b"\x1b[?1049l";
 /// ANSI sequence to enable SGR mouse mode (1006) — reports wheel events.
 pub const ENABLE_SGR_MOUSE: &[u8] = b"\x1b[?1006h";
 
+/// ANSI sequence to enable URXVT mouse mode (1015) — fallback for terminals without SGR.
+pub const ENABLE_URXVT_MOUSE: &[u8] = b"\x1b[?1015h";
+
 /// ANSI sequence to disable SGR mouse mode.
 pub const DISABLE_SGR_MOUSE: &[u8] = b"\x1b[?1006l";
+
+/// ANSI sequence to disable URXVT mouse mode.
+pub const DISABLE_URXVT_MOUSE: &[u8] = b"\x1b[?1015l";
 
 pub trait Backend {
     fn size(&self) -> crate::Result<TermSize>;
@@ -76,6 +82,7 @@ impl Drop for LinuxBackend {
         // Disable mouse mode if enabled
         if self.mouse_enabled {
             let _ = self.stdout.write_all(DISABLE_SGR_MOUSE);
+            let _ = self.stdout.write_all(DISABLE_URXVT_MOUSE);
             let _ = self.stdout.flush();
         }
         // Dropping raw_mode restores the original terminal settings via RawMode::drop.
@@ -131,6 +138,7 @@ impl Backend for LinuxBackend {
         if !self.in_alt_screen {
             self.stdout.write_all(ENTER_ALT_SCREEN)?;
             self.stdout.write_all(ENABLE_SGR_MOUSE)?;
+            self.stdout.write_all(ENABLE_URXVT_MOUSE)?;
             self.stdout.flush()?;
             self.in_alt_screen = true;
             self.mouse_enabled = true;
@@ -142,6 +150,7 @@ impl Backend for LinuxBackend {
         if self.in_alt_screen {
             if self.mouse_enabled {
                 self.stdout.write_all(DISABLE_SGR_MOUSE)?;
+                self.stdout.write_all(DISABLE_URXVT_MOUSE)?;
                 self.mouse_enabled = false;
             }
             self.stdout.write_all(LEAVE_ALT_SCREEN)?;
@@ -176,6 +185,7 @@ impl Drop for CrossBackend {
     fn drop(&mut self) {
         if self.mouse_enabled {
             let _ = self.stdout.write_all(DISABLE_SGR_MOUSE);
+            let _ = self.stdout.write_all(DISABLE_URXVT_MOUSE);
             let _ = self.stdout.flush();
         }
         if self.in_alt_screen {
@@ -230,6 +240,7 @@ impl Backend for CrossBackend {
         if !self.in_alt_screen {
             self.stdout.write_all(ENTER_ALT_SCREEN)?;
             self.stdout.write_all(ENABLE_SGR_MOUSE)?;
+            self.stdout.write_all(ENABLE_URXVT_MOUSE)?;
             self.stdout.flush()?;
             self.in_alt_screen = true;
             self.mouse_enabled = true;
@@ -241,6 +252,7 @@ impl Backend for CrossBackend {
         if self.in_alt_screen {
             if self.mouse_enabled {
                 self.stdout.write_all(DISABLE_SGR_MOUSE)?;
+                self.stdout.write_all(DISABLE_URXVT_MOUSE)?;
                 self.mouse_enabled = false;
             }
             self.stdout.write_all(LEAVE_ALT_SCREEN)?;

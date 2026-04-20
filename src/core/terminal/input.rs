@@ -153,6 +153,17 @@ impl InputParser {
                             return Some(InputEvent::Key(KeyEvent::Unknown(consumed)));
                         }
                         Some(_) => {
+                            // Try URXVT mouse mode (1015): ESC [ M b x y
+                            // b = button + 32 (64=wheel up, 65=wheel down), x = col + 33, y = row + 33
+                            if self.buf.get(2) == Some(&b'M') && self.buf.len() >= 6 {
+                                let btn = self.buf[3].saturating_sub(32);
+                                self.buf.drain(..6);
+                                match btn {
+                                    64 => return Some(InputEvent::Mouse(MouseEvent::WheelUp)),
+                                    65 => return Some(InputEvent::Mouse(MouseEvent::WheelDown)),
+                                    _ => {} // other mouse events: consume and skip
+                                }
+                            }
                             // Try SGR mouse: ESC [ < N ; X ; Y M (press) or m (release)
                             if self.buf.get(2) == Some(&b'<')
                                 && self.buf.len() >= 6
