@@ -591,9 +591,16 @@ impl TerminalUI {
         // a submission) while the AI is still streaming its response.
         if key == KeyEvent::CtrlC {
             if self.selection_state.has_selection() {
-                // Extract and print selected text
+                // Copy selected text to system clipboard
                 if let Some(text) = self.extract_selection_text() {
-                    eprintln!("Selected text:\n{}", text);
+                    match crate::tui::clipboard::copy(&text) {
+                        Ok(()) => {
+                            eprintln!("Copied {} chars to clipboard", text.len());
+                        }
+                        Err(e) => {
+                            eprintln!("Clipboard error: {}", e);
+                        }
+                    }
                 }
                 return None;
             }
