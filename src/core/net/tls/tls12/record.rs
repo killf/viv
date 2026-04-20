@@ -174,8 +174,10 @@ impl Tls12RecordLayer {
         let consumed = 5 + length;
         let payload = &data[5..consumed];
 
-        // APPLICATION_DATA (0x17) gets decrypted if keys are installed
-        if content_type == 0x17 {
+        // APPLICATION_DATA (0x17) and HANDSHAKE (0x16) get decrypted if keys are installed.
+        // After server ChangeCipherSpec, the encrypted Finished record uses content type
+        // HANDSHAKE (0x16), so both types must be decrypted here.
+        if content_type == 0x17 || content_type == 0x16 {
             if let Some(dec) = &mut self.decrypter {
                 let plaintext = dec.decrypt(content_type, payload)?;
                 return Ok((content_type, plaintext, consumed));
