@@ -7,6 +7,7 @@ use crate::core::terminal::buffer::Rect;
 use crate::core::terminal::events::{Event, EventLoop};
 use crate::core::terminal::input::{KeyEvent, MouseEvent};
 use crate::core::terminal::style::theme;
+use crate::tui::selection::SelectionState;
 use crate::tui::block::{Block, BorderSides, BorderStyle};
 use crate::tui::code_block::CodeBlockWidget;
 use crate::tui::content::{ContentBlock, MarkdownNode, MarkdownParseBuffer};
@@ -80,6 +81,8 @@ pub struct TerminalUI {
     quitting_start: Option<std::time::Instant>,
     /// Welcome screen fade-in animation state. None means animation is complete.
     welcome_anim: Option<WelcomeAnimState>,
+    /// Mouse drag-to-select state.
+    selection_state: SelectionState,
 }
 
 impl TerminalUI {
@@ -190,6 +193,7 @@ impl TerminalUI {
                 start: std::time::Instant::now(),
                 total_rows: WelcomeWidget::TOTAL_ROWS,
             }),
+            selection_state: SelectionState::new(),
         })
     }
 
@@ -292,6 +296,7 @@ impl TerminalUI {
                         }
                     }
                     Event::Resize(new_size) => {
+                        self.selection_state.clear(); // coordinates invalid after resize
                         self.renderer.resize(new_size);
                         // Recalculate all block heights (width changed -> word wrap changes)
                         let width = new_size.cols;
@@ -303,15 +308,42 @@ impl TerminalUI {
                         dirty = true;
                     }
                     Event::Tick => {}
+                    Event::Mouse(MouseEvent::LeftPress { x, y }) => {
+                        // Only handle clicks in the conversation area (between header and status bar)
+                        let header_height: u16 = 3;
+                        let status_height: u16 = 1;
+                        let area = self.renderer.area();
+                        let conv_top = header_height;
+                        let conv_bottom = area.height.saturating_sub(status_height);
+
+                        if y >= conv_top && y <= conv_bottom {
+                            self.selection_state.start_drag(x, y);
+                            dirty = true;
+                        }
+                    }
+                    Event::Mouse(MouseEvent::LeftDrag { x, y }) => {
+                        if self.selection_state.is_dragging() {
+                            self.selection_state.update_drag(x, y);
+                            dirty = true;
+                        }
+                    }
+                    Event::Mouse(MouseEvent::LeftRelease { x, y }) => {
+                        if self.selection_state.is_dragging() {
+                            self.selection_state.end_drag(x, y);
+                            dirty = true;
+                        }
+                    }
                     Event::Mouse(MouseEvent::WheelUp) => {
                         self.conversation_state.scroll_up(3);
+                        self.selection_state.clear(); // clear selection on scroll
                         dirty = true;
                     }
                     Event::Mouse(MouseEvent::WheelDown) => {
                         self.conversation_state.scroll_down(3);
+                        self.selection_state.clear(); // clear selection on scroll
                         dirty = true;
                     }
-                    Event::Mouse(_) => {}
+                    Event::Mouse(_) => {} // Middle/right click, ignore
                 }
             }
         }
@@ -486,10 +518,12 @@ impl TerminalUI {
         match key {
             KeyEvent::CtrlChar('k') => {
                 self.conversation_state.scroll_up(3);
+                self.selection_state.clear();
                 return None;
             }
             KeyEvent::CtrlChar('j') => {
                 self.conversation_state.scroll_down(3);
+                self.selection_state.clear();
                 return None;
             }
             _ => {}
@@ -554,9 +588,22 @@ impl TerminalUI {
         // ── Mode 3: Busy -- Ctrl+C interrupts the agent; every other key
         // falls through to the editor so the user can type (and even queue
         // a submission) while the AI is still streaming its response.
-        if self.busy && key == KeyEvent::CtrlC {
-            let _ = self.event_tx.send(AgentEvent::Interrupt);
-            return None;
+        if key == KeyEvent::CtrlC {
+            if self.selection_state.has_selection() {
+                // Phase 1 MVP: print coordinates to stderr
+                if let Some(region) = self.selection_state.region() {
+                    eprintln!(
+                        "Selection: ({},{})-({},{})",
+                        region.top_left.0, region.top_left.1,
+                        region.bottom_right.0, region.bottom_right.1
+                    );
+                }
+                return None;
+            }
+            if self.busy {
+                let _ = self.event_tx.send(AgentEvent::Interrupt);
+                return None;
+            }
         }
 
         // ── Mode 4: Normal editing (busy or idle) ───────────────────────────
