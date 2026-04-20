@@ -14,4 +14,5 @@ pub mod tools;
 pub mod tui;
 
 pub use error::Error;
+pub use tui::qrcode;
 pub type Result<T> = std::result::Result<T, Error>;

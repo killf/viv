@@ -1,3 +1,4 @@
+use viv::config::ModelConfig;
 use viv::core::json::JsonValue;
 use viv::llm::*;
 
@@ -130,7 +131,7 @@ fn config_env_vars() {
         std::env::remove_var("VIV_MODEL_MEDIUM");
         std::env::remove_var("VIV_MODEL_SLOW");
     }
-    let config = LLMConfig::from_env().unwrap();
+    let config = LLMConfig::from_env(&ModelConfig::default()).unwrap();
     assert_eq!(config.api_key, "test-viv-key");
     assert_eq!(config.base_url, "custom.api.com");
     // Defaults when no VIV_MODEL* set
@@ -142,7 +143,7 @@ fn config_env_vars() {
     unsafe {
         std::env::remove_var("VIV_API_KEY");
     }
-    assert!(LLMConfig::from_env().is_err());
+    assert!(LLMConfig::from_env(&ModelConfig::default()).is_err());
 
     // --- Test 3: VIV_MODEL fallback ---
     unsafe {
@@ -152,7 +153,7 @@ fn config_env_vars() {
         std::env::remove_var("VIV_MODEL_MEDIUM");
         std::env::remove_var("VIV_MODEL_SLOW");
     }
-    let config = LLMConfig::from_env().unwrap();
+    let config = LLMConfig::from_env(&ModelConfig::default()).unwrap();
     assert_eq!(config.model_fast, "my-custom-model");
     assert_eq!(config.model_medium, "my-custom-model");
     assert_eq!(config.model_slow, "my-custom-model");
@@ -161,7 +162,7 @@ fn config_env_vars() {
     unsafe {
         std::env::set_var("VIV_MODEL_FAST", "override-fast");
     }
-    let config2 = LLMConfig::from_env().unwrap();
+    let config2 = LLMConfig::from_env(&ModelConfig::default()).unwrap();
     assert_eq!(config2.model_fast, "override-fast");
     assert_eq!(config2.model_medium, "my-custom-model");
     assert_eq!(config2.model_slow, "my-custom-model");
@@ -201,7 +202,7 @@ fn config_env_vars() {
 #[cfg(feature = "full_test")]
 #[test]
 fn e2e_stream_real_api() {
-    let config = LLMConfig::from_env()
+    let config = LLMConfig::from_env(&ModelConfig::default())
         .expect("VIV_API_KEY must be set when running with --features full_test");
     let client = LLMClient::new(config);
     let messages = vec![Message {

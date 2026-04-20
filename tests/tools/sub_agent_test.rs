@@ -2,7 +2,7 @@ use viv::tools::sub_agent::SubAgentTool;
 use viv::tools::{PermissionLevel, Tool, ToolRegistry};
 
 fn make_llm() -> Option<std::sync::Arc<viv::llm::LLMClient>> {
-    let config = viv::llm::LLMConfig::from_env().ok()?;
+    let config = viv::llm::LLMConfig::from_env(&viv::config::ModelConfig::default()).ok()?;
     Some(std::sync::Arc::new(viv::llm::LLMClient::new(config)))
 }
 

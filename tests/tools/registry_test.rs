@@ -110,7 +110,7 @@ fn to_api_json_escapes_special_characters() {
 
 #[test]
 fn default_tools_have_claude_code_names() {
-    let llm_config = viv::llm::LLMConfig::from_env();
+    let llm_config = viv::llm::LLMConfig::from_env(&viv::config::ModelConfig::default());
     if llm_config.is_err() {
         return;
     }
