@@ -18,6 +18,7 @@ pub mod spinner;
 pub mod status;
 pub mod syntax;
 pub mod terminal;
+pub mod text_map;
 pub mod tool_call;
 pub mod welcome;
 pub mod widget;
