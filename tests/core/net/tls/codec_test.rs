@@ -284,3 +284,47 @@ fn decode_tls12_server_hello_extracts_version() {
         panic!("expected ServerHello");
     }
 }
+
+#[test]
+fn decode_server_key_exchange_extracts_p256_pubkey() {
+    use viv::core::net::tls::codec::{decode_handshake, HandshakeMessage};
+
+    let fake_pubkey = [0x04u8; 65];
+    let fake_sig = [0xABu8; 64];
+
+    let mut body = Vec::new();
+    body.push(3); // curve_type = named_curve
+    body.extend_from_slice(&[0x00, 0x17]); // secp256r1
+    body.push(65); // pubkey length
+    body.extend_from_slice(&fake_pubkey);
+    body.extend_from_slice(&[0x04, 0x01]); // rsa_pkcs1_sha256
+    body.extend_from_slice(&[0x00, 64u8]); // sig length
+    body.extend_from_slice(&fake_sig);
+
+    let mut msg = vec![0x0C]; // SERVER_KEY_EXCHANGE
+    let len = body.len() as u32;
+    msg.push((len >> 16) as u8);
+    msg.push((len >> 8) as u8);
+    msg.push(len as u8);
+    msg.extend_from_slice(&body);
+
+    let decoded = decode_handshake(&msg).unwrap();
+    if let HandshakeMessage::ServerKeyExchange(ske) = decoded {
+        assert_eq!(ske.named_curve, 0x0017);
+        assert_eq!(ske.public_key.len(), 65);
+        assert_eq!(&ske.public_key, &fake_pubkey);
+    } else {
+        panic!("expected ServerKeyExchange");
+    }
+}
+
+#[test]
+fn encode_client_key_exchange_format() {
+    use viv::core::net::tls::codec::encode_client_key_exchange;
+    let pubkey = [0x04u8; 65];
+    let mut out = Vec::new();
+    encode_client_key_exchange(&pubkey, &mut out);
+    assert_eq!(out[0], 0x10); // CLIENT_KEY_EXCHANGE
+    assert_eq!(out[4], 65); // pubkey length byte
+    assert_eq!(&out[5..70], &pubkey[..]);
+}

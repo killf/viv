@@ -407,6 +407,10 @@ fn decode_certificate_verify(body: &[u8]) -> crate::Result<HandshakeMessage> {
 // ── Decode: Finished ───────────────────────────────────────────────
 
 fn decode_finished(body: &[u8]) -> crate::Result<HandshakeMessage> {
+    if body.is_empty() {
+        return Err(crate::Error::Tls("Finished verify_data too short".into()));
+    }
+    // Store all body bytes; TLS 1.3 expects 32, TLS 1.2 expects 12
     Ok(HandshakeMessage::Finished { verify_data: body.to_vec() })
 }
 

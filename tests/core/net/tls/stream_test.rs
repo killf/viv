@@ -254,7 +254,7 @@ fn decode_finished_exactly_32_bytes() {
 }
 
 #[test]
-fn decode_finished_more_than_32_bytes_ignores_extra() {
+fn decode_finished_more_than_32_bytes_preserves_all() {
     use viv::core::net::tls::codec::decode_handshake;
 
     let mut msg = Vec::new();
@@ -266,7 +266,10 @@ fn decode_finished_more_than_32_bytes_ignores_extra() {
     let result = decode_handshake(&msg).expect("should decode");
     match result {
         viv::core::net::tls::codec::HandshakeMessage::Finished { verify_data } => {
-            assert_eq!(verify_data, [0x99; 32]);
+            // decode_finished now stores all body bytes; TLS 1.3 handshake slices [..32]
+            assert_eq!(verify_data.len(), 40);
+            assert_eq!(&verify_data[..32], &[0x99; 32]);
+            assert_eq!(&verify_data[32..], &[0xAA; 8]);
         }
         _ => panic!("expected Finished message"),
     }
