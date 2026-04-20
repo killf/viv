@@ -82,7 +82,7 @@ fn from_spki_real_2048() {
     let der = hex_decode(SPKI_DER_HEX);
     let pk = RsaPublicKey::from_spki(&der).unwrap();
     assert_eq!(pk.n_byte_len(), 256);
-    assert_eq!(pk.e, viv::core::bigint::BigUint::from_u64(65537));
+    assert_eq!(pk.e, viv::core::crypto::bigint::BigUint::from_u64(65537));
 }
 
 #[test]

@@ -55,7 +55,7 @@ const CLIENT_HS_IV: [u8; 12] = [
 fn hkdf_expand_label_derived_from_early_secret() {
     // Derive-Secret(early_secret, "derived", "") =
     //   HKDF-Expand-Label(early_secret, "derived", Hash(""), 32)
-    use viv::core::net::tls::crypto::sha256::Sha256;
+    use viv::core::crypto::sha256::Sha256;
     let empty_hash = Sha256::hash(b"");
 
     let mut out = [0u8; 32];

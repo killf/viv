@@ -1,5 +1,5 @@
 use viv::core::json::JsonValue;
-use viv::core::jsonrpc::*;
+use viv::lsp::jsonrpc::*;
 
 #[test]
 fn parse_request() {

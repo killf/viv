@@ -1,4 +1,4 @@
-use viv::core::asn1::{BitString, Parser, Tag, TagClass};
+use viv::core::crypto::asn1::{BitString, Parser, Tag, TagClass};
 
 #[test]
 fn tag_class_discriminated() {

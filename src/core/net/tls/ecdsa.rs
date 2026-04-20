@@ -19,7 +19,7 @@ const OID_SECP256R1: &[u8] = &[0x2a, 0x86, 0x48, 0xce, 0x3d, 0x03, 0x01, 0x07];
 impl EcdsaPublicKey {
     /// Parse SubjectPublicKeyInfo DER for an EC public key on P-256.
     pub fn from_spki(der: &[u8]) -> crate::Result<Self> {
-        use crate::core::asn1::Parser;
+        use crate::core::crypto::asn1::Parser;
         let mut top = Parser::new(der);
         let mut spki = top
             .read_sequence()
@@ -80,7 +80,7 @@ pub fn verify_ecdsa_sha256(
     msg: &[u8],
     signature: &[u8],
 ) -> crate::Result<()> {
-    use crate::core::net::tls::crypto::sha256::Sha256;
+    use crate::core::crypto::sha256::Sha256;
     let digest = Sha256::hash(msg);
     verify_ecdsa_sha256_prehashed(pk, &digest, signature)
 }
@@ -91,8 +91,8 @@ pub fn verify_ecdsa_sha256_prehashed(
     digest: &[u8; 32],
     signature: &[u8],
 ) -> crate::Result<()> {
-    use crate::core::asn1::Parser;
-    use crate::core::bigint::BigUint;
+    use crate::core::crypto::asn1::Parser;
+    use crate::core::crypto::bigint::BigUint;
     use crate::core::net::tls::p256::{Point, n_order};
 
     // 1. DER-decode signature into r, s.
@@ -166,7 +166,7 @@ pub fn verify_ecdsa_sha256_prehashed(
 }
 
 /// Encode a BigUint into exactly 32 big-endian bytes (left-padded with zeros).
-fn big_to_32_be(n: &crate::core::bigint::BigUint) -> [u8; 32] {
+fn big_to_32_be(n: &crate::core::crypto::bigint::BigUint) -> [u8; 32] {
     let v = n.to_bytes_be(32);
     let mut out = [0u8; 32];
     let copy_len = v.len().min(32);

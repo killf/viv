@@ -7,7 +7,7 @@
 #![allow(dead_code)]
 
 use crate::Error;
-use crate::core::bigint::BigUint;
+use crate::core::crypto::bigint::BigUint;
 
 /// P-256 prime: p = 2^256 − 2^224 + 2^192 + 2^96 − 1.
 pub(crate) fn p_modulus() -> BigUint {

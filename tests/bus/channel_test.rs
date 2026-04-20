@@ -1,5 +1,5 @@
-use viv::bus::channel::agent_channel;
-use viv::bus::{AgentEvent, AgentMessage};
+use viv::agent::channel::agent_channel;
+use viv::agent::protocol::{AgentEvent, AgentMessage};
 use viv::core::runtime::block_on_local;
 
 #[test]

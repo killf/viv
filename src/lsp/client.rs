@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::Error;
 use crate::core::json::JsonValue;
-use crate::core::jsonrpc::{Message, Notification, Request, Response};
+use crate::lsp::jsonrpc::{Message, Notification, Request, Response};
 use crate::lsp::types::{Diagnostic, HoverResult, Location, LspServerCapabilities};
 use crate::mcp::transport::Transport;
 

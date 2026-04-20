@@ -5,7 +5,6 @@
 // with zero external dependencies.
 
 pub mod codec;
-pub mod crypto;
 pub mod ecdsa;
 pub mod p256;
 pub mod rsa;

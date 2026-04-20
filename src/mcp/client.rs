@@ -1,6 +1,6 @@
 use crate::Error;
 use crate::core::json::JsonValue;
-use crate::core::jsonrpc::{Message, Notification, Request, Response};
+use crate::lsp::jsonrpc::{Message, Notification, Request, Response};
 use crate::mcp::transport::Transport;
 use crate::mcp::types::*;
 

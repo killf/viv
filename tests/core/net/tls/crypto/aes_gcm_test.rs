@@ -1,6 +1,6 @@
 // AES-128-GCM tests — NIST SP 800-38A (AES ECB) + SP 800-38D (GCM)
 
-use viv::core::net::tls::crypto::aes_gcm::{Aes128, Aes128Gcm};
+use viv::core::crypto::aes_gcm::{Aes128, Aes128Gcm};
 
 // ── AES-128 ECB (NIST SP 800-38A F.1.1) ────────────────────────────
 

@@ -1,6 +1,6 @@
 // X25519 ECDHE key exchange tests — RFC 7748 test vectors
 
-use viv::core::net::tls::crypto::x25519::{keypair, scalarmult, shared_secret};
+use viv::core::crypto::x25519::{keypair, scalarmult, shared_secret};
 
 // ── RFC 7748 Section 5.2 — Scalar multiplication test vector 1 ──────
 

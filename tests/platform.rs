@@ -6,3 +6,6 @@ mod process_test;
 mod reactor_test;
 #[path = "platform/timer_test.rs"]
 mod timer_test;
+#[cfg(target_os = "linux")]
+#[path = "platform/io_uring_test.rs"]
+mod io_uring_test;

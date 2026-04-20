@@ -7,7 +7,7 @@
 #![allow(dead_code)]
 
 use crate::Error;
-use crate::core::bigint::BigUint;
+use crate::core::crypto::bigint::BigUint;
 
 /// RSA public key: modulus `n` and exponent `e`.
 pub struct RsaPublicKey {
@@ -39,7 +39,7 @@ impl RsaPublicKey {
     /// RSAPublicKey ::= SEQUENCE { modulus INTEGER, publicExponent INTEGER }
     /// ```
     pub fn from_spki(der: &[u8]) -> crate::Result<Self> {
-        use crate::core::asn1::Parser;
+        use crate::core::crypto::asn1::Parser;
 
         /// OID 1.2.840.113549.1.1.1 rsaEncryption.
         const OID_RSA_ENCRYPTION: [u8; 9] =
@@ -206,7 +206,7 @@ pub fn verify_pkcs1_sha256(
     msg: &[u8],
     signature: &[u8],
 ) -> crate::Result<()> {
-    use crate::core::net::tls::crypto::sha256::Sha256;
+    use crate::core::crypto::sha256::Sha256;
     let digest = Sha256::hash(msg);
     verify_pkcs1_sha256_prehashed(pk, &digest, signature)
 }

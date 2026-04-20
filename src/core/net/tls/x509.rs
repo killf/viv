@@ -183,7 +183,7 @@ fn rata_die(days: i64) -> (i64, u8, u8) {
 
 impl<'a> X509Certificate<'a> {
     pub fn from_der(der: &'a [u8]) -> crate::Result<Self> {
-        use crate::core::asn1::Parser;
+        use crate::core::crypto::asn1::Parser;
 
         // Certificate ::= SEQUENCE { tbsCertificate, signatureAlgorithm, signatureValue }
         let mut top = Parser::new(der);
@@ -263,11 +263,11 @@ impl<'a> X509Certificate<'a> {
 
         // Skip optional issuerUniqueID [1] IMPLICIT BIT STRING
         let _ = tbs
-            .read_optional(crate::core::asn1::Tag::context(1, false))
+            .read_optional(crate::core::crypto::asn1::Tag::context(1, false))
             .map_err(|e| Error::Tls(format!("X509: issuerUniqueID: {e}")))?;
         // Skip optional subjectUniqueID [2] IMPLICIT BIT STRING
         let _ = tbs
-            .read_optional(crate::core::asn1::Tag::context(2, false))
+            .read_optional(crate::core::crypto::asn1::Tag::context(2, false))
             .map_err(|e| Error::Tls(format!("X509: subjectUniqueID: {e}")))?;
 
         // extensions [3] EXPLICIT SEQUENCE OF Extension (OPTIONAL)
@@ -374,8 +374,8 @@ fn san_matches(san: &str, host_lc: &str) -> bool {
 }
 
 /// Read a Time (either UTCTime or GeneralizedTime) from `p`.
-fn read_time(p: &mut crate::core::asn1::Parser<'_>) -> crate::Result<DateTime> {
-    use crate::core::asn1::Tag;
+fn read_time(p: &mut crate::core::crypto::asn1::Parser<'_>) -> crate::Result<DateTime> {
+    use crate::core::crypto::asn1::Tag;
     let tag = p
         .peek_tag()
         .map_err(|e| Error::Tls(format!("time: peek: {e}")))?;
@@ -402,7 +402,7 @@ const OID_BASIC_CONSTRAINTS: &[u8] = &[0x55, 0x1d, 0x13];
 const GENERAL_NAME_DNS_TAG: u8 = 0x82;
 
 fn parse_one_extension<'a>(
-    ext_seq: &mut crate::core::asn1::Parser<'a>,
+    ext_seq: &mut crate::core::crypto::asn1::Parser<'a>,
     san_dns_names: &mut Vec<&'a str>,
     is_ca: &mut Option<bool>,
 ) -> crate::Result<()> {
@@ -414,7 +414,7 @@ fn parse_one_extension<'a>(
         .map_err(|e| Error::Tls(format!("X509: ext OID: {e}")))?;
     // critical BOOLEAN DEFAULT FALSE (optional)
     let _critical = match ext
-        .read_optional(crate::core::asn1::Tag::BOOLEAN)
+        .read_optional(crate::core::crypto::asn1::Tag::BOOLEAN)
         .map_err(|e| Error::Tls(format!("X509: ext critical: {e}")))?
     {
         Some(b) if b.len() == 1 => b[0] != 0,
@@ -444,7 +444,7 @@ fn parse_san<'a>(
     ext_value: &'a [u8],
     san_dns_names: &mut Vec<&'a str>,
 ) -> crate::Result<()> {
-    use crate::core::asn1::Parser;
+    use crate::core::crypto::asn1::Parser;
     let mut p = Parser::new(ext_value);
     let mut names = p
         .read_sequence()
@@ -472,13 +472,13 @@ fn parse_basic_constraints(
     ext_value: &[u8],
     is_ca: &mut Option<bool>,
 ) -> crate::Result<()> {
-    use crate::core::asn1::Parser;
+    use crate::core::crypto::asn1::Parser;
     let mut p = Parser::new(ext_value);
     let mut bc = p
         .read_sequence()
         .map_err(|e| Error::Tls(format!("BasicConstraints seq: {e}")))?;
     let ca = match bc
-        .read_optional(crate::core::asn1::Tag::BOOLEAN)
+        .read_optional(crate::core::crypto::asn1::Tag::BOOLEAN)
         .map_err(|e| Error::Tls(format!("BasicConstraints cA: {e}")))?
     {
         Some(b) if b.len() == 1 => b[0] != 0,

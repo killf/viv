@@ -1,7 +1,7 @@
 use std::cmp::Ordering;
 use std::time::Instant;
 
-use viv::core::bigint::BigUint;
+use viv::core::crypto::bigint::BigUint;
 
 #[test]
 fn zero_constructor_compiles() {

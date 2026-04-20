@@ -1,4 +1,4 @@
-use viv::bus::{AgentEvent, AgentMessage};
+use viv::agent::protocol::{AgentEvent, AgentMessage};
 
 #[test]
 fn agent_event_input_holds_string() {

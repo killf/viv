@@ -1,5 +1,6 @@
 pub mod client;
 pub mod config;
+pub mod jsonrpc;
 pub mod tools;
 pub mod types;
 

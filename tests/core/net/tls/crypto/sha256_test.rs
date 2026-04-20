@@ -1,13 +1,13 @@
 // SHA-256 / HMAC-SHA256 / HKDF / getrandom tests
 
-use viv::core::net::tls::crypto::sha256::{Sha256, hkdf_expand, hkdf_extract, hmac_sha256};
+use viv::core::crypto::sha256::{Sha256, hkdf_expand, hkdf_extract, hmac_sha256};
 
 // ── getrandom ────────────────────────────────────────────────────────
 
 #[test]
 fn getrandom_fills_buffer() {
     let mut buf = [0u8; 32];
-    viv::core::net::tls::crypto::getrandom(&mut buf).unwrap();
+    viv::core::crypto::getrandom(&mut buf).unwrap();
     assert_ne!(buf, [0u8; 32]);
 }
 

@@ -36,7 +36,7 @@ fn tls13_pure_rust_https_get() {
     use viv::core::net::http::HttpRequest;
     use viv::core::net::tls::TlsStream;
 
-    let host = "example.com";
+    let host = "baidu.com";
     let mut tls = TlsStream::connect(host, 443).expect("TLS 1.3 connect failed");
 
     let req = HttpRequest {

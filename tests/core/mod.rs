@@ -1,5 +1,7 @@
 mod asn1_test;
 mod bigint_test;
+mod crypto;
+mod encoding;
 mod jsonrpc_test;
 mod net;
 mod runtime;

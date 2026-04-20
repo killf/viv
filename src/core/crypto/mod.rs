@@ -1,8 +1,7 @@
-// TLS 1.3 cryptographic primitives
-//
-// getrandom() — fills a buffer with cryptographically secure random bytes.
-
 pub mod aes_gcm;
+pub mod asn1;
+pub mod bigint;
+pub mod md5;
 pub mod sha256;
 pub mod x25519;
 
