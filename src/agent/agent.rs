@@ -283,8 +283,11 @@ impl Agent {
             }
         };
 
+        let cwd = std::env::current_dir()
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_default();
         let skill_list = self.skill_registry.format_for_prompt();
-        let system = build_system_prompt("", &skill_list, &memories, &mut self.prompt_cache);
+        let system = build_system_prompt(&cwd, "", &skill_list, &memories, &mut self.prompt_cache);
         self.messages.push(Message::user_text(text));
 
         let token_estimate = estimate_tokens(&self.messages);

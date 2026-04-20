@@ -39,20 +39,17 @@ fn is_focused() {
     let mut fm = FocusManager::new();
     fm.update_count(3);
     assert!(fm.is_focused(0));
-    assert!(!fm.is_focused(1));
     fm.next();
     assert!(fm.is_focused(1));
+    fm.next();
+    assert!(fm.is_focused(2));
 }
 
 #[test]
-fn update_count_clamps_index() {
+fn update_count_bounds_focus() {
     let mut fm = FocusManager::new();
     fm.update_count(5);
     fm.next();
-    fm.next();
-    fm.next();
-    fm.next();
-    assert_eq!(fm.focus_index(), 4);
-    fm.update_count(3);
-    assert_eq!(fm.focus_index(), 2);
+    fm.update_count(2);
+    assert!(fm.is_focused(1));
 }

@@ -22,7 +22,7 @@ impl Tool for SkillTool {
     }
 
     fn description(&self) -> &str {
-        "Invoke a skill by name. Returns the skill's full content for you to follow."
+        "Execute a skill within the main conversation.\n\nWhen users ask you to perform tasks, check if any of the available skills match. Skills provide specialized capabilities and domain knowledge.\n\nWhen users reference a \"slash command\" or \"/<something>\", they are referring to a skill. Use this tool to invoke it.\n\nIMPORTANT: invoke the relevant Skill tool BEFORE generating any other response about the task. Skills are loaded from skill files in the project and user config directories."
     }
 
     fn input_schema(&self) -> JsonValue {
