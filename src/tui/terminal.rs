@@ -20,7 +20,19 @@ use crate::tui::renderer::Renderer;
 use crate::tui::spinner::{Spinner, random_verb};
 use crate::tui::status::StatusWidget;
 use crate::tui::tool_call::{ToolCallState, ToolCallWidget, ToolStatus, extract_input_summary};
+use crate::tui::welcome::WelcomeWidget;
 use crate::tui::widget::{StatefulWidget, Widget};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Welcome animation state
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Tracks the start time of the welcome screen fade-in animation.
+struct WelcomeAnimState {
+    start: std::time::Instant,
+    /// Total rows (logo + info), used to compute the animation end time.
+    total_rows: u16,
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // UiAction
@@ -437,50 +449,6 @@ impl TerminalUI {
             return None;
         }
 
-        // ── Mode 2: Browse mode ─────────────────────────────────────────────
-        if self.focus.mode() == UIMode::Browse {
-            match key {
-                KeyEvent::Escape => {
-                    self.focus.exit_browse();
-                }
-                KeyEvent::Up | KeyEvent::Char('k') => {
-                    self.conversation_state.scroll_up(1);
-                }
-                KeyEvent::Down | KeyEvent::Char('j') => {
-                    self.conversation_state.scroll_down(1);
-                }
-                KeyEvent::Char('g') => {
-                    self.conversation_state.scroll_to_top();
-                }
-                KeyEvent::Char('G') => {
-                    self.conversation_state.scroll_to_bottom();
-                }
-                KeyEvent::Char('n') => {
-                    self.focus.next();
-                }
-                KeyEvent::Enter => {
-                    let focus_idx = self.focus.focus_index();
-                    if focus_idx < self.tool_states.len() {
-                        self.tool_states[focus_idx].toggle_fold();
-                        // Recalculate height for the affected block
-                        self.recalculate_tool_block_height(focus_idx);
-                        self.conversation_state.auto_scroll();
-                    }
-                }
-                _ => {}
-            }
-            return None;
-        }
-
-        // ── Escape -> enter Browse mode (if tool calls exist) ───────────────
-        if key == KeyEvent::Escape && !self.busy {
-            let tc_count = self.tool_states.len();
-            if tc_count > 0 {
-                self.focus.enter_browse(tc_count);
-                return None;
-            }
-        }
-
         // ── Mode 3: Busy -- Ctrl+C interrupts the agent; every other key
         // falls through to the editor so the user can type (and even queue
         // a submission) while the AI is still streaming its response.
@@ -812,6 +780,9 @@ pub struct LineEditor {
     pub lines: Vec<String>,
     pub row: usize,
     pub col: usize,
+    history: Vec<String>,       // 所有已发送的用户消息
+    history_idx: Option<usize>, // None=当前输入, Some(n)=浏览第 n 条（0=最新）
+    original: String,           // 切换历史时保存当前输入
 }
 
 impl LineEditor {
@@ -820,7 +791,36 @@ impl LineEditor {
             lines: vec![String::new()],
             row: 0,
             col: 0,
+            history: Vec::new(),
+            history_idx: None,
+            original: String::new(),
         }
+    }
+
+    /// Push a submitted line into history.
+    pub fn push_history(&mut self, line: String) {
+        if !line.trim().is_empty() {
+            self.history.push(line);
+        }
+        self.history_idx = None;
+        self.original.clear();
+    }
+
+    /// Restore the original input and exit history browsing mode.
+    fn exit_history(&mut self) {
+        if self.history_idx.is_some() {
+            self.lines = vec![self.original.clone()];
+            self.row = 0;
+            self.col = self.lines[0].len();
+            self.history_idx = None;
+        }
+    }
+
+    /// Clear the editor buffer without touching history.
+    fn clear(&mut self) {
+        self.lines = vec![String::new()];
+        self.row = 0;
+        self.col = 0;
     }
 
     pub fn content(&self) -> String {
