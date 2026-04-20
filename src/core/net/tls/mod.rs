@@ -56,10 +56,10 @@ impl RecordLayerVariant {
 
 // ── TlsStream (async, TLS 1.3 + TLS 1.2) ───────────────────────────
 
-use super::async_tcp::AsyncTcpStream;
+use super::tcp::TcpStream;
 
 pub struct TlsStream {
-    tcp: AsyncTcpStream,
+    tcp: TcpStream,
     record: RecordLayerVariant,
     read_buf: Vec<u8>,
     plaintext_buf: Vec<u8>,
@@ -71,7 +71,7 @@ impl TlsStream {
     /// Connect to `host:port` over TLS with async I/O.
     /// Negotiates TLS 1.3 preferred, falls back to TLS 1.2 automatically.
     pub async fn connect(host: &str, port: u16) -> crate::Result<Self> {
-        let mut tcp = AsyncTcpStream::connect(host, port).await?;
+        let mut tcp = TcpStream::connect(host, port).await?;
         let fd = tcp.raw_handle();
         let mut record = RecordLayer::new();
         let mut hs = Handshake::new(host)?;
@@ -281,7 +281,7 @@ impl TlsStream {
                                     tcp_stream.write_all(&bytes).map_err(crate::Error::Io)?;
                                 }
                                 Tls12HandshakeResult::Complete => {
-                                    let tcp = AsyncTcpStream::from_std(tcp_stream)?;
+                                    let tcp = TcpStream::from_std(tcp_stream)?;
                                     return Ok(TlsStream {
                                         tcp,
                                         record: RecordLayerVariant::Tls12(tls12_record),
@@ -407,7 +407,7 @@ impl Drop for TlsStream {
 // ── Async I/O helpers ──────────────────────────────────────────────
 
 async fn async_read(
-    tcp: &mut AsyncTcpStream,
+    tcp: &mut TcpStream,
     _handle: crate::core::platform::RawHandle,
     buf: &mut [u8],
 ) -> crate::Result<usize> {
@@ -415,7 +415,7 @@ async fn async_read(
 }
 
 async fn async_write_all(
-    tcp: &mut AsyncTcpStream,
+    tcp: &mut TcpStream,
     _handle: crate::core::platform::RawHandle,
     buf: &[u8],
 ) -> crate::Result<()> {

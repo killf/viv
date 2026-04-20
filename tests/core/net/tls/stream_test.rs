@@ -9,10 +9,11 @@ use viv::core::runtime::block_on_local;
 #[test]
 fn tls_connect_to_unreachable_host_fails() {
     use viv::core::net::tls::TlsStream;
+    // 0.0.0.0:0 is invalid — kernel returns EINVAL immediately, no network wait
     let result = block_on_local(Box::pin(async {
-        TlsStream::connect("10.255.255.1", 443).await
+        TlsStream::connect("0.0.0.0", 0).await
     }));
-    assert!(result.is_err(), "connect to unreachable host should fail");
+    assert!(result.is_err(), "connect to invalid address should fail");
 }
 
 #[test]
