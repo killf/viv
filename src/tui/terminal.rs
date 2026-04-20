@@ -12,7 +12,6 @@ use crate::tui::code_block::CodeBlockWidget;
 use crate::tui::content::{ContentBlock, MarkdownNode, MarkdownParseBuffer};
 use crate::tui::conversation::ConversationState;
 use crate::tui::focus::FocusManager;
-use crate::tui::header::HeaderWidget;
 use crate::tui::input::{InputMode, InputWidget};
 use crate::tui::layout::{Constraint, Direction, Layout};
 use crate::tui::markdown::MarkdownBlockWidget;
@@ -53,10 +52,11 @@ pub struct TerminalUI {
     backend: CrossBackend,
     renderer: Renderer,
     editor: LineEditor,
+    cwd: String,
+    branch: Option<String>,
     model_name: String,
     input_tokens: u64,
     output_tokens: u64,
-    header: HeaderWidget,
     busy: bool,
     spinner: Spinner,
     spinner_start: Option<std::time::Instant>,
@@ -83,6 +83,41 @@ pub struct TerminalUI {
 }
 
 impl TerminalUI {
+    /// Read cwd and branch from the environment, without pulling in HeaderWidget.
+    fn read_cwd_branch() -> (String, Option<String>) {
+        let raw_cwd = std::env::current_dir()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_else(|_| "?".to_string());
+        let home = std::env::var("HOME").unwrap_or_default();
+        let cwd = if !home.is_empty() && raw_cwd.starts_with(&home) {
+            format!("~{}", &raw_cwd[home.len()..])
+        } else {
+            raw_cwd
+        };
+        let branch = std::fs::read_to_string(".git/HEAD")
+            .ok()
+            .and_then(|s| {
+                s.trim()
+                    .strip_prefix("ref: refs/heads/")
+                    .map(|b| b.to_string())
+            });
+        // Truncate cwd to 30 chars if needed
+        let cwd = if cwd.chars().count() > 30 {
+            let tail: String = cwd
+                .chars()
+                .rev()
+                .take(29)
+                .collect::<String>()
+                .chars()
+                .rev()
+                .collect();
+            format!("…{}", tail)
+        } else {
+            cwd
+        };
+        (cwd, branch)
+    }
+
     pub fn new(
         event_tx: NotifySender<AgentEvent>,
         msg_rx: Receiver<AgentMessage>,
@@ -100,7 +135,7 @@ impl TerminalUI {
         let size = backend.size()?;
         let renderer = Renderer::new(size);
 
-        let header = HeaderWidget::from_env();
+        let (cwd, branch) = Self::read_cwd_branch();
 
         let mut blocks = Vec::new();
         let mut conversation_state = ConversationState::new();
@@ -108,8 +143,8 @@ impl TerminalUI {
         // Push welcome screen as first content block
         blocks.push(ContentBlock::Welcome {
             model: None,
-            cwd: header.cwd.clone(),
-            branch: header.branch.clone(),
+            cwd: cwd.clone(),
+            branch: branch.clone(),
         });
         conversation_state.append_item_height(5); // WelcomeWidget::HEIGHT
 
@@ -133,10 +168,11 @@ impl TerminalUI {
             backend,
             renderer,
             editor: LineEditor::new(),
+            cwd,
+            branch,
             model_name: String::new(),
             input_tokens: 0,
             output_tokens: 0,
-            header,
             busy: false,
             spinner: Spinner::new(),
             spinner_start: None,
@@ -206,7 +242,7 @@ impl TerminalUI {
                     (self.editor.line_count() as u16 + 2).clamp(3, 8)
                 };
                 let chunks = main_layout(input_height).split(area);
-                let input_block_area = chunks[2];
+                let input_block_area = chunks[1];
 
                 let cursor = if is_permission_pending {
                     // No cursor in permission mode
@@ -569,10 +605,10 @@ impl TerminalUI {
             (self.editor.line_count() as u16 + 2).clamp(3, 8)
         };
         let chunks = main_layout(input_height).split(area);
-        // chunks: [0]=header, [1]=conversation, [2]=input, [3]=status
+        // chunks: [0]=conversation, [1]=input, [2]=status
 
         // Conversation area -- update viewport height before rendering
-        let conv_area = chunks[1];
+        let conv_area = chunks[0];
         self.conversation_state.viewport_height = conv_area.height;
 
         // Collect rendering instructions into a temporary list to avoid
@@ -593,8 +629,8 @@ impl TerminalUI {
 
         let buf = self.renderer.buffer_mut();
 
-        // Header bar
-        self.header.render(chunks[0], buf);
+        // Conversation area rendering
+        // (header removed — cwd/branch shown in status bar at bottom)
 
         // Render the quitting spinner if in quitting mode
         if self.quitting {
@@ -680,15 +716,15 @@ impl TerminalUI {
         if let Some((_, _, _, ref mut state)) = self.pending_permission {
             // Permission menu: full-height box with centered options
             let perm_widget = PermissionWidget::new("", "");
-            perm_widget.render(chunks[2], buf, state);
+            perm_widget.render(chunks[1], buf, state);
         } else {
             // Normal input box: top + bottom rounded borders only, dim gray
             let input_block = Block::new()
                 .border(BorderStyle::Rounded)
                 .borders(BorderSides::HORIZONTAL)
                 .border_fg(theme::DIM);
-            let input_inner = input_block.inner(chunks[2]);
-            input_block.render(chunks[2], buf);
+            let input_inner = input_block.inner(chunks[1]);
+            input_block.render(chunks[1], buf);
 
             // Input widget with mode-specific prompt (Claude orange)
             let editor_content = self.editor.content();
@@ -700,11 +736,13 @@ impl TerminalUI {
 
         // Status bar
         let status = StatusWidget {
+            cwd: self.cwd.clone(),
+            branch: self.branch.clone(),
             model: self.model_name.clone(),
             input_tokens: self.input_tokens,
             output_tokens: self.output_tokens,
         };
-        status.render(chunks[3], buf);
+        status.render(chunks[2], buf);
     }
 
     fn block_height(&self, block: &ContentBlock) -> u16 {
@@ -766,7 +804,6 @@ impl TerminalUI {
 /// `input_height` = min(editor.line_count() + 2, 8), accounting for top+bottom borders.
 fn main_layout(input_height: u16) -> Layout {
     Layout::new(Direction::Vertical).constraints(vec![
-        Constraint::Fixed(1),
         Constraint::Fill,
         Constraint::Fixed(input_height),
         Constraint::Fixed(1),

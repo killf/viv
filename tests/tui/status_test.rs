@@ -6,6 +6,8 @@ use viv::tui::widget::Widget;
 #[test]
 fn renders_model_name() {
     let w = StatusWidget {
+        cwd: "/home/user".to_string(),
+        branch: Some("main".to_string()),
         model: "claude-sonnet-4-6".to_string(),
         input_tokens: 0,
         output_tokens: 0,
@@ -22,6 +24,8 @@ fn renders_model_name() {
 #[test]
 fn renders_token_counts() {
     let w = StatusWidget {
+        cwd: "/home/user".to_string(),
+        branch: None,
         model: "m".to_string(),
         input_tokens: 1000,
         output_tokens: 250,
@@ -36,6 +40,8 @@ fn renders_token_counts() {
 #[test]
 fn cost_calculation_sonnet_pricing() {
     let w = StatusWidget {
+        cwd: "/home/user".to_string(),
+        branch: Some("main".to_string()),
         model: "m".to_string(),
         input_tokens: 1_000_000,
         output_tokens: 1_000_000,
@@ -52,6 +58,8 @@ fn cost_calculation_sonnet_pricing() {
 #[test]
 fn zero_tokens_shows_zero_cost() {
     let w = StatusWidget {
+        cwd: "/home/user".to_string(),
+        branch: None,
         model: "m".to_string(),
         input_tokens: 0,
         output_tokens: 0,
@@ -62,6 +70,8 @@ fn zero_tokens_shows_zero_cost() {
 #[test]
 fn text_is_dim() {
     let w = StatusWidget {
+        cwd: "/home/user".to_string(),
+        branch: Some("main".to_string()),
         model: "m".to_string(),
         input_tokens: 0,
         output_tokens: 0,
