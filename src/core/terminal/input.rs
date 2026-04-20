@@ -153,7 +153,7 @@ impl InputParser {
                             return Some(InputEvent::Key(KeyEvent::Unknown(consumed)));
                         }
                         Some(_) => {
-                            // Try URXVT mouse mode (1015): ESC [ M b x y
+                            // Try URXVT mouse mode (1015 / 1000): ESC [ M b x y
                             // b = button + 32 (64=wheel up, 65=wheel down), x = col + 33, y = row + 33
                             if self.buf.get(2) == Some(&b'M') && self.buf.len() >= 6 {
                                 let btn = self.buf[3].saturating_sub(32);
@@ -180,27 +180,32 @@ impl InputParser {
                                         let n = Self::parse_u8(parts[0]);
                                         let _y = Self::parse_u8(parts[2]);
                                         let is_release = body[pos] == b'm';
-                                        self.buf.drain(..3 + pos + 1);
                                         match (n, is_release) {
                                             (Some(0), false) => {
+                                                self.buf.drain(..3 + pos + 1);
                                                 return Some(InputEvent::Mouse(MouseEvent::LeftPress));
                                             }
                                             (Some(0), true) => {
+                                                self.buf.drain(..3 + pos + 1);
                                                 return Some(InputEvent::Mouse(MouseEvent::LeftRelease));
                                             }
                                             (Some(64), _) => {
+                                                self.buf.drain(..3 + pos + 1);
                                                 return Some(InputEvent::Mouse(MouseEvent::WheelUp));
                                             }
                                             (Some(65), _) => {
+                                                self.buf.drain(..3 + pos + 1);
                                                 return Some(InputEvent::Mouse(MouseEvent::WheelDown));
                                             }
-                                            _ => {}
+                                            _ => {
+                                                self.buf.drain(..3 + pos + 1);
+                                            }
                                         }
                                     }
                                 }
                             }
                             // Unknown CSI sequence — consume ESC [ and the byte
-                            let consumed: Vec<u8> = self.buf.drain(..3).collect();
+                            let consumed: Vec<u8> = self.buf.drain(..self.buf.len().min(4)).collect();
                             return Some(InputEvent::Key(KeyEvent::Unknown(consumed)));
                         }
                     }
