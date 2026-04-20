@@ -11,7 +11,7 @@ use crate::tui::block::{Block, BorderSides, BorderStyle};
 use crate::tui::code_block::CodeBlockWidget;
 use crate::tui::content::{ContentBlock, MarkdownNode, MarkdownParseBuffer};
 use crate::tui::conversation::ConversationState;
-use crate::tui::focus::{FocusManager, UIMode};
+use crate::tui::focus::FocusManager;
 use crate::tui::header::HeaderWidget;
 use crate::tui::input::InputWidget;
 use crate::tui::layout::{Constraint, Direction, Layout};
@@ -76,6 +76,8 @@ pub struct TerminalUI {
     /// "evolving memories" spinner instead of a silent freeze.
     quitting: bool,
     quitting_start: Option<std::time::Instant>,
+    /// Welcome screen fade-in animation state. None means animation is complete.
+    welcome_anim: Option<WelcomeAnimState>,
 }
 
 impl TerminalUI {
@@ -146,6 +148,10 @@ impl TerminalUI {
             pending_permission: None,
             quitting: false,
             quitting_start: None,
+            welcome_anim: Some(WelcomeAnimState {
+                start: std::time::Instant::now(),
+                total_rows: WelcomeWidget::TOTAL_ROWS,
+            }),
         })
     }
 
@@ -536,6 +542,20 @@ impl TerminalUI {
                 );
             }
         } else {
+            // Advance welcome animation; mark complete when last row finishes fading in.
+            // Last row finishes at: (LOGO_ROWS + INFO_ROWS - 1) * ROW_DELAY + FADE_DURATION
+            // = (5 + 5 - 1) * 80 + 200 = 920 ms.
+            if let Some(ref anim) = self.welcome_anim {
+                let elapsed = anim.start.elapsed().as_millis() as u64;
+                let row_delay = WelcomeWidget::ROW_DELAY_MS;
+                let fade_duration = WelcomeWidget::FADE_DURATION_MS;
+                let last_row_finish_ms =
+                    u64::from(anim.total_rows - 1) * row_delay + fade_duration;
+                if elapsed > last_row_finish_ms {
+                    self.welcome_anim = None;
+                }
+            }
+
             let mut tool_visual_idx: usize = 0;
 
             for vi in &visible {
@@ -555,6 +575,7 @@ impl TerminalUI {
                     &mut tool_visual_idx,
                     &self.focus,
                     &mut self.tool_states,
+                    &mut self.welcome_anim,
                 );
             }
 
@@ -696,6 +717,7 @@ fn render_block(
     tool_idx: &mut usize,
     focus: &FocusManager,
     tool_states: &mut [ToolCallState],
+    welcome_anim: &mut Option<WelcomeAnimState>,
 ) {
     if area.is_empty() {
         return;
@@ -757,9 +779,24 @@ fn render_block(
             *tool_idx += 1;
         }
         ContentBlock::Welcome { model, cwd, branch } => {
-            use crate::tui::welcome::WelcomeWidget;
             let widget = WelcomeWidget::new(model.as_deref(), cwd.as_str(), branch.as_deref());
-            widget.render(area, buf);
+            // Compute per-row alpha values from the animation state.
+            // alpha for info row n = clamp((elapsed - n * ROW_DELAY) / FADE_DURATION, 0.0, 1.0)
+            let info_alphas: [f64; WelcomeWidget::INFO_ROWS] = {
+                let elapsed_ms = welcome_anim
+                    .as_ref()
+                    .map(|a| a.start.elapsed().as_millis() as u64)
+                    .unwrap_or(u64::MAX);
+                let row_delay = WelcomeWidget::ROW_DELAY_MS as f64;
+                let fade_duration = WelcomeWidget::FADE_DURATION_MS as f64;
+                let mut alphas = [0.0; WelcomeWidget::INFO_ROWS];
+                for n in 0..WelcomeWidget::INFO_ROWS {
+                    let raw = (elapsed_ms as f64 - (n as f64) * row_delay) / fade_duration;
+                    alphas[n] = raw.clamp(0.0, 1.0);
+                }
+                alphas
+            };
+            widget.render_with_alpha(area, buf, &info_alphas);
         }
     }
 }
