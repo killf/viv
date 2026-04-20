@@ -69,6 +69,14 @@ impl IocpReactor {
             Ok(0)
         }
     }
+
+    pub fn register_fd(&self, _fd: HANDLE, _token: u64) -> crate::Result<bool> {
+        Ok(false) // TODO: IOCP
+    }
+
+    pub fn wait_tokens(&self, _timeout_ms: i32) -> crate::Result<Vec<u64>> {
+        Ok(Vec::new()) // TODO: IOCP
+    }
 }
 
 impl Drop for IocpReactor {

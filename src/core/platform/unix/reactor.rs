@@ -115,6 +115,40 @@ impl EpollReactor {
     pub fn epoll_fd(&self) -> i32 {
         self.epfd
     }
+
+    /// Register a fd with a caller-specified token.
+    /// Returns Ok(false) if EPERM (fd not epoll-able, e.g. /dev/null in tests).
+    pub fn register_fd(&self, fd: RawHandle, token: u64) -> crate::Result<bool> {
+        let mut ev = EpollEvent {
+            events: EPOLLIN,
+            data: token,
+        };
+        let ret = unsafe { epoll_ctl(self.epfd, EPOLL_CTL_ADD, fd, &mut ev) };
+        if ret == 0 {
+            return Ok(true);
+        }
+        let errno = unsafe { *__errno_location() };
+        const EPERM: i32 = 1;
+        if errno == EPERM {
+            return Ok(false);
+        }
+        Err(crate::Error::Io(std::io::Error::from_raw_os_error(errno)))
+    }
+
+    /// Wait for events, return list of fired tokens. Empty on timeout or EINTR.
+    pub fn wait_tokens(&self, timeout_ms: i32) -> crate::Result<Vec<u64>> {
+        const MAX: usize = 64;
+        let mut events = [EpollEvent { events: 0, data: 0 }; MAX];
+        let n = unsafe { epoll_wait(self.epfd, events.as_mut_ptr(), MAX as i32, timeout_ms) };
+        if n < 0 {
+            let errno = unsafe { *__errno_location() };
+            if errno == EINTR {
+                return Ok(Vec::new());
+            }
+            return Err(crate::Error::Io(std::io::Error::from_raw_os_error(errno)));
+        }
+        Ok(events[..n as usize].iter().map(|e| e.data).collect())
+    }
 }
 
 impl Drop for EpollReactor {
