@@ -46,3 +46,8 @@ pub use windows::tcp_raw_handle;
 pub use unix::terminal_size;
 #[cfg(windows)]
 pub use windows::terminal_size;
+
+#[cfg(unix)]
+pub use unix::process::{ChildProcess, spawn_piped, spawn_piped_with_env};
+#[cfg(windows)]
+pub use windows::process::{ChildProcess, spawn_piped, spawn_piped_with_env};

@@ -5,14 +5,14 @@ use std::future::Future;
 #[cfg(unix)]
 use std::pin::Pin;
 #[cfg(unix)]
-use std::process::{Child, Command, Stdio};
+use std::process::Child;
 #[cfg(unix)]
 use std::task::{Context, Poll};
 
 #[cfg(unix)]
 use crate::core::json::JsonValue;
 #[cfg(unix)]
-use crate::core::platform::RawHandle;
+use crate::core::platform::{self, RawHandle};
 #[cfg(unix)]
 use crate::core::runtime::reactor::reactor;
 
@@ -52,17 +52,6 @@ mod unix_io {
             }
         }
         Ok(())
-    }
-
-    /// Get the raw fd from a ChildStdin via the AsRawFd trait.
-    pub fn stdin_fd(child: &std::process::Child) -> Option<RawHandle> {
-        use std::os::unix::io::AsRawFd;
-        child.stdin.as_ref().map(|s| s.as_raw_fd())
-    }
-
-    pub fn stdout_fd(child: &std::process::Child) -> Option<RawHandle> {
-        use std::os::unix::io::AsRawFd;
-        child.stdout.as_ref().map(|s| s.as_raw_fd())
     }
 }
 
@@ -236,28 +225,15 @@ impl StdioTransport {
         env: &HashMap<String, String>,
         framing: Framing,
     ) -> crate::Result<Self> {
-        let mut cmd = Command::new(command);
-        cmd.args(args)
-            .envs(env.iter())
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-
-        let child = cmd.spawn().map_err(crate::Error::Io)?;
-
-        let stdin_raw = stdin_fd(&child).ok_or_else(|| {
-            crate::Error::Io(std::io::Error::other("failed to get child stdin fd"))
-        })?;
-
-        let stdout_raw = stdout_fd(&child).ok_or_else(|| {
-            crate::Error::Io(std::io::Error::other("failed to get child stdout fd"))
-        })?;
+        let proc = platform::spawn_piped_with_env(command, args, env)?;
+        let stdin_raw = proc.stdin_fd;
+        let stdout_raw = proc.stdout_fd;
 
         // Set stdout to non-blocking for reactor-based async reads
         set_nonblocking(stdout_raw)?;
 
         Ok(StdioTransport {
-            child,
+            child: proc.child,
             stdin_fd: stdin_raw,
             stdout_fd: stdout_raw,
             read_buf: Vec::with_capacity(4096),

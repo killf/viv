@@ -6,7 +6,7 @@ pub mod terminal;
 pub mod timer;
 
 pub use notifier::EventNotifier;
-pub use process::shell_command;
+pub use process::{shell_command, spawn_piped, spawn_piped_with_env, ChildProcess};
 pub use reactor::IocpReactor;
 pub use terminal::{terminal_size, WinResizeListener, WinTerminal};
 pub use timer::WinTimer;
