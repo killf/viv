@@ -1,4 +1,4 @@
-use super::input::{InputParser, KeyEvent};
+use super::input::{InputEvent, InputParser, KeyEvent};
 use super::size::TermSize;
 use crate::core::platform::{PlatformReactor, PlatformResizeListener, PlatformTerminal};
 
@@ -127,8 +127,11 @@ impl EventLoop {
                 self.input.feed(&buf[..n]);
             }
         }
-        while let Some(key) = self.input.next_event() {
-            events.push(Event::Key(key));
+        while let Some(event) = self.input.next_event() {
+            match event {
+                InputEvent::Key(key) => events.push(Event::Key(key)),
+                InputEvent::Mouse(_) => { /* mouse events handled separately */ }
+            }
         }
         Ok(())
     }
