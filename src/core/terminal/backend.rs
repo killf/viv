@@ -144,6 +144,11 @@ impl Backend for LinuxBackend {
     fn enter_alt_screen(&mut self) -> crate::Result<()> {
         if !self.in_alt_screen {
             self.stdout.write_all(ENTER_ALT_SCREEN)?;
+            // Enable all three mouse modes for maximum compatibility:
+            // 1000: basic tracking (also enables URXVT format ESC [ M B X Y)
+            // 1006: SGR mode (better coordinate encoding)
+            // 1015: URXVT mode (fallback)
+            self.stdout.write_all(ENABLE_MOUSE_1000)?;
             self.stdout.write_all(ENABLE_SGR_MOUSE)?;
             self.stdout.write_all(ENABLE_URXVT_MOUSE)?;
             self.stdout.flush()?;
@@ -248,6 +253,11 @@ impl Backend for CrossBackend {
     fn enter_alt_screen(&mut self) -> crate::Result<()> {
         if !self.in_alt_screen {
             self.stdout.write_all(ENTER_ALT_SCREEN)?;
+            // Enable all three mouse modes for maximum compatibility:
+            // 1000: basic tracking (also enables URXVT format ESC [ M B X Y)
+            // 1006: SGR mode (better coordinate encoding)
+            // 1015: URXVT mode (fallback)
+            self.stdout.write_all(ENABLE_MOUSE_1000)?;
             self.stdout.write_all(ENABLE_SGR_MOUSE)?;
             self.stdout.write_all(ENABLE_URXVT_MOUSE)?;
             self.stdout.flush()?;
