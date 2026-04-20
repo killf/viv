@@ -36,3 +36,8 @@ pub type PlatformResizeListener = windows::WinResizeListener;
 pub use unix::shell_command;
 #[cfg(windows)]
 pub use windows::shell_command;
+
+#[cfg(unix)]
+pub use unix::tcp_raw_handle;
+#[cfg(windows)]
+pub use windows::tcp_raw_handle;

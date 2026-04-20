@@ -10,3 +10,8 @@ pub use process::shell_command;
 pub use reactor::IocpReactor;
 pub use terminal::{WinResizeListener, WinTerminal};
 pub use timer::WinTimer;
+
+pub fn tcp_raw_handle(stream: &std::net::TcpStream) -> super::types::RawHandle {
+    use std::os::windows::io::AsRawSocket;
+    stream.as_raw_socket() as super::types::RawHandle
+}

@@ -1,13 +1,10 @@
 use super::tcp::connect as tcp_connect;
+use crate::core::platform;
 use crate::core::runtime::reactor::reactor;
 use crate::core::sync::lock_or_recover;
 use std::future::Future;
 use std::io::{self, Read, Write};
 use std::net::TcpStream;
-#[cfg(unix)]
-use std::os::unix::io::AsRawFd;
-#[cfg(windows)]
-use std::os::windows::io::AsRawSocket;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
@@ -22,14 +19,7 @@ impl AsyncTcpStream {
     }
 
     pub fn raw_handle(&self) -> crate::core::platform::RawHandle {
-        #[cfg(unix)]
-        {
-            self.inner.as_raw_fd()
-        }
-        #[cfg(windows)]
-        {
-            self.inner.as_raw_socket() as crate::core::platform::RawHandle
-        }
+        platform::tcp_raw_handle(&self.inner)
     }
 
     pub fn inner_mut(&mut self) -> &mut TcpStream {
