@@ -591,13 +591,9 @@ impl TerminalUI {
         // a submission) while the AI is still streaming its response.
         if key == KeyEvent::CtrlC {
             if self.selection_state.has_selection() {
-                // Phase 1 MVP: print coordinates to stderr
-                if let Some(region) = self.selection_state.region() {
-                    eprintln!(
-                        "Selection: ({},{})-({},{})",
-                        region.top_left.0, region.top_left.1,
-                        region.bottom_right.0, region.bottom_right.1
-                    );
+                // Extract and print selected text
+                if let Some(text) = self.extract_selection_text() {
+                    eprintln!("Selected text:\n{}", text);
                 }
                 return None;
             }
@@ -844,6 +840,118 @@ impl TerminalUI {
     fn enter_quitting_mode(&mut self) {
         self.quitting = true;
         self.quitting_start = Some(std::time::Instant::now());
+    }
+
+    /// Extract text from the current selection region using the TextMap.
+    /// Returns the selected text, or None if no selection exists.
+    fn extract_selection_text(&self) -> Option<String> {
+        use crate::tui::content::InlineSpan;
+
+        let region = self.selection_state.region()?;
+        let text_map = self.renderer.text_map();
+
+        // Collect all unique (block, span, byte_offset) tuples within selection
+        let mut sources: Vec<(usize, usize, usize)> = Vec::new();
+        for row in region.top_left.1..=region.bottom_right.1 {
+            for col in region.top_left.0..=region.bottom_right.0 {
+                if let Some(src) = text_map.get_source(col, row) {
+                    sources.push((src.block, src.span, src.byte_offset));
+                }
+            }
+        }
+
+        if sources.is_empty() {
+            return Some(String::new());
+        }
+
+        // Sort and dedup to get unique source positions
+        sources.sort();
+        sources.dedup();
+
+        // Extract text from blocks
+        let mut result = String::new();
+        let mut current_block = None;
+
+        for (block_idx, span_idx, byte_offset) in &sources {
+            let block = self.blocks.get(*block_idx)?;
+
+            // Helper to extract a single character from span text at byte_offset
+            let extract_char = |span_text: &str, offset: usize| -> Option<char> {
+                let bytes = span_text.as_bytes();
+                if offset >= bytes.len() {
+                    return None;
+                }
+                std::str::from_utf8(bytes.get(offset..)?.get(0..1)?)
+                    .ok()?
+                    .chars()
+                    .next()
+            };
+
+            match block {
+                ContentBlock::UserMessage { text } => {
+                    // UserMessage has single span (entire text)
+                    if let Some(ch) = extract_char(text, *byte_offset) {
+                        if current_block != Some(*block_idx) {
+                            if !result.is_empty() && !result.ends_with('\n') {
+                                result.push('\n');
+                            }
+                            current_block = Some(*block_idx);
+                        }
+                        result.push(ch);
+                    }
+                }
+                ContentBlock::Markdown { nodes } => {
+                    // Find the span at span_idx within Paragraph nodes
+                    for node in nodes {
+                        if let MarkdownNode::Paragraph { spans } = node {
+                            if *span_idx < spans.len() {
+                                let span_text: String = match &spans[*span_idx] {
+                                    InlineSpan::Text(s) => s.clone(),
+                                    InlineSpan::Bold(s) => s.clone(),
+                                    InlineSpan::Italic(s) => s.clone(),
+                                    InlineSpan::Code(s) => s.clone(),
+                                    InlineSpan::Link { text, .. } => text.clone(),
+                                };
+                                if let Some(ch) = extract_char(&span_text, *byte_offset) {
+                                    if current_block != Some(*block_idx) {
+                                        if !result.is_empty() && !result.ends_with('\n') {
+                                            result.push('\n');
+                                        }
+                                        current_block = Some(*block_idx);
+                                    }
+                                    result.push(ch);
+                                }
+                            }
+                        }
+                    }
+                }
+                ContentBlock::CodeBlock { code, .. } => {
+                    if let Some(ch) = extract_char(code, *byte_offset) {
+                        if current_block != Some(*block_idx) {
+                            if !result.is_empty() && !result.ends_with('\n') {
+                                result.push('\n');
+                            }
+                            current_block = Some(*block_idx);
+                        }
+                        result.push(ch);
+                    }
+                }
+                ContentBlock::ToolCall { input, .. } => {
+                    if let Some(ch) = extract_char(input, *byte_offset) {
+                        if current_block != Some(*block_idx) {
+                            if !result.is_empty() && !result.ends_with('\n') {
+                                result.push('\n');
+                            }
+                            current_block = Some(*block_idx);
+                        }
+                        result.push(ch);
+                    }
+                }
+                _ => continue,
+            }
+        }
+
+        Some(result)
     }
 }
 
