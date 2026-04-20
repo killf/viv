@@ -71,17 +71,17 @@ fn code_block_empty_code() {
 }
 
 #[test]
-fn code_block_inner_has_background() {
-    use viv::core::terminal::style::Color;
+fn code_block_inner_has_no_background() {
+    // Code blocks no longer have a background color — they use terminal default
     let widget = CodeBlockWidget::new("let x = 1;", Some("rust"));
     let mut buf = make_buf(20, 5);
     widget.render(Rect::new(0, 0, 20, 5), &mut buf);
-    // Inner cell at (1, 1) should have dark background
+    // Inner cell at (1, 1) should have no background (terminal default)
     let cell = buf.get(1, 1);
     assert_eq!(
         cell.bg,
-        Some(Color::Rgb(30, 30, 30)),
-        "code block inner should have dark bg"
+        None,
+        "code block inner should have no bg (terminal default)"
     );
 }
 

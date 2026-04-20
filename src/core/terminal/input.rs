@@ -13,6 +13,7 @@ pub enum KeyEvent {
     End,
     CtrlC,
     CtrlD,
+    CtrlChar(char), // Ctrl+A through Ctrl+Z
     Escape,
     ShiftEnter,
     Unknown(Vec<u8>),
@@ -81,6 +82,13 @@ impl InputParser {
             4 => {
                 self.buf.drain(..1);
                 Some(InputEvent::Key(KeyEvent::CtrlD))
+            }
+            // Ctrl+A (1) through Ctrl+C (3), Ctrl+E through Ctrl+Z (5-26)
+            // Skip 13 (Ctrl+M = Enter) — handled separately
+            1..=3 | 5..=12 | 14..=26 => {
+                let ch = (first - 1 + b'a') as char;
+                self.buf.drain(..1);
+                Some(InputEvent::Key(KeyEvent::CtrlChar(ch)))
             }
             13 => {
                 self.buf.drain(..1);

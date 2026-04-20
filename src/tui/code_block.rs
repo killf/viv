@@ -66,13 +66,7 @@ impl<'a> Widget for CodeBlockWidget<'a> {
             return;
         }
 
-        // Fill inner area with dark background
-        let code_bg = Color::Rgb(30, 30, 30);
-        for row in 0..inner.height {
-            for col in 0..inner.width {
-                buf.get_mut(inner.x + col, inner.y + row).bg = Some(code_bg);
-            }
-        }
+        // No background fill — keep terminal default background
 
         // Render each line of code
         let lines: Vec<&str> = if self.code.is_empty() {
@@ -103,7 +97,7 @@ impl<'a> Widget for CodeBlockWidget<'a> {
                     let cell = buf.get_mut(x, y);
                     cell.ch = ch;
                     cell.fg = Some(fg);
-                    cell.bg = Some(code_bg);
+                    cell.bg = None;
                     cell.bold = bold;
                     x += 1;
                 }

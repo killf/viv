@@ -5,7 +5,7 @@ use crate::core::runtime::channel::NotifySender;
 use crate::core::terminal::backend::{Backend, CrossBackend};
 use crate::core::terminal::buffer::Rect;
 use crate::core::terminal::events::{Event, EventLoop};
-use crate::core::terminal::input::KeyEvent;
+use crate::core::terminal::input::{KeyEvent, MouseEvent};
 use crate::core::terminal::style::theme;
 use crate::tui::block::{Block, BorderSides, BorderStyle};
 use crate::tui::code_block::CodeBlockWidget;
@@ -258,6 +258,12 @@ impl TerminalUI {
                         dirty = true;
                     }
                     Event::Tick => {}
+                    Event::Mouse(MouseEvent::WheelUp) => {
+                        self.conversation_state.scroll_up(3);
+                    }
+                    Event::Mouse(MouseEvent::WheelDown) => {
+                        self.conversation_state.scroll_down(3);
+                    }
                     Event::Mouse(_) => {}
                 }
             }
@@ -429,6 +435,19 @@ impl TerminalUI {
     }
 
     fn handle_key(&mut self, key: KeyEvent) -> Option<UiAction> {
+        // ── Global scroll: Ctrl+K / Ctrl+J ───────────────────────────────────
+        match key {
+            KeyEvent::CtrlChar('k') => {
+                self.conversation_state.scroll_up(3);
+                return None;
+            }
+            KeyEvent::CtrlChar('j') => {
+                self.conversation_state.scroll_down(3);
+                return None;
+            }
+            _ => {}
+        }
+
         // ── Mode 1: Permission pending ──────────────────────────────────────
         if let Some((idx, tool, input)) = self.pending_permission.take() {
             let allowed = match key {

@@ -1,4 +1,4 @@
-use super::input::{InputEvent, InputParser, KeyEvent};
+use super::input::{InputEvent, InputParser, KeyEvent, MouseEvent};
 use super::size::TermSize;
 use crate::core::platform::{PlatformReactor, PlatformResizeListener, PlatformTerminal};
 
@@ -9,6 +9,7 @@ pub const TOKEN_SIGNAL: u64 = 1;
 #[derive(Debug, PartialEq)]
 pub enum Event {
     Key(KeyEvent),
+    Mouse(MouseEvent),
     Resize(TermSize),
     Tick,
 }
@@ -130,7 +131,7 @@ impl EventLoop {
         while let Some(event) = self.input.next_event() {
             match event {
                 InputEvent::Key(key) => events.push(Event::Key(key)),
-                InputEvent::Mouse(_) => { /* mouse events handled separately */ }
+                InputEvent::Mouse(mouse) => events.push(Event::Mouse(mouse)),
             }
         }
         Ok(())
