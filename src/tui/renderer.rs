@@ -1,16 +1,20 @@
 use crate::core::terminal::backend::Backend;
 use crate::core::terminal::buffer::{Buffer, Rect};
 use crate::core::terminal::size::TermSize;
+use crate::tui::text_map::TextMap;
+use std::cell::{RefCell, RefMut};
 
 /// Double-buffered renderer: widgets paint into `current`, then `flush` diffs
 /// it against `previous`, writes only changed cells to the backend, and swaps.
 pub struct Renderer {
-    current: Buffer,
-    previous: Buffer,
+    current: RefCell<Buffer>,
+    previous: RefCell<Buffer>,
     size: TermSize,
     last_cursor: Option<(u16, u16)>,
     /// Current selection region for highlighting (inverted fg/bg colors).
     pub(crate) selection: Option<Rect>,
+    /// Maps screen coordinates to text sources for Ctrl+C copy.
+    text_map: RefCell<TextMap>,
 }
 
 impl Renderer {
@@ -18,22 +22,24 @@ impl Renderer {
     pub fn new(size: TermSize) -> Self {
         let area = Rect::new(0, 0, size.cols, size.rows);
         Renderer {
-            current: Buffer::empty(area),
-            previous: Buffer::empty(area),
+            current: RefCell::new(Buffer::empty(area)),
+            previous: RefCell::new(Buffer::empty(area)),
             size,
             last_cursor: None,
             selection: None,
+            text_map: RefCell::new(TextMap::new()),
         }
     }
 
     /// Recreate both buffers at the new terminal size.
     pub fn resize(&mut self, size: TermSize) {
         let area = Rect::new(0, 0, size.cols, size.rows);
-        self.current = Buffer::empty(area);
-        self.previous = Buffer::empty(area);
+        self.current.replace(Buffer::empty(area));
+        self.previous.replace(Buffer::empty(area));
         self.size = size;
         self.last_cursor = None;
         self.selection = None;
+        self.text_map.borrow_mut().clear();
     }
 
     /// Set the selection region for highlighting.
@@ -46,9 +52,21 @@ impl Renderer {
         self.selection = None;
     }
 
-    /// Returns the current buffer for widgets to render into.
-    pub fn buffer_mut(&mut self) -> &mut Buffer {
-        &mut self.current
+    /// Returns a mutable reference to the current buffer for widgets to render into.
+    /// Takes `&self` (not `&mut self`) because Buffer is wrapped in RefCell for interior mutability.
+    pub fn buffer_mut(&self) -> RefMut<'_, Buffer> {
+        self.current.borrow_mut()
+    }
+
+    /// Returns a reference to the text map (for text extraction / Ctrl+C copy).
+    pub fn text_map(&self) -> std::cell::Ref<'_, TextMap> {
+        self.text_map.borrow()
+    }
+
+    /// Returns a mutable reference to the text map for building mappings during render.
+    /// Takes `&self` (not `&mut self`) because TextMap is wrapped in RefCell for interior mutability.
+    pub fn text_map_mut(&self) -> RefMut<'_, TextMap> {
+        self.text_map.borrow_mut()
     }
 
     /// Returns a Rect covering the full terminal area.
@@ -81,16 +99,23 @@ impl Renderer {
         // Apply selection highlighting to current buffer cells in the selection region.
         // This makes the current frame's selection cells differ from the previous
         // frame, so they will be included in the diff and written to the terminal.
-        if let Some(sel) = &self.selection {
-            for row in sel.y..sel.y.saturating_add(sel.height) {
-                for col in sel.x..sel.x.saturating_add(sel.width) {
-                    let cell = self.current.get_mut(col, row);
-                    std::mem::swap(&mut cell.fg, &mut cell.bg);
+        {
+            let mut current = self.current.borrow_mut();
+            if let Some(sel) = &self.selection {
+                for row in sel.y..sel.y.saturating_add(sel.height) {
+                    for col in sel.x..sel.x.saturating_add(sel.width) {
+                        let cell = current.get_mut(col, row);
+                        std::mem::swap(&mut cell.fg, &mut cell.bg);
+                    }
                 }
             }
         }
 
-        let diff = self.current.diff(&self.previous);
+        let diff = {
+            let current = self.current.borrow();
+            let previous = self.previous.borrow();
+            current.diff(&previous)
+        };
 
         if !diff.is_empty() {
             backend.write(b"\x1b[?2026h")?;
@@ -110,8 +135,11 @@ impl Renderer {
         }
 
         // Swap buffers regardless so the buffer bookkeeping stays consistent.
-        std::mem::swap(&mut self.current, &mut self.previous);
-        self.current.clear();
+        // Use mem::swap on the dereferenced RefMuts.
+        let mut current = self.current.borrow_mut();
+        let mut previous = self.previous.borrow_mut();
+        std::mem::swap(&mut *current, &mut *previous);
+        current.clear();
         Ok(())
     }
 }

@@ -3,7 +3,7 @@ use std::sync::mpsc::Receiver;
 use crate::agent::protocol::{AgentEvent, AgentMessage, PermissionResponse};
 use crate::core::runtime::channel::NotifySender;
 use crate::core::terminal::backend::{Backend, CrossBackend};
-use crate::core::terminal::buffer::Rect;
+use crate::core::terminal::buffer::{Buffer, Rect};
 use crate::core::terminal::events::{Event, EventLoop};
 use crate::core::terminal::input::{KeyEvent, MouseEvent};
 use crate::core::terminal::style::theme;
@@ -23,6 +23,7 @@ use crate::tui::status::StatusWidget;
 use crate::tui::tool_call::{ToolCallState, ToolCallWidget, ToolStatus, extract_input_summary};
 use crate::tui::welcome::WelcomeWidget;
 use crate::tui::widget::{StatefulWidget, Widget};
+use crate::tui::text_map::{CellSource, TextMap};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Welcome animation state
@@ -674,7 +675,7 @@ impl TerminalUI {
         };
         let spinner_verb = self.spinner_verb.clone();
 
-        let buf = self.renderer.buffer_mut();
+        let mut buf = self.renderer.buffer_mut();
 
         // Conversation area rendering
         // (header removed — cwd/branch shown in status bar at bottom)
@@ -725,10 +726,14 @@ impl TerminalUI {
                     conv_area.width.saturating_sub(1), // 1 col for scrollbar
                     vi.visible_rows,
                 );
+                // Acquire text_map for this block, drop after the call
+                let mut text_map = self.renderer.text_map_mut();
                 render_block(
                     &self.blocks[vi.index],
+                    vi.index,
                     block_area,
-                    buf,
+                    &mut buf,
+                    &mut text_map,
                     &mut tool_visual_idx,
                     &self.focus,
                     &mut self.tool_states,
@@ -756,14 +761,14 @@ impl TerminalUI {
             }
 
             // Scrollbar
-            self.conversation_state.render_scrollbar(conv_area, buf);
+            self.conversation_state.render_scrollbar(conv_area, &mut buf);
         }
 
         // Input area: either the permission menu or the normal text editor
         if let Some((_, _, _, ref mut state)) = self.pending_permission {
             // Permission menu: full-height box with centered options
             let perm_widget = PermissionWidget::new("", "");
-            perm_widget.render(chunks[1], buf, state);
+            perm_widget.render(chunks[1], &mut buf, state);
         } else {
             // Normal input box: top + bottom rounded borders only, dim gray
             let input_block = Block::new()
@@ -771,14 +776,14 @@ impl TerminalUI {
                 .borders(BorderSides::HORIZONTAL)
                 .border_fg(theme::DIM);
             let input_inner = input_block.inner(chunks[1]);
-            input_block.render(chunks[1], buf);
+            input_block.render(chunks[1], &mut buf);
 
             // Input widget with mode-specific prompt (Claude orange)
             let editor_content = self.editor.content();
             let input_widget =
                 InputWidget::new(&editor_content, self.editor.cursor_offset(), self.editor.mode.prompt())
                     .prompt_fg(theme::CLAUDE);
-            input_widget.render(input_inner, buf);
+            input_widget.render(input_inner, &mut buf);
         }
 
         // Status bar
@@ -789,7 +794,7 @@ impl TerminalUI {
             input_tokens: self.input_tokens,
             output_tokens: self.output_tokens,
         };
-        status.render(chunks[2], buf);
+        status.render(chunks[2], &mut buf);
     }
 
     fn block_height(&self, block: &ContentBlock) -> u16 {
@@ -873,12 +878,13 @@ fn block_height_with_width(block: &ContentBlock, width: u16) -> u16 {
     }
 }
 
-/// Render a single content block into the buffer. Free function to avoid
-/// borrowing the entire TerminalUI while we hold &mut Buffer.
+/// Render a single content block into the buffer.
 fn render_block(
     block: &ContentBlock,
+    block_idx: usize,
     area: Rect,
-    buf: &mut crate::core::terminal::buffer::Buffer,
+    buf: &mut Buffer,
+    text_map: &mut TextMap,
     tool_idx: &mut usize,
     focus: &FocusManager,
     tool_states: &mut [ToolCallState],
@@ -905,6 +911,7 @@ fn render_block(
                 }
                 let start_x = area.x + 2;
                 let mut x = start_x;
+                let mut global_byte_offset = 0usize;
                 for sc in row {
                     if sc.width == 0 {
                         continue;
@@ -921,6 +928,18 @@ fn render_block(
                         cell2.ch = '\0';
                         cell2.fg = Some(theme::TEXT);
                     }
+                    // Build TextMap: map this screen cell to its text source
+                    text_map.set_source(
+                        x,
+                        y,
+                        CellSource {
+                            block: block_idx,
+                            span: 0,
+                            byte_offset: global_byte_offset,
+                            width: sc.width,
+                        },
+                    );
+                    global_byte_offset += sc.ch.len_utf8();
                     x += sc.width;
                 }
             }
