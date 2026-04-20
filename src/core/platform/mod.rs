@@ -41,3 +41,8 @@ pub use windows::shell_command;
 pub use unix::tcp_raw_handle;
 #[cfg(windows)]
 pub use windows::tcp_raw_handle;
+
+#[cfg(unix)]
+pub use unix::terminal_size;
+#[cfg(windows)]
+pub use windows::terminal_size;

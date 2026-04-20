@@ -173,3 +173,7 @@ impl WinResizeListener {
 // SAFETY: Console HANDLEs are thread-safe in Windows.
 unsafe impl Send for WinResizeListener {}
 unsafe impl Sync for WinResizeListener {}
+
+pub fn terminal_size() -> crate::Result<(u16, u16)> {
+    Ok((24, 80)) // TODO: GetConsoleScreenBufferInfo
+}

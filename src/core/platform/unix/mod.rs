@@ -7,7 +7,7 @@ pub mod timer;
 pub use notifier::PipeNotifier;
 pub use process::shell_command;
 pub use reactor::EpollReactor;
-pub use terminal::{UnixResizeListener, UnixTerminal};
+pub use terminal::{terminal_size, UnixResizeListener, UnixTerminal};
 pub use timer::UnixTimer;
 
 pub fn tcp_raw_handle(stream: &std::net::TcpStream) -> super::types::RawHandle {

@@ -8,7 +8,7 @@ pub mod timer;
 pub use notifier::EventNotifier;
 pub use process::shell_command;
 pub use reactor::IocpReactor;
-pub use terminal::{WinResizeListener, WinTerminal};
+pub use terminal::{terminal_size, WinResizeListener, WinTerminal};
 pub use timer::WinTimer;
 
 pub fn tcp_raw_handle(stream: &std::net::TcpStream) -> super::types::RawHandle {

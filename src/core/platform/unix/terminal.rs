@@ -356,3 +356,27 @@ impl Drop for UnixResizeListener {
         }
     }
 }
+
+// ── Standalone terminal_size ────────────────────────────────────────────────
+
+pub fn terminal_size() -> crate::Result<(u16, u16)> {
+    #[repr(C)]
+    struct WinsizeLocal {
+        ws_row: u16,
+        ws_col: u16,
+        _ws_xpixel: u16,
+        _ws_ypixel: u16,
+    }
+    let mut ws = WinsizeLocal {
+        ws_row: 0,
+        ws_col: 0,
+        _ws_xpixel: 0,
+        _ws_ypixel: 0,
+    };
+    let ret = unsafe { ioctl(1, TIOCGWINSZ, &mut ws) };
+    if ret == 0 && ws.ws_col > 0 && ws.ws_row > 0 {
+        Ok((ws.ws_row, ws.ws_col))
+    } else {
+        Ok((24, 80))
+    }
+}
