@@ -889,7 +889,6 @@ impl TerminalUI {
 
             match block {
                 ContentBlock::UserMessage { text } => {
-                    // UserMessage has single span (entire text)
                     if let Some(ch) = extract_char(text, *byte_offset) {
                         if current_block != Some(*block_idx) {
                             if !result.is_empty() && !result.ends_with('\n') {
@@ -901,7 +900,6 @@ impl TerminalUI {
                     }
                 }
                 ContentBlock::Markdown { nodes } => {
-                    // Find the span at span_idx within Paragraph nodes
                     for node in nodes {
                         if let MarkdownNode::Paragraph { spans } = node {
                             if *span_idx < spans.len() {
