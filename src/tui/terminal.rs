@@ -265,6 +265,7 @@ impl TerminalUI {
                 };
 
                 self.render_frame();
+                self.renderer.set_selection(self.selection_state.region().map(|r| r.as_rect()));
                 self.renderer.flush(&mut self.backend, cursor)?;
 
                 dirty = false;

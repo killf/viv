@@ -9,6 +9,8 @@ pub struct Renderer {
     previous: Buffer,
     size: TermSize,
     last_cursor: Option<(u16, u16)>,
+    /// Current selection region for highlighting (inverted fg/bg colors).
+    pub(crate) selection: Option<Rect>,
 }
 
 impl Renderer {
@@ -20,6 +22,7 @@ impl Renderer {
             previous: Buffer::empty(area),
             size,
             last_cursor: None,
+            selection: None,
         }
     }
 
@@ -30,6 +33,17 @@ impl Renderer {
         self.previous = Buffer::empty(area);
         self.size = size;
         self.last_cursor = None;
+        self.selection = None;
+    }
+
+    /// Set the selection region for highlighting.
+    pub fn set_selection(&mut self, rect: Option<Rect>) {
+        self.selection = rect;
+    }
+
+    /// Clear any active selection.
+    pub fn clear_selection(&mut self) {
+        self.selection = None;
     }
 
     /// Returns the current buffer for widgets to render into.
@@ -55,11 +69,27 @@ impl Renderer {
     /// an arrow key inside the input), we emit just the move.
     ///
     /// Pass `cursor: None` to leave the cursor alone (used by tests).
+    ///
+    /// Selection highlighting: before computing the diff, we swap fg/bg colors
+    /// for cells in the selection region so they appear inverted. This way the
+    /// diff includes those cells (since previous frame had no inversion).
     pub fn flush(
         &mut self,
         backend: &mut dyn Backend,
         cursor: Option<(u16, u16)>,
     ) -> crate::Result<()> {
+        // Apply selection highlighting to current buffer cells in the selection region.
+        // This makes the current frame's selection cells differ from the previous
+        // frame, so they will be included in the diff and written to the terminal.
+        if let Some(sel) = &self.selection {
+            for row in sel.y..sel.y.saturating_add(sel.height) {
+                for col in sel.x..sel.x.saturating_add(sel.width) {
+                    let cell = self.current.get_mut(col, row);
+                    std::mem::swap(&mut cell.fg, &mut cell.bg);
+                }
+            }
+        }
+
         let diff = self.current.diff(&self.previous);
 
         if !diff.is_empty() {
