@@ -7,6 +7,10 @@ pub mod timer;
 pub use notifier::PipeNotifier;
 pub use process::{shell_command, spawn_piped, spawn_piped_with_env, ChildProcess};
 pub use reactor::EpollReactor;
+#[cfg(target_os = "linux")]
+pub mod io_uring;
+#[cfg(target_os = "linux")]
+pub use io_uring::IoUringReactor;
 pub use terminal::{terminal_size, UnixResizeListener, UnixTerminal};
 pub use timer::UnixTimer;
 

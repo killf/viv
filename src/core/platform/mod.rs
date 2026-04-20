@@ -12,6 +12,13 @@ pub type PlatformReactor = unix::EpollReactor;
 #[cfg(windows)]
 pub type PlatformReactor = windows::IocpReactor;
 
+#[cfg(target_os = "linux")]
+pub type PlatformAsyncReactor = unix::IoUringReactor;
+#[cfg(all(unix, not(target_os = "linux")))]
+pub type PlatformAsyncReactor = unix::EpollReactor;
+#[cfg(windows)]
+pub type PlatformAsyncReactor = windows::IocpReactor;
+
 #[cfg(unix)]
 pub type PlatformTimer = unix::UnixTimer;
 #[cfg(windows)]

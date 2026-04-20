@@ -1,5 +1,5 @@
 use crate::Error;
-use crate::core::platform::{PlatformReactor, RawHandle};
+use crate::core::platform::{PlatformAsyncReactor, RawHandle};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::task::Waker;
 use std::time::Duration;
@@ -16,7 +16,7 @@ pub struct Reactor {
     // `None` means the platform reactor failed to initialize. All operations
     // return an error in that case so callers can propagate and shut down
     // gracefully instead of crashing.
-    inner: Option<PlatformReactor>,
+    inner: Option<PlatformAsyncReactor>,
     init_error: Option<String>,
 }
 
@@ -29,7 +29,7 @@ fn unavailable(op: &str, reason: Option<&str>) -> Error {
 
 impl Reactor {
     fn new() -> Self {
-        match PlatformReactor::new() {
+        match PlatformAsyncReactor::new() {
             Ok(inner) => Reactor {
                 inner: Some(inner),
                 init_error: None,
@@ -83,7 +83,7 @@ impl Reactor {
     }
 
     /// Access the underlying platform reactor if available.
-    pub fn platform(&self) -> Option<&PlatformReactor> {
+    pub fn platform(&self) -> Option<&PlatformAsyncReactor> {
         self.inner.as_ref()
     }
 }
