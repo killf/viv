@@ -21,6 +21,8 @@ pub struct SkillEntry {
     pub name: String,
     /// One-line description shown in system prompt listing.
     pub description: String,
+    /// When to use this skill (mirrors Claude Code's whenToUse).
+    pub when_to_use: String,
     /// Full Markdown content of the skill.
     pub content: String,
     /// Base directory associated with the skill (string path, used for
@@ -96,13 +98,21 @@ impl SkillRegistry {
 
     /// Format skills as a compact listing suitable for inclusion in a system
     /// prompt.  Returns an empty string when there are no skills.
+    /// Mirrors Claude Code's formatCommandsWithinBudget output format.
     pub fn format_for_prompt(&self) -> String {
         if self.skills.is_empty() {
             return String::new();
         }
         let mut out = String::from("Available skills:\n");
         for entry in self.list() {
-            out.push_str(&format!("- {}: {}\n", entry.name, entry.description));
+            if entry.when_to_use.is_empty() {
+                out.push_str(&format!("- {}: {}\n", entry.name, entry.description));
+            } else {
+                out.push_str(&format!(
+                    "- {}: {} — {}\n",
+                    entry.name, entry.description, entry.when_to_use
+                ));
+            }
         }
         out
     }
@@ -149,22 +159,24 @@ impl SkillRegistry {
                 .unwrap_or("")
                 .to_string();
 
-            let (name, description, content) =
+            let (name, description, when_to_use, content) =
                 if let Some((fields, body)) = parse_frontmatter(&raw) {
                     let n = fields
                         .get("name")
                         .cloned()
                         .unwrap_or_else(|| dir_name.clone());
                     let d = fields.get("description").cloned().unwrap_or_default();
-                    (n, d, body.to_string())
+                    let w = fields.get("when_to_use").cloned().unwrap_or_default();
+                    (n, d, w, body.to_string())
                 } else {
-                    (dir_name, String::new(), raw)
+                    (dir_name, String::new(), String::new(), raw)
                 };
 
             let base_dir = skill_dir.to_string_lossy().into_owned();
             reg.add(SkillEntry {
                 name,
                 description,
+                when_to_use,
                 content,
                 base_dir,
                 source: source.clone(),

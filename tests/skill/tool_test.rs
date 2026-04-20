@@ -9,6 +9,7 @@ fn make_registry_with_skills() -> Arc<SkillRegistry> {
     reg.add(SkillEntry {
         name: "commit".to_string(),
         description: "Use when committing code".to_string(),
+        when_to_use: "".to_string(),
         content: "Step 1: run tests\nStep 2: commit".to_string(),
         base_dir: "/skills/commit".to_string(),
         source: SkillSource::User,
@@ -16,6 +17,7 @@ fn make_registry_with_skills() -> Arc<SkillRegistry> {
     reg.add(SkillEntry {
         name: "review".to_string(),
         description: "Use when reviewing PRs".to_string(),
+        when_to_use: "".to_string(),
         content: "Review instructions here.".to_string(),
         base_dir: "/skills/review".to_string(),
         source: SkillSource::Project,

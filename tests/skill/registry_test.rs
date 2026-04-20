@@ -51,6 +51,7 @@ fn registry_add_and_get() {
     reg.add(SkillEntry {
         name: "commit".to_string(),
         description: "Use when committing".to_string(),
+        when_to_use: "".to_string(),
         content: "Commit instructions here.".to_string(),
         base_dir: "/some/dir".to_string(),
         source: SkillSource::User,
@@ -70,6 +71,7 @@ fn registry_project_overrides_user() {
     reg.add(SkillEntry {
         name: "commit".to_string(),
         description: "User version".to_string(),
+        when_to_use: "".to_string(),
         content: "User content".to_string(),
         base_dir: "/user/dir".to_string(),
         source: SkillSource::User,
@@ -77,6 +79,7 @@ fn registry_project_overrides_user() {
     reg.add(SkillEntry {
         name: "commit".to_string(),
         description: "Project version".to_string(),
+        when_to_use: "".to_string(),
         content: "Project content".to_string(),
         base_dir: "/project/dir".to_string(),
         source: SkillSource::Project,
@@ -101,6 +104,7 @@ fn format_for_prompt_lists_skills() {
     reg.add(SkillEntry {
         name: "commit".to_string(),
         description: "Use when committing".to_string(),
+        when_to_use: "".to_string(),
         content: "".to_string(),
         base_dir: "/some/dir".to_string(),
         source: SkillSource::User,
@@ -108,6 +112,7 @@ fn format_for_prompt_lists_skills() {
     reg.add(SkillEntry {
         name: "review".to_string(),
         description: "Use when reviewing code".to_string(),
+        when_to_use: "".to_string(),
         content: "".to_string(),
         base_dir: "/some/dir".to_string(),
         source: SkillSource::User,

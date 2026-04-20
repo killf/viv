@@ -134,6 +134,8 @@ impl ToJson for SystemBlock {
 pub struct PromptCache {
     pub base_hash: u64,
     pub base_text: String,
+    pub env_hash: u64,
+    pub env_text: String,
     pub tools_hash: u64,
     pub tools_text: String,
     pub skills_hash: u64,
