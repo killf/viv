@@ -15,7 +15,7 @@ fn tls13_pure_rust_https_get() {
     use viv::core::net::http::HttpRequest;
     use viv::core::net::tls::TlsStream;
 
-    block_on_local(Box::pin(async {
+    use viv::core::runtime::executor::block_on;(Box::pin(async {
         let host = "www.wechat.com";
         let mut tls = TlsStream::connect(host, 443).await.expect("TLS 1.3 connect failed");
 
@@ -67,7 +67,7 @@ fn tls12_pure_rust_https_get() {
     use viv::core::net::http::HttpRequest;
     use viv::core::net::tls::TlsStream;
 
-    block_on_local(Box::pin(async {
+    use viv::core::runtime::executor::block_on;(Box::pin(async {
         let host = "www.wechat.com";
         let mut tls = TlsStream::connect(host, 443).await.expect("TLS connect failed");
 

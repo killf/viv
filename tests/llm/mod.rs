@@ -1,5 +1,6 @@
 use viv::config::ModelConfig;
 use viv::core::json::JsonValue;
+use viv::core::runtime::executor::block_on;
 use viv::llm::*;
 
 #[test]
@@ -197,21 +198,25 @@ fn config_env_vars() {
 fn e2e_stream_real_api() {
     let config = LLMConfig::from_env(&ModelConfig::default())
         .expect("VIV_API_KEY must be set when running with --features full_test");
-    let client = LLMClient::new(config);
-    let messages = vec![Message {
-        role: "user".into(),
-        content: "Reply with exactly one word: hello".into(),
-    }];
 
-    let mut received_text = false;
-    let result = client.stream(&messages, ModelTier::Fast, |text| {
-        assert!(!text.is_empty());
-        received_text = true;
+    block_on(async {
+        let client = LLMClient::new(config);
+        let messages = vec![Message {
+            role: "user".into(),
+            content: "Reply with exactly one word: hello".into(),
+        }];
+
+        let mut received = false;
+        let text = client
+            .stream(&messages, ModelTier::Fast, |chunk| {
+                assert!(!chunk.is_empty());
+                received = true;
+            })
+            .await
+            .expect("API call failed");
+
+        assert!(received, "No text was streamed");
+        assert!(!text.is_empty(), "Response was empty");
+        println!("e2e response: {}", text);
     });
-
-    assert!(result.is_ok(), "API call failed: {:?}", result.err());
-    assert!(received_text, "No text was streamed");
-    let response = result.unwrap();
-    assert!(!response.is_empty(), "Response was empty");
-    println!("e2e response: {}", response);
 }
