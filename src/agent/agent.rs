@@ -226,6 +226,12 @@ impl Agent {
                         let _ = self.msg_tx.send(AgentMessage::Done);
                     }
                 }
+                Ok(AgentEvent::SlashCommand(text)) | Ok(AgentEvent::ColonCommand(text)) => {
+                    if let Err(e) = self.handle_input(text).await {
+                        let _ = self.msg_tx.send(AgentMessage::Error(e.to_string()));
+                        let _ = self.msg_tx.send(AgentMessage::Done);
+                    }
+                }
                 Ok(AgentEvent::Quit) => {
                     self.shutdown().await?;
                     break;
@@ -589,7 +595,8 @@ impl Agent {
 
         loop {
             match self.event_rx.recv().await {
-                Ok(AgentEvent::PermissionResponse(allowed)) => {
+                Ok(AgentEvent::PermissionResponse(response)) => {
+                    let allowed = matches!(response, crate::agent::protocol::PermissionResponse::Allow | crate::agent::protocol::PermissionResponse::AlwaysAllow);
                     if allowed {
                         self.permissions.grant(tool_name);
                     }

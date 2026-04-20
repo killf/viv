@@ -2,6 +2,25 @@ use crate::core::terminal::buffer::{Buffer, Rect, char_width};
 use crate::core::terminal::style::Color;
 use crate::tui::widget::Widget;
 
+/// Input mode determines the left icon and how submissions are interpreted.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InputMode {
+    Chat,
+    SlashCommand,
+    ColonCommand,
+}
+
+impl InputMode {
+    /// Returns the prompt string (icon + trailing space) for this mode.
+    pub fn prompt(self) -> &'static str {
+        match self {
+            InputMode::Chat => "\u{276F} ",
+            InputMode::SlashCommand => "/ ",
+            InputMode::ColonCommand => ": ",
+        }
+    }
+}
+
 /// A text input widget with a prompt, cursor, and multiline support.
 pub struct InputWidget<'a> {
     pub content: &'a str,

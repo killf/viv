@@ -1,5 +1,5 @@
 use viv::agent::channel::agent_channel;
-use viv::agent::protocol::{AgentEvent, AgentMessage};
+use viv::agent::protocol::{AgentEvent, AgentMessage, PermissionResponse};
 use viv::core::runtime::block_on_local;
 
 #[test]
@@ -42,11 +42,11 @@ fn agent_channel_bidirectional_permission_flow() {
     }
     handle
         .tx
-        .send(AgentEvent::PermissionResponse(true))
+        .send(AgentEvent::PermissionResponse(PermissionResponse::Allow))
         .unwrap();
     let event = block_on_local(Box::pin(endpoint.rx.recv())).unwrap();
     match event {
-        AgentEvent::PermissionResponse(true) => {}
-        other => panic!("expected PermissionResponse(true), got {:?}", other),
+        AgentEvent::PermissionResponse(PermissionResponse::Allow) => {}
+        other => panic!("expected PermissionResponse(Allow), got {:?}", other),
     }
 }

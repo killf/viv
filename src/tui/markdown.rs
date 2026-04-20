@@ -1,4 +1,4 @@
-use crate::core::terminal::buffer::{Buffer, Rect};
+use crate::core::terminal::buffer::{Buffer, Rect, char_width};
 use crate::core::terminal::style::Color;
 use crate::core::terminal::style::theme;
 use crate::tui::code_block::CodeBlockWidget;
@@ -214,20 +214,25 @@ impl<'a> Widget for MarkdownBlockWidget<'a> {
                         } else {
                             "  \u{2022} ".to_string()
                         };
-                        let prefix_len = prefix.len() as u16;
+                        let prefix_len: u16 = prefix.chars().map(char_width).sum();
                         let inner_width = area.width.saturating_sub(prefix_len);
 
                         // Render prefix on first row
                         let max_x = area.x + area.width;
-                        for (i, ch) in prefix.chars().enumerate() {
-                            let cx = area.x + i as u16;
-                            if cx >= max_x {
+                        let mut prefix_x = area.x;
+                        for ch in prefix.chars() {
+                            if prefix_x >= max_x {
                                 break;
                             }
-                            let cell = buf.get_mut(cx, row);
-                            cell.ch = ch;
-                            cell.fg = Some(theme::DIM);
-                            cell.bold = false;
+                            let w = char_width(ch) as u16;
+                            let end_x = (prefix_x + w).min(max_x);
+                            for cx in prefix_x..end_x {
+                                let cell = buf.get_mut(cx, row);
+                                cell.ch = if cx == prefix_x { ch } else { '\0' };
+                                cell.fg = Some(theme::DIM);
+                                cell.bold = false;
+                            }
+                            prefix_x += w;
                         }
 
                         // Render wrapped content
@@ -265,11 +270,15 @@ impl<'a> Widget for MarkdownBlockWidget<'a> {
                             if cur_x >= max_x {
                                 break;
                             }
-                            let cell = buf.get_mut(cur_x, y);
-                            cell.ch = ch;
-                            cell.fg = Some(Color::Rgb(100, 100, 100));
-                            cell.bold = false;
-                            cur_x += 1;
+                            let w = char_width(ch) as u16;
+                            let end_x = (cur_x + w).min(max_x);
+                            for cx in cur_x..end_x {
+                                let cell = buf.get_mut(cx, y);
+                                cell.ch = if cx == cur_x { ch } else { '\0' };
+                                cell.fg = Some(Color::Rgb(100, 100, 100));
+                                cell.bold = false;
+                            }
+                            cur_x += w;
                         }
                         // Render content: preserve original fg, add italic
                         for sc in wrapped_row {

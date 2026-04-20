@@ -1,6 +1,6 @@
 use std::sync::mpsc::Receiver;
 
-use crate::agent::protocol::{AgentEvent, AgentMessage};
+use crate::agent::protocol::{AgentEvent, AgentMessage, PermissionResponse};
 use crate::core::runtime::channel::NotifySender;
 use crate::core::terminal::backend::{Backend, CrossBackend};
 use crate::core::terminal::buffer::Rect;
@@ -13,9 +13,10 @@ use crate::tui::content::{ContentBlock, MarkdownNode, MarkdownParseBuffer};
 use crate::tui::conversation::ConversationState;
 use crate::tui::focus::FocusManager;
 use crate::tui::header::HeaderWidget;
-use crate::tui::input::InputWidget;
+use crate::tui::input::{InputMode, InputWidget};
 use crate::tui::layout::{Constraint, Direction, Layout};
 use crate::tui::markdown::MarkdownBlockWidget;
+use crate::tui::permission::{PermissionState, PermissionWidget};
 use crate::tui::renderer::Renderer;
 use crate::tui::spinner::{Spinner, random_verb};
 use crate::tui::status::StatusWidget;
@@ -69,8 +70,9 @@ pub struct TerminalUI {
     focus: FocusManager,
     tool_seq: usize,
 
-    /// (block_idx, tool_name, input_summary) -- stored when PermissionRequest arrives
-    pending_permission: Option<(usize, String, String)>,
+    /// Permission state: (block_idx, tool_name, input_summary, menu_state).
+    /// When Some, the permission options menu is shown in the input area.
+    pending_permission: Option<(usize, String, String, PermissionState)>,
     /// Set to true after Ctrl+D sends AgentEvent::Quit. While true, we keep the
     /// UI running and wait for AgentMessage::Evolved so the user sees the
     /// "evolving memories" spinner instead of a silent freeze.
@@ -195,28 +197,35 @@ impl TerminalUI {
             }
 
             if dirty {
-                // Compute the cursor position before painting, then hand it to
-                // the renderer so the final cursor placement is committed in
-                // the same synchronized-update block as the diff. This keeps
-                // the caret pinned to the input box without toggling cursor
-                // visibility, which would otherwise reset the terminal's
-                // blink phase on every frame.
+                // Compute the cursor position before painting.
                 let area = self.renderer.area();
-                let input_height = (self.editor.line_count() as u16 + 2).clamp(3, 8);
+                let is_permission_pending = self.pending_permission.is_some();
+                let input_height = if is_permission_pending {
+                    PermissionWidget::height()
+                } else {
+                    (self.editor.line_count() as u16 + 2).clamp(3, 8)
+                };
                 let chunks = main_layout(input_height).split(area);
-                let input_block = Block::new()
-                    .border(BorderStyle::Rounded)
-                    .borders(BorderSides::HORIZONTAL)
-                    .border_fg(theme::DIM);
-                let input_inner = input_block.inner(chunks[2]);
-                let editor_content = self.editor.content();
-                let input_widget =
-                    InputWidget::new(&editor_content, self.editor.cursor_offset(), "\u{276F} ")
-                        .prompt_fg(theme::CLAUDE);
-                let cursor = input_widget.cursor_position(input_inner);
+                let input_block_area = chunks[2];
+
+                let cursor = if is_permission_pending {
+                    // No cursor in permission mode
+                    None
+                } else {
+                    let input_block = Block::new()
+                        .border(BorderStyle::Rounded)
+                        .borders(BorderSides::HORIZONTAL)
+                        .border_fg(theme::DIM);
+                    let input_inner = input_block.inner(input_block_area);
+                    let editor_content = self.editor.content();
+                    let input_widget =
+                        InputWidget::new(&editor_content, self.editor.cursor_offset(), self.editor.mode.prompt())
+                            .prompt_fg(theme::CLAUDE);
+                    Some(input_widget.cursor_position(input_inner))
+                };
 
                 self.render_frame();
-                self.renderer.flush(&mut self.backend, Some(cursor))?;
+                self.renderer.flush(&mut self.backend, cursor)?;
 
                 dirty = false;
             }
@@ -379,15 +388,15 @@ impl TerminalUI {
             }
 
             AgentMessage::PermissionRequest { tool, input } => {
-                // Store the permission prompt as a Markdown block
-                let prompt_text = format!("  \u{25c6} {}({}) [y/n]", tool, input);
+                // Store the permission prompt as a Markdown block in conversation
+                let prompt_text = format!("  \u{25c6} {}({})", tool, input);
                 let nodes = vec![MarkdownNode::Paragraph {
                     spans: vec![crate::tui::content::InlineSpan::Text(prompt_text)],
                 }];
                 self.blocks.push(ContentBlock::Markdown { nodes });
                 let idx = self.blocks.len() - 1;
                 self.conversation_state.append_item_height(1);
-                self.pending_permission = Some((idx, tool, input));
+                self.pending_permission = Some((idx, tool, input, PermissionState::new()));
                 self.conversation_state.auto_scroll();
             }
 
@@ -449,30 +458,59 @@ impl TerminalUI {
         }
 
         // ── Mode 1: Permission pending ──────────────────────────────────────
-        if let Some((idx, tool, input)) = self.pending_permission.take() {
-            let allowed = match key {
-                KeyEvent::Char('y') | KeyEvent::Char('Y') => true,
-                KeyEvent::Char('n') | KeyEvent::Char('N') => false,
-                _ => {
-                    // Not a valid response -- put pending_permission back and ignore
-                    self.pending_permission = Some((idx, tool, input));
+        if let Some((idx, tool, input, state)) = self.pending_permission.take() {
+            match key {
+                KeyEvent::Up => {
+                    // Put state back with updated selection
+                    self.pending_permission = Some((idx, tool, input, {
+                        let mut s = state;
+                        s.move_up();
+                        s
+                    }));
                     return None;
                 }
-            };
-            // Replace the permission block with the result
-            let result_text = if allowed {
-                format!("  \u{2713} Allowed  {} ({})", tool, input)
-            } else {
-                format!("  \u{2717} Denied   {} ({})", tool, input)
-            };
-            let nodes = vec![MarkdownNode::Paragraph {
-                spans: vec![crate::tui::content::InlineSpan::Text(result_text)],
-            }];
-            if idx < self.blocks.len() {
-                self.blocks[idx] = ContentBlock::Markdown { nodes };
+                KeyEvent::Down => {
+                    self.pending_permission = Some((idx, tool, input, {
+                        let mut s = state;
+                        s.move_down();
+                        s
+                    }));
+                    return None;
+                }
+                KeyEvent::Enter => {
+                    // Commit the selected option
+                    let selected = state.selected_option();
+                    let response = match selected {
+                        crate::tui::permission::PermissionOption::Deny => PermissionResponse::Deny,
+                        crate::tui::permission::PermissionOption::Allow => PermissionResponse::Allow,
+                        crate::tui::permission::PermissionOption::AlwaysAllow => {
+                            PermissionResponse::AlwaysAllow
+                        }
+                    };
+                    // Replace the permission block with the result
+                    let result_text = match selected {
+                        crate::tui::permission::PermissionOption::Deny => {
+                            format!("  \u{2717} {}  {} ({})", selected.short_label(), tool, input)
+                        }
+                        _ => {
+                            format!("  \u{2713} {}  {} ({})", selected.short_label(), tool, input)
+                        }
+                    };
+                    let nodes = vec![MarkdownNode::Paragraph {
+                        spans: vec![crate::tui::content::InlineSpan::Text(result_text)],
+                    }];
+                    if idx < self.blocks.len() {
+                        self.blocks[idx] = ContentBlock::Markdown { nodes };
+                    }
+                    let _ = self.event_tx.send(AgentEvent::PermissionResponse(response));
+                    return None;
+                }
+                _ => {
+                    // All other keys are swallowed while permission is pending
+                    self.pending_permission = Some((idx, tool, input, state));
+                    return None;
+                }
             }
-            let _ = self.event_tx.send(AgentEvent::PermissionResponse(allowed));
-            return None;
         }
 
         // ── Mode 3: Busy -- Ctrl+C interrupts the agent; every other key
@@ -484,19 +522,29 @@ impl TerminalUI {
         }
 
         // ── Mode 4: Normal editing (busy or idle) ───────────────────────────
+        let mode = self.editor.mode;
         let action = self.editor.handle_key(key);
         match action {
             EditAction::Submit(line) => {
                 if !line.trim().is_empty() {
-                    self.blocks
-                        .push(ContentBlock::UserMessage { text: line.clone() });
-                    if let Some(msg_block) = self.blocks.last() {
-                        let h = self.block_height(msg_block);
-                        self.conversation_state.append_item_height(h);
-                        self.conversation_state.auto_scroll();
+                    // Slash/colon commands are not added to the conversation history
+                    let is_command = mode != InputMode::Chat;
+                    if !is_command {
+                        self.blocks
+                            .push(ContentBlock::UserMessage { text: line.clone() });
+                        if let Some(msg_block) = self.blocks.last() {
+                            let h = self.block_height(msg_block);
+                            self.conversation_state.append_item_height(h);
+                            self.conversation_state.auto_scroll();
+                        }
+                        self.editor.push_history(line.clone());
                     }
-                    self.editor.push_history(line.clone());
-                    let _ = self.event_tx.send(AgentEvent::Input(line));
+                    let event = match mode {
+                        InputMode::SlashCommand => AgentEvent::SlashCommand(line),
+                        InputMode::ColonCommand => AgentEvent::ColonCommand(line),
+                        InputMode::Chat => AgentEvent::Input(line),
+                    };
+                    let _ = self.event_tx.send(event);
                 }
             }
             EditAction::Exit => {
@@ -504,8 +552,6 @@ impl TerminalUI {
             }
             EditAction::Interrupt => {
                 self.editor.clear();
-                
-                
             }
             EditAction::Continue => {}
         }
@@ -514,7 +560,12 @@ impl TerminalUI {
 
     fn render_frame(&mut self) {
         let area = self.renderer.area();
-        let input_height = (self.editor.line_count() as u16 + 2).clamp(3, 8);
+        let is_permission_pending = self.pending_permission.is_some();
+        let input_height = if is_permission_pending {
+            PermissionWidget::height()
+        } else {
+            (self.editor.line_count() as u16 + 2).clamp(3, 8)
+        };
         let chunks = main_layout(input_height).split(area);
         // chunks: [0]=header, [1]=conversation, [2]=input, [3]=status
 
@@ -623,20 +674,27 @@ impl TerminalUI {
             self.conversation_state.render_scrollbar(conv_area, buf);
         }
 
-        // Input box: top + bottom rounded borders only, dim gray
-        let input_block = Block::new()
-            .border(BorderStyle::Rounded)
-            .borders(BorderSides::HORIZONTAL)
-            .border_fg(theme::DIM);
-        let input_inner = input_block.inner(chunks[2]);
-        input_block.render(chunks[2], buf);
+        // Input area: either the permission menu or the normal text editor
+        if let Some((_, _, _, ref mut state)) = self.pending_permission {
+            // Permission menu: full-height box with centered options
+            let perm_widget = PermissionWidget::new("", "");
+            perm_widget.render(chunks[2], buf, state);
+        } else {
+            // Normal input box: top + bottom rounded borders only, dim gray
+            let input_block = Block::new()
+                .border(BorderStyle::Rounded)
+                .borders(BorderSides::HORIZONTAL)
+                .border_fg(theme::DIM);
+            let input_inner = input_block.inner(chunks[2]);
+            input_block.render(chunks[2], buf);
 
-        // Input widget with > prompt (Claude orange)
-        let editor_content = self.editor.content();
-        let input_widget =
-            InputWidget::new(&editor_content, self.editor.cursor_offset(), "\u{276F} ")
-                .prompt_fg(theme::CLAUDE);
-        input_widget.render(input_inner, buf);
+            // Input widget with mode-specific prompt (Claude orange)
+            let editor_content = self.editor.content();
+            let input_widget =
+                InputWidget::new(&editor_content, self.editor.cursor_offset(), self.editor.mode.prompt())
+                    .prompt_fg(theme::CLAUDE);
+            input_widget.render(input_inner, buf);
+        }
 
         // Status bar
         let status = StatusWidget {
@@ -838,6 +896,7 @@ pub struct LineEditor {
     pub lines: Vec<String>,
     pub row: usize,
     pub col: usize,
+    pub mode: InputMode,
     history: Vec<String>,       // 所有已发送的用户消息
     history_idx: Option<usize>, // None=当前输入, Some(n)=浏览第 n 条（0=最新）
     original: String,           // 切换历史时保存当前输入
@@ -849,6 +908,7 @@ impl LineEditor {
             lines: vec![String::new()],
             row: 0,
             col: 0,
+            mode: InputMode::Chat,
             history: Vec::new(),
             history_idx: None,
             original: String::new(),
@@ -874,11 +934,12 @@ impl LineEditor {
         }
     }
 
-    /// Clear the editor buffer without touching history.
-    fn clear(&mut self) {
+    /// Clear the editor buffer and reset mode to Chat.
+    pub fn clear(&mut self) {
         self.lines = vec![String::new()];
         self.row = 0;
         self.col = 0;
+        self.mode = InputMode::Chat;
     }
 
     pub fn content(&self) -> String {
@@ -902,6 +963,14 @@ impl LineEditor {
         match key {
             KeyEvent::Char(ch) => {
                 self.exit_history();
+                // Detect mode change: when first char of empty line is `/` or `:`
+                if self.lines[self.row].is_empty() && self.col == 0 {
+                    match ch {
+                        '/' => self.mode = InputMode::SlashCommand,
+                        ':' => self.mode = InputMode::ColonCommand,
+                        _ => {}
+                    }
+                }
                 self.lines[self.row].insert(self.col, ch);
                 self.col += ch.len_utf8();
                 EditAction::Continue

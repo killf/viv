@@ -112,7 +112,7 @@ async fn run_sub_agent(
                     break;
                 }
                 Ok(AgentMessage::PermissionRequest { .. }) => {
-                    let _ = handle.tx.send(AgentEvent::PermissionResponse(true));
+                    let _ = handle.tx.send(AgentEvent::PermissionResponse(crate::agent::protocol::PermissionResponse::Allow));
                 }
                 Ok(_) => {} // Ignore other messages (Thinking, ToolStart, etc.)
                 Err(std::sync::mpsc::TryRecvError::Empty) => {

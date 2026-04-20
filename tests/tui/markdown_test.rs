@@ -289,8 +289,8 @@ fn quote_preserves_bold_and_adds_italic() {
     let area = Rect::new(0, 0, 40, 5);
     let mut buf = Buffer::empty(area);
     widget.render(area, &mut buf);
-    // After "\u{2502} " (2 chars), bold text starts at x=2
-    let bold_cell = buf.get(2, 0);
+    // After "\u{2502} " (│ is 2 cols, space is 1 col), bold text starts at x=3
+    let bold_cell = buf.get(3, 0);
     assert!(bold_cell.bold, "bold inside quote should stay bold");
     assert!(bold_cell.italic, "quote content should be italic");
 }

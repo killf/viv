@@ -2,9 +2,22 @@
 #[derive(Debug)]
 pub enum AgentEvent {
     Input(String),
-    PermissionResponse(bool),
+    SlashCommand(String),
+    ColonCommand(String),
+    PermissionResponse(PermissionResponse),
     Interrupt,
     Quit,
+}
+
+/// How the user responded to a permission request.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PermissionResponse {
+    /// Deny — refuse this operation.
+    Deny,
+    /// Allow — allow this time only.
+    Allow,
+    /// AlwaysAllow — remember and auto-allow similar operations.
+    AlwaysAllow,
 }
 
 /// Agent 线程 → UI 线程

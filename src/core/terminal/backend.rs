@@ -9,6 +9,12 @@ pub const ENTER_ALT_SCREEN: &[u8] = b"\x1b[?1049h";
 /// ANSI sequence to leave the alternate screen buffer and restore the prior view.
 pub const LEAVE_ALT_SCREEN: &[u8] = b"\x1b[?1049l";
 
+/// ANSI sequence to enable SGR mouse mode (1006) — reports wheel events.
+pub const ENABLE_SGR_MOUSE: &[u8] = b"\x1b[?1006h";
+
+/// ANSI sequence to disable SGR mouse mode.
+pub const DISABLE_SGR_MOUSE: &[u8] = b"\x1b[?1006l";
+
 pub trait Backend {
     fn size(&self) -> crate::Result<TermSize>;
     fn write(&mut self, buf: &[u8]) -> crate::Result<()>;
@@ -36,6 +42,7 @@ pub struct LinuxBackend {
     stdout: std::io::Stdout,
     raw_mode: Option<RawMode>,
     in_alt_screen: bool,
+    mouse_enabled: bool,
 }
 
 #[cfg(unix)]
@@ -45,6 +52,7 @@ impl LinuxBackend {
             stdout: std::io::stdout(),
             raw_mode: None,
             in_alt_screen: false,
+            mouse_enabled: false,
         }
     }
 }
@@ -63,6 +71,11 @@ impl Drop for LinuxBackend {
         // user's scrollback is preserved even on panic / early return.
         if self.in_alt_screen {
             let _ = self.stdout.write_all(LEAVE_ALT_SCREEN);
+            let _ = self.stdout.flush();
+        }
+        // Disable mouse mode if enabled
+        if self.mouse_enabled {
+            let _ = self.stdout.write_all(DISABLE_SGR_MOUSE);
             let _ = self.stdout.flush();
         }
         // Dropping raw_mode restores the original terminal settings via RawMode::drop.
@@ -117,14 +130,20 @@ impl Backend for LinuxBackend {
     fn enter_alt_screen(&mut self) -> crate::Result<()> {
         if !self.in_alt_screen {
             self.stdout.write_all(ENTER_ALT_SCREEN)?;
+            self.stdout.write_all(ENABLE_SGR_MOUSE)?;
             self.stdout.flush()?;
             self.in_alt_screen = true;
+            self.mouse_enabled = true;
         }
         Ok(())
     }
 
     fn leave_alt_screen(&mut self) -> crate::Result<()> {
         if self.in_alt_screen {
+            if self.mouse_enabled {
+                self.stdout.write_all(DISABLE_SGR_MOUSE)?;
+                self.mouse_enabled = false;
+            }
             self.stdout.write_all(LEAVE_ALT_SCREEN)?;
             self.stdout.flush()?;
             self.in_alt_screen = false;
@@ -139,6 +158,7 @@ pub struct CrossBackend {
     terminal: PlatformTerminal,
     stdout: std::io::Stdout,
     in_alt_screen: bool,
+    mouse_enabled: bool,
 }
 
 impl CrossBackend {
@@ -147,12 +167,17 @@ impl CrossBackend {
             terminal: PlatformTerminal::new()?,
             stdout: std::io::stdout(),
             in_alt_screen: false,
+            mouse_enabled: false,
         })
     }
 }
 
 impl Drop for CrossBackend {
     fn drop(&mut self) {
+        if self.mouse_enabled {
+            let _ = self.stdout.write_all(DISABLE_SGR_MOUSE);
+            let _ = self.stdout.flush();
+        }
         if self.in_alt_screen {
             let _ = self.stdout.write_all(LEAVE_ALT_SCREEN);
             let _ = self.stdout.flush();
@@ -204,14 +229,20 @@ impl Backend for CrossBackend {
     fn enter_alt_screen(&mut self) -> crate::Result<()> {
         if !self.in_alt_screen {
             self.stdout.write_all(ENTER_ALT_SCREEN)?;
+            self.stdout.write_all(ENABLE_SGR_MOUSE)?;
             self.stdout.flush()?;
             self.in_alt_screen = true;
+            self.mouse_enabled = true;
         }
         Ok(())
     }
 
     fn leave_alt_screen(&mut self) -> crate::Result<()> {
         if self.in_alt_screen {
+            if self.mouse_enabled {
+                self.stdout.write_all(DISABLE_SGR_MOUSE)?;
+                self.mouse_enabled = false;
+            }
             self.stdout.write_all(LEAVE_ALT_SCREEN)?;
             self.stdout.flush()?;
             self.in_alt_screen = false;
