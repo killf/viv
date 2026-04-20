@@ -1,9 +1,10 @@
 use viv::core::net::tls::tls12::handshake::{Tls12Handshake, Tls12HandshakeResult};
 use viv::core::net::tls::tls12::record::Tls12RecordLayer;
 use viv::core::net::tls::p256::Point;
+use viv::core::crypto::sha256::Sha256;
 
 fn make_handshake() -> Tls12Handshake {
-    Tls12Handshake::new(&[0x01u8; 32], &[0x02u8; 32], 0xC02B).unwrap()
+    Tls12Handshake::new(Sha256::new(), &[0x01u8; 32], &[0x02u8; 32], 0xC02F).unwrap()
 }
 
 fn make_cert_msg() -> Vec<u8> {

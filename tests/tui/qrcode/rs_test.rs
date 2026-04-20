@@ -1,4 +1,4 @@
-use viv::qrcode::rs;
+use viv::tui::qrcode::rs;
 
 #[test]
 fn generator_poly_length() {

@@ -11,6 +11,7 @@ mod markdown_test;
 mod message_style_test;
 mod paragraph_test;
 mod permission_test;
+mod qrcode;
 mod qrcode_test;
 mod renderer_test;
 mod spinner_test;

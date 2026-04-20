@@ -1,4 +1,4 @@
-use viv::qrcode::encode;
+use viv::tui::qrcode::encode;
 
 #[test]
 fn select_version_1_byte() {

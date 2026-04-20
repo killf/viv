@@ -1,4 +1,4 @@
-use viv::qrcode::gf256;
+use viv::tui::qrcode::gf256;
 
 #[test]
 fn exp_table_first_entries() {

@@ -33,26 +33,30 @@ fn encode_client_hello_has_correct_handshake_header() {
     // session_id at offset 39..71
     assert_eq!(&out[39..71], &[0xBB; 32]);
 
-    // cipher_suites_len at offset 71..73: 0x0006 (3 suites * 2 bytes)
+    // cipher_suites_len at offset 71..73: 0x0008 (4 suites * 2 bytes)
     assert_eq!(out[71], 0x00);
-    assert_eq!(out[72], 0x06);
+    assert_eq!(out[72], 0x08);
 
     // cipher_suite 1: TLS_AES_128_GCM_SHA256 = 0x1301
     assert_eq!(out[73], 0x13);
     assert_eq!(out[74], 0x01);
 
-    // cipher_suite 2: TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256 = 0xC02B
+    // cipher_suite 2: TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256 = 0xC02F
     assert_eq!(out[75], 0xC0);
-    assert_eq!(out[76], 0x2B);
+    assert_eq!(out[76], 0x2F);
 
-    // cipher_suite 3: TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256 = 0xC02C
+    // cipher_suite 3: TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256 = 0xC02B
     assert_eq!(out[77], 0xC0);
-    assert_eq!(out[78], 0x2C);
+    assert_eq!(out[78], 0x2B);
 
-    // compression_methods_len at offset 79: 1
-    assert_eq!(out[79], 0x01);
+    // cipher_suite 4: TLS_EMPTY_RENEGOTIATION_INFO_SCSV = 0x00FF
+    assert_eq!(out[79], 0x00);
+    assert_eq!(out[80], 0xFF);
+
+    // compression_methods_len at offset 81: 1
+    assert_eq!(out[81], 0x01);
     // compression: null
-    assert_eq!(out[80], 0x00);
+    assert_eq!(out[82], 0x00);
 }
 
 #[test]
@@ -239,10 +243,10 @@ fn client_hello_offers_tls12_cipher_suites() {
     let x25519_pub = [0u8; 32];
     let mut out = Vec::new();
     codec::encode_client_hello(&random, &session_id, "example.com", &x25519_pub, &mut out);
+    let found_c02f = out.windows(2).any(|w| w == [0xC0, 0x2F]);
     let found_c02b = out.windows(2).any(|w| w == [0xC0, 0x2B]);
-    let found_c02c = out.windows(2).any(|w| w == [0xC0, 0x2C]);
-    assert!(found_c02b, "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256 (0xC02B) not in ClientHello");
-    assert!(found_c02c, "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256 (0xC02C) not in ClientHello");
+    assert!(found_c02f, "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256 (0xC02F) not in ClientHello");
+    assert!(found_c02b, "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256 (0xC02B) not in ClientHello");
 }
 
 #[test]

@@ -3,6 +3,7 @@ mod bigint_test;
 mod crypto;
 mod encoding;
 mod jsonrpc_test;
+mod log;
 mod net;
 mod runtime;
 mod sync_test;

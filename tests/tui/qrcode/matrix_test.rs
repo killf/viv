@@ -1,4 +1,4 @@
-use viv::qrcode::matrix::QrMatrix;
+use viv::tui::qrcode::matrix::QrMatrix;
 use viv::qrcode;
 
 #[test]
