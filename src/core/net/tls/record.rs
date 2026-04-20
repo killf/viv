@@ -36,7 +36,7 @@ impl RecordEncrypter {
 
     /// Encrypt payload with inner content type appended, write the
     /// complete TLS record (header + ciphertext + tag) to `out`.
-    fn encrypt(&mut self, content_type: u8, payload: &[u8], out: &mut Vec<u8>) {
+    fn encrypt(&mut self, content_type: u8, payload: &[u8], out: &mut Vec<u8>) -> crate::Result<()> {
         // Inner plaintext = payload || content_type
         let mut inner = Vec::with_capacity(payload.len() + 1);
         inner.extend_from_slice(payload);
@@ -68,9 +68,10 @@ impl RecordEncrypter {
         let ct_start = out.len();
         out.resize(ct_start + ct_len, 0);
         self.cipher
-            .encrypt(&nonce, &aad, &inner, &mut out[ct_start..]);
+            .encrypt(&nonce, &aad, &inner, &mut out[ct_start..])?;
 
         self.seq += 1;
+        Ok(())
     }
 }
 
@@ -183,8 +184,7 @@ impl RecordLayer {
         let enc = self.encrypter.as_mut().ok_or_else(|| {
             crate::Error::Tls("write_encrypted called before encrypter installed".to_string())
         })?;
-        enc.encrypt(content_type, payload, out);
-        Ok(())
+        enc.encrypt(content_type, payload, out)
     }
 
     /// Read one TLS record from `data`.

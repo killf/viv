@@ -533,12 +533,12 @@ fn client_finished_added_to_transcript() {
     let _ = hs.handle_message(&build_encrypted_extensions(), &mut record).unwrap();
     let _ = hs.handle_message(&build_certificate(), &mut record).unwrap();
     let _ = hs.handle_message(&build_certificate_verify(), &mut record).unwrap();
-    let server_finished_key = hs.key_schedule.server_finished_key();
+    let server_finished_key = hs.key_schedule.server_finished_key().unwrap();
     let transcript_before = hs.transcript.clone().finish();
     let _ = hs.handle_message(&build_finished(false, &server_finished_key, &transcript_before), &mut record).unwrap();
 
     let hash_before = hs.transcript.clone().finish();
-    let finished_msg = hs.encode_client_finished();
+    let finished_msg = hs.encode_client_finished().unwrap();
     let hash_after = hs.transcript.clone().finish();
 
     assert_ne!(
@@ -571,7 +571,7 @@ fn finished_verify_data_exactly_one_bit_different_rejected() {
 
     // Compute correct Finished first to get the right verify_data
     let transcript_before = hs.transcript.clone().finish();
-    let server_finished_key = hs.key_schedule.server_finished_key();
+    let server_finished_key = hs.key_schedule.server_finished_key().unwrap();
     let correct_verify = hmac_sha256(&server_finished_key, &transcript_before);
 
     // Now construct Finished with exactly ONE bit flipped
@@ -624,14 +624,14 @@ fn encode_client_finished_works_after_complete_handshake() {
     let _ = hs.handle_message(&build_encrypted_extensions(), &mut record).unwrap();
     let _ = hs.handle_message(&build_certificate(), &mut record).unwrap();
     let _ = hs.handle_message(&build_certificate_verify(), &mut record).unwrap();
-    let server_finished_key = hs.key_schedule.server_finished_key();
+    let server_finished_key = hs.key_schedule.server_finished_key().unwrap();
     let transcript_before = hs.transcript.clone().finish();
     let result = hs.handle_message(&build_finished(false, &server_finished_key, &transcript_before), &mut record).unwrap();
 
     assert!(matches!(result, HandshakeResult::Complete), "expected Complete");
 
     // Now encode_client_finished should work
-    let finished_msg = hs.encode_client_finished();
+    let finished_msg = hs.encode_client_finished().unwrap();
     assert_eq!(finished_msg.len(), 36, "Finished message should be 36 bytes");
 
     // install_app_keys should also work

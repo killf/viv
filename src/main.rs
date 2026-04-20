@@ -30,5 +30,8 @@ fn run() -> viv::Result<()> {
 
     TerminalUI::new(event_tx, msg_rx)?.run()?;
 
-    handle.join().unwrap_or(Ok(()))
+    match handle.join() {
+        Ok(result) => result,
+        Err(_) => Err(viv::Error::Invariant("agent thread panicked".into())),
+    }
 }

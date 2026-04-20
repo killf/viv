@@ -113,11 +113,18 @@ impl Handshake {
                 // Compute shared secret
                 let shared = x25519::shared_secret(&self.x25519_secret, &sh.x25519_public);
 
+                // RFC 7748 §6.1: reject all-zero shared secret (low-order point)
+                if shared == [0u8; 32] {
+                    return Err(crate::Error::Tls(
+                        "X25519 shared secret is all-zero (low-order point)".into(),
+                    ));
+                }
+
                 // Derive handshake secrets
                 let hello_hash = self.transcript.clone().finish();
                 let (client_hs_keys, server_hs_keys) = self
                     .key_schedule
-                    .derive_handshake_secrets(&shared, &hello_hash);
+                    .derive_handshake_secrets(&shared, &hello_hash)?;
 
                 // Install server handshake decrypter
                 record.install_decrypter(server_hs_keys.key, server_hs_keys.iv);
@@ -158,7 +165,7 @@ impl Handshake {
                 let transcript_before = self.transcript.clone().finish();
 
                 // Verify server Finished
-                let server_finished_key = self.key_schedule.server_finished_key();
+                let server_finished_key = self.key_schedule.server_finished_key()?;
                 let expected = hmac_sha256(&server_finished_key, &transcript_before);
 
                 // Constant-time comparison
@@ -193,11 +200,11 @@ impl Handshake {
 
     /// Encode the client Finished message. Call after handle_message
     /// returns Complete.
-    pub fn encode_client_finished(&mut self) -> Vec<u8> {
+    pub fn encode_client_finished(&mut self) -> crate::Result<Vec<u8>> {
         // verify_data = HMAC(client_finished_key, transcript_hash)
         // At this point transcript contains CH..SF
         let transcript_hash = self.transcript.clone().finish();
-        let client_finished_key = self.key_schedule.client_finished_key();
+        let client_finished_key = self.key_schedule.client_finished_key()?;
         let verify_data = hmac_sha256(&client_finished_key, &transcript_hash);
 
         let mut msg = Vec::new();
@@ -207,7 +214,7 @@ impl Handshake {
         // Add client Finished to transcript
         self.transcript.update(&msg);
 
-        msg
+        Ok(msg)
     }
 
     /// Derive and install application traffic keys on the record layer.
@@ -221,7 +228,7 @@ impl Handshake {
                 "install_app_keys called before server Finished".to_string(),
             )
         })?;
-        let (client_app, server_app) = self.key_schedule.derive_app_secrets(&hash);
+        let (client_app, server_app) = self.key_schedule.derive_app_secrets(&hash)?;
         record.install_encrypter(client_app.key, client_app.iv);
         record.install_decrypter(server_app.key, server_app.iv);
         Ok(())

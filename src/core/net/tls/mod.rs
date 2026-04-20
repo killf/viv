@@ -135,7 +135,7 @@ impl TlsStream {
         tcp_stream.write_all(&ccs).map_err(crate::Error::Io)?;
 
         // 4. Send client Finished (encrypted with handshake keys)
-        let finished_msg = hs.encode_client_finished();
+        let finished_msg = hs.encode_client_finished()?;
         let mut finished_record = Vec::new();
         record.write_encrypted(HANDSHAKE, &finished_msg, &mut finished_record)?;
         tcp_stream
@@ -359,7 +359,7 @@ impl AsyncTlsStream {
         async_write_all(&mut tcp, fd, &ccs).await?;
 
         // 4. Send client Finished
-        let finished_msg = hs.encode_client_finished();
+        let finished_msg = hs.encode_client_finished()?;
         let mut finished_record = Vec::new();
         record.write_encrypted(HANDSHAKE, &finished_msg, &mut finished_record)?;
         async_write_all(&mut tcp, fd, &finished_record).await?;

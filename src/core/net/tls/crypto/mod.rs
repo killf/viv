@@ -10,7 +10,7 @@ pub mod x25519;
 ///
 /// On Linux: uses the `getrandom(2)` syscall (nr 318 on x86_64).
 /// On Windows: uses `BCryptGenRandom` from bcrypt.dll.
-#[cfg(unix)]
+#[cfg(all(unix, target_arch = "x86_64"))]
 pub fn getrandom(buf: &mut [u8]) -> crate::Result<()> {
     use std::arch::asm;
     let ret: i64;
@@ -28,6 +28,31 @@ pub fn getrandom(buf: &mut [u8]) -> crate::Result<()> {
     }
     if ret < 0 {
         Err(crate::Error::Tls("getrandom syscall failed".into()))
+    } else if (ret as usize) != buf.len() {
+        Err(crate::Error::Tls("getrandom: short read".into()))
+    } else {
+        Ok(())
+    }
+}
+
+#[cfg(all(unix, target_arch = "aarch64"))]
+pub fn getrandom(buf: &mut [u8]) -> crate::Result<()> {
+    use std::arch::asm;
+    let ret: i64;
+    unsafe {
+        asm!(
+            "svc #0",
+            in("x8") 278u64,
+            in("x0") buf.as_mut_ptr(),
+            in("x1") buf.len(),
+            in("x2") 0u64,
+            lateout("x0") ret,
+        );
+    }
+    if ret < 0 {
+        Err(crate::Error::Tls("getrandom syscall failed".into()))
+    } else if (ret as usize) != buf.len() {
+        Err(crate::Error::Tls("getrandom: short read".into()))
     } else {
         Ok(())
     }

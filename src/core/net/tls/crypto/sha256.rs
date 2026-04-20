@@ -251,9 +251,11 @@ pub fn hkdf_extract(salt: &[u8], ikm: &[u8]) -> [u8; 32] {
 /// Output is the first `out.len()` bytes of T(1) || T(2) || ...
 ///
 /// Panics if `out.len()` > 255 * 32 (per RFC 5869).
-pub fn hkdf_expand(prk: &[u8], info: &[u8], out: &mut [u8]) {
+pub fn hkdf_expand(prk: &[u8], info: &[u8], out: &mut [u8]) -> crate::Result<()> {
     let n = out.len().div_ceil(32); // ceil(L / HashLen)
-    assert!(n <= 255, "HKDF-Expand: output too long");
+    if n > 255 {
+        return Err(crate::Error::Invariant("HKDF-Expand: output too long".into()));
+    }
 
     let t_prev = [0u8; 0]; // T(0) is empty
     let mut offset = 0;
@@ -276,4 +278,5 @@ pub fn hkdf_expand(prk: &[u8], info: &[u8], out: &mut [u8]) {
         out[offset..offset + to_copy].copy_from_slice(&t[..to_copy]);
         offset += to_copy;
     }
+    Ok(())
 }

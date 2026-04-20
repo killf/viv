@@ -73,7 +73,7 @@ fn handshake_traffic_keys() {
     let mut ks = KeySchedule::new();
     assert_eq!(ks.early_secret(), &EARLY_SECRET, "early_secret mismatch");
 
-    let (client_tk, server_tk) = ks.derive_handshake_secrets(&ECDHE_SHARED, &HELLO_HASH);
+    let (client_tk, server_tk) = ks.derive_handshake_secrets(&ECDHE_SHARED, &HELLO_HASH).unwrap();
 
     assert_eq!(
         client_tk.key, CLIENT_HS_KEY,
@@ -92,12 +92,12 @@ fn handshake_traffic_keys() {
 #[test]
 fn finished_keys() {
     let mut ks = KeySchedule::new();
-    let _ = ks.derive_handshake_secrets(&ECDHE_SHARED, &HELLO_HASH);
+    let _ = ks.derive_handshake_secrets(&ECDHE_SHARED, &HELLO_HASH).unwrap();
 
     // RFC 8446 §4.4.4: finished_key = HKDF-Expand-Label(hs_secret, "finished", "", 32)
     // We verify server and client finished keys are deterministic and non-zero.
-    let server_fin = ks.server_finished_key();
-    let client_fin = ks.client_finished_key();
+    let server_fin = ks.server_finished_key().unwrap();
+    let client_fin = ks.client_finished_key().unwrap();
 
     // RFC 8448 §3 server finished key
     let expected_server_fin: [u8; 32] = [

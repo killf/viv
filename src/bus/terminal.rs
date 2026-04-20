@@ -496,10 +496,11 @@ impl TerminalUI {
                 if !line.trim().is_empty() {
                     self.blocks
                         .push(ContentBlock::UserMessage { text: line.clone() });
-                    let msg_block = self.blocks.last().unwrap();
-                    let h = self.block_height(msg_block);
-                    self.conversation_state.append_item_height(h);
-                    self.conversation_state.auto_scroll();
+                    if let Some(msg_block) = self.blocks.last() {
+                        let h = self.block_height(msg_block);
+                        self.conversation_state.append_item_height(h);
+                        self.conversation_state.auto_scroll();
+                    }
                     let _ = self.event_tx.send(AgentEvent::Input(line));
                 }
             }

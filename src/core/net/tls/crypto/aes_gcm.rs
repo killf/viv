@@ -256,8 +256,12 @@ impl Aes128Gcm {
     /// Encrypt plaintext with AES-128-GCM.
     ///
     /// `out` must be at least `plaintext.len() + 16` bytes (ciphertext + tag).
-    pub fn encrypt(&self, nonce: &[u8; 12], aad: &[u8], plaintext: &[u8], out: &mut [u8]) {
-        assert!(out.len() >= plaintext.len() + 16);
+    pub fn encrypt(&self, nonce: &[u8; 12], aad: &[u8], plaintext: &[u8], out: &mut [u8]) -> crate::Result<()> {
+        if out.len() < plaintext.len() + 16 {
+            return Err(crate::Error::Invariant(
+                "GCM encrypt: output buffer too small".into(),
+            ));
+        }
 
         // J0 = nonce || 0x00000001
         let mut j0 = [0u8; 16];
@@ -285,6 +289,7 @@ impl Aes128Gcm {
         // Build GHASH input: pad(AAD) || pad(CT) || len_block
         let tag = self.compute_tag(aad, &out[..ct_len], &enc_j0);
         out[ct_len..ct_len + 16].copy_from_slice(&tag);
+        Ok(())
     }
 
     /// Decrypt ciphertext with AES-128-GCM.

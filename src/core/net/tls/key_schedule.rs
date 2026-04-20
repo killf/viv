@@ -30,7 +30,7 @@ pub struct TrafficKeys {
 /// ```
 ///
 /// Public because codec tests may need it.
-pub fn hkdf_expand_label(secret: &[u8], label: &[u8], context: &[u8], out: &mut [u8]) {
+pub fn hkdf_expand_label(secret: &[u8], label: &[u8], context: &[u8], out: &mut [u8]) -> crate::Result<()> {
     // Build HkdfLabel info structure
     let tls13_prefix = b"tls13 ";
     let full_label_len = tls13_prefix.len() + label.len();
@@ -52,7 +52,7 @@ pub fn hkdf_expand_label(secret: &[u8], label: &[u8], context: &[u8], out: &mut 
     info.push(context.len() as u8);
     info.extend_from_slice(context);
 
-    hkdf_expand(secret, &info, out);
+    hkdf_expand(secret, &info, out)
 }
 
 // ── Derive-Secret (RFC 8446 section 7.1) ────────────────────────────
@@ -62,19 +62,19 @@ pub fn hkdf_expand_label(secret: &[u8], label: &[u8], context: &[u8], out: &mut 
 ///
 /// For our use the caller pre-computes the transcript hash, so `context`
 /// is already Hash(Messages).
-fn derive_secret(secret: &[u8], label: &[u8], transcript_hash: &[u8; 32]) -> [u8; 32] {
+fn derive_secret(secret: &[u8], label: &[u8], transcript_hash: &[u8; 32]) -> crate::Result<[u8; 32]> {
     let mut out = [0u8; 32];
-    hkdf_expand_label(secret, label, transcript_hash, &mut out);
-    out
+    hkdf_expand_label(secret, label, transcript_hash, &mut out)?;
+    Ok(out)
 }
 
 /// Expand a traffic secret into AES-128-GCM key + IV.
-fn traffic_keys(secret: &[u8; 32]) -> TrafficKeys {
+fn traffic_keys(secret: &[u8; 32]) -> crate::Result<TrafficKeys> {
     let mut key = [0u8; 16];
     let mut iv = [0u8; 12];
-    hkdf_expand_label(secret, b"key", &[], &mut key);
-    hkdf_expand_label(secret, b"iv", &[], &mut iv);
-    TrafficKeys { key, iv }
+    hkdf_expand_label(secret, b"key", &[], &mut key)?;
+    hkdf_expand_label(secret, b"iv", &[], &mut iv)?;
+    Ok(TrafficKeys { key, iv })
 }
 
 // ── Key Schedule ────────────────────────────────────────────────────
@@ -137,22 +137,22 @@ impl KeySchedule {
         &mut self,
         shared_secret: &[u8; 32],
         hello_hash: &[u8; 32],
-    ) -> (TrafficKeys, TrafficKeys) {
+    ) -> crate::Result<(TrafficKeys, TrafficKeys)> {
         // Derive-Secret(early_secret, "derived", "") — hash of empty string
         let empty_hash = Sha256::hash(b"");
-        let derived_1 = derive_secret(&self.early_secret, b"derived", &empty_hash);
+        let derived_1 = derive_secret(&self.early_secret, b"derived", &empty_hash)?;
 
         // Handshake Secret
         self.handshake_secret = hkdf_extract(&derived_1, shared_secret);
 
         // Client/Server handshake traffic secrets
-        self.client_hs_secret = derive_secret(&self.handshake_secret, b"c hs traffic", hello_hash);
-        self.server_hs_secret = derive_secret(&self.handshake_secret, b"s hs traffic", hello_hash);
+        self.client_hs_secret = derive_secret(&self.handshake_secret, b"c hs traffic", hello_hash)?;
+        self.server_hs_secret = derive_secret(&self.handshake_secret, b"s hs traffic", hello_hash)?;
 
-        (
-            traffic_keys(&self.client_hs_secret),
-            traffic_keys(&self.server_hs_secret),
-        )
+        Ok((
+            traffic_keys(&self.client_hs_secret)?,
+            traffic_keys(&self.server_hs_secret)?,
+        ))
     }
 
     /// Phase 3: derive application traffic secrets from the full
@@ -166,20 +166,20 @@ impl KeySchedule {
     /// ```
     ///
     /// Returns (client_traffic_keys, server_traffic_keys).
-    pub fn derive_app_secrets(&mut self, handshake_hash: &[u8; 32]) -> (TrafficKeys, TrafficKeys) {
+    pub fn derive_app_secrets(&mut self, handshake_hash: &[u8; 32]) -> crate::Result<(TrafficKeys, TrafficKeys)> {
         let empty_hash = Sha256::hash(b"");
-        let derived_2 = derive_secret(&self.handshake_secret, b"derived", &empty_hash);
+        let derived_2 = derive_secret(&self.handshake_secret, b"derived", &empty_hash)?;
 
         let zeros = [0u8; 32];
         self.master_secret = hkdf_extract(&derived_2, &zeros);
 
-        let client_app_secret = derive_secret(&self.master_secret, b"c ap traffic", handshake_hash);
-        let server_app_secret = derive_secret(&self.master_secret, b"s ap traffic", handshake_hash);
+        let client_app_secret = derive_secret(&self.master_secret, b"c ap traffic", handshake_hash)?;
+        let server_app_secret = derive_secret(&self.master_secret, b"s ap traffic", handshake_hash)?;
 
-        (
-            traffic_keys(&client_app_secret),
-            traffic_keys(&server_app_secret),
-        )
+        Ok((
+            traffic_keys(&client_app_secret)?,
+            traffic_keys(&server_app_secret)?,
+        ))
     }
 
     /// Compute the server Finished key for Finished message verification.
@@ -187,10 +187,10 @@ impl KeySchedule {
     /// ```text
     /// finished_key = HKDF-Expand-Label(server_hs_secret, "finished", "", 32)
     /// ```
-    pub fn server_finished_key(&self) -> [u8; 32] {
+    pub fn server_finished_key(&self) -> crate::Result<[u8; 32]> {
         let mut key = [0u8; 32];
-        hkdf_expand_label(&self.server_hs_secret, b"finished", &[], &mut key);
-        key
+        hkdf_expand_label(&self.server_hs_secret, b"finished", &[], &mut key)?;
+        Ok(key)
     }
 
     /// Compute the client Finished key for Finished message verification.
@@ -198,9 +198,9 @@ impl KeySchedule {
     /// ```text
     /// finished_key = HKDF-Expand-Label(client_hs_secret, "finished", "", 32)
     /// ```
-    pub fn client_finished_key(&self) -> [u8; 32] {
+    pub fn client_finished_key(&self) -> crate::Result<[u8; 32]> {
         let mut key = [0u8; 32];
-        hkdf_expand_label(&self.client_hs_secret, b"finished", &[], &mut key);
-        key
+        hkdf_expand_label(&self.client_hs_secret, b"finished", &[], &mut key)?;
+        Ok(key)
     }
 }
