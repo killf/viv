@@ -258,6 +258,7 @@ impl TerminalUI {
                         dirty = true;
                     }
                     Event::Tick => {}
+                    Event::Mouse(_) => {}
                 }
             }
         }
@@ -475,6 +476,7 @@ impl TerminalUI {
                         self.conversation_state.append_item_height(h);
                         self.conversation_state.auto_scroll();
                     }
+                    self.editor.push_history(line.clone());
                     let _ = self.event_tx.send(AgentEvent::Input(line));
                 }
             }
@@ -482,9 +484,9 @@ impl TerminalUI {
                 return Some(UiAction::Quit);
             }
             EditAction::Interrupt => {
-                self.editor.lines = vec![String::new()];
-                self.editor.row = 0;
-                self.editor.col = 0;
+                self.editor.clear();
+                
+                
             }
             EditAction::Continue => {}
         }
@@ -880,11 +882,13 @@ impl LineEditor {
     pub fn handle_key(&mut self, key: KeyEvent) -> EditAction {
         match key {
             KeyEvent::Char(ch) => {
+                self.exit_history();
                 self.lines[self.row].insert(self.col, ch);
                 self.col += ch.len_utf8();
                 EditAction::Continue
             }
             KeyEvent::ShiftEnter => {
+                self.exit_history();
                 let rest = self.lines[self.row].split_off(self.col);
                 self.lines.insert(self.row + 1, rest);
                 self.row += 1;
@@ -893,12 +897,11 @@ impl LineEditor {
             }
             KeyEvent::Enter => {
                 let content = self.content();
-                self.lines = vec![String::new()];
-                self.row = 0;
-                self.col = 0;
+                self.clear();
                 EditAction::Submit(content)
             }
             KeyEvent::Backspace => {
+                self.exit_history();
                 if self.col > 0 {
                     let prev = self.prev_char_boundary();
                     self.lines[self.row].drain(prev..self.col);
@@ -912,6 +915,7 @@ impl LineEditor {
                 EditAction::Continue
             }
             KeyEvent::Delete => {
+                self.exit_history();
                 if self.col < self.lines[self.row].len() {
                     let next = self.next_char_boundary();
                     self.lines[self.row].drain(self.col..next);
@@ -922,6 +926,7 @@ impl LineEditor {
                 EditAction::Continue
             }
             KeyEvent::Left => {
+                self.exit_history();
                 if self.col > 0 {
                     self.col = self.prev_char_boundary();
                 } else if self.row > 0 {
@@ -931,6 +936,7 @@ impl LineEditor {
                 EditAction::Continue
             }
             KeyEvent::Right => {
+                self.exit_history();
                 if self.col < self.lines[self.row].len() {
                     self.col = self.next_char_boundary();
                 } else if self.row + 1 < self.lines.len() {
@@ -940,30 +946,67 @@ impl LineEditor {
                 EditAction::Continue
             }
             KeyEvent::Up => {
-                if self.row > 0 {
-                    self.row -= 1;
-                    self.col = self.col.min(self.lines[self.row].len());
-                    while self.col > 0 && !self.lines[self.row].is_char_boundary(self.col) {
-                        self.col -= 1;
+                // History browsing: ↑ moves to older entries
+                if self.history.is_empty() {
+                    return EditAction::Continue;
+                }
+                match self.history_idx {
+                    None => {
+                        // First ↑: save current input, jump to most recent entry
+                        self.original = self.content();
+                        self.history_idx = Some(0);
+                    }
+                    Some(idx) => {
+                        if idx + 1 >= self.history.len() {
+                            // Already at the oldest entry, stay
+                            return EditAction::Continue;
+                        }
+                        self.history_idx = Some(idx + 1);
                     }
                 }
+                let idx = self.history_idx.unwrap();
+                let entry = &self.history[self.history.len() - 1 - idx];
+                self.lines = entry.lines().map(String::from).collect();
+                if self.lines.is_empty() {
+                    self.lines.push(String::new());
+                }
+                self.row = 0;
+                self.col = self.lines[0].len();
                 EditAction::Continue
             }
             KeyEvent::Down => {
-                if self.row + 1 < self.lines.len() {
-                    self.row += 1;
-                    self.col = self.col.min(self.lines[self.row].len());
-                    while self.col > 0 && !self.lines[self.row].is_char_boundary(self.col) {
-                        self.col -= 1;
+                // History browsing: ↓ moves to newer entries / restores original
+                match self.history_idx {
+                    None => EditAction::Continue,
+                    Some(0) => {
+                        // At newest entry: restore original input
+                        self.lines = vec![self.original.clone()];
+                        self.row = 0;
+                        self.col = self.lines[0].len();
+                        self.history_idx = None;
+                        EditAction::Continue
+                    }
+                    Some(idx) => {
+                        self.history_idx = Some(idx - 1);
+                        let entry_idx = self.history.len() - 1 - idx;
+                        let entry = &self.history[entry_idx];
+                        self.lines = entry.lines().map(String::from).collect();
+                        if self.lines.is_empty() {
+                            self.lines.push(String::new());
+                        }
+                        self.row = 0;
+                        self.col = self.lines[0].len();
+                        EditAction::Continue
                     }
                 }
-                EditAction::Continue
             }
             KeyEvent::Home => {
+                self.exit_history();
                 self.col = 0;
                 EditAction::Continue
             }
             KeyEvent::End => {
+                self.exit_history();
                 self.col = self.lines[self.row].len();
                 EditAction::Continue
             }
