@@ -1,6 +1,10 @@
 // SHA-256 / HMAC-SHA256 / HKDF / getrandom tests
 
-use viv::core::crypto::sha256::{Sha256, hkdf_expand, hkdf_extract, hmac_sha256};
+use viv::core::crypto::sha256::{hkdf_expand, hkdf_extract, hmac_sha256, Sha256};
+
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{:02x}", b)).collect()
+}
 
 // ── getrandom ────────────────────────────────────────────────────────
 
@@ -14,111 +18,93 @@ fn getrandom_fills_buffer() {
 // ── SHA-256 (FIPS 180-4) ────────────────────────────────────────────
 
 #[test]
-fn sha256_abc() {
-    let digest = Sha256::hash(b"abc");
-    let expected = [
-        0xba, 0x78, 0x16, 0xbf, 0x8f, 0x01, 0xcf, 0xea, 0x41, 0x41, 0x40, 0xde, 0x5d, 0xae, 0x22,
-        0x23, 0xb0, 0x03, 0x61, 0xa3, 0x96, 0x17, 0x7a, 0x9c, 0xb4, 0x10, 0xff, 0x61, 0xf2, 0x00,
-        0x15, 0xad,
-    ];
-    assert_eq!(digest, expected);
+fn sha256_empty() {
+    // FIPS 180-4 4.1
+    assert_eq!(hex(&Sha256::hash(b"")), "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
 }
 
 #[test]
-fn sha256_empty() {
-    let digest = Sha256::hash(b"");
-    let expected = [
-        0xe3, 0xb0, 0xc4, 0x42, 0x98, 0xfc, 0x1c, 0x14, 0x9a, 0xfb, 0xf4, 0xc8, 0x99, 0x6f, 0xb9,
-        0x24, 0x27, 0xae, 0x41, 0xe4, 0x64, 0x9b, 0x93, 0x4c, 0xa4, 0x95, 0x99, 0x1b, 0x78, 0x52,
-        0xb8, 0x55,
-    ];
-    assert_eq!(digest, expected);
+fn sha256_abc() {
+    // FIPS 180-4 4.1
+    assert_eq!(
+        hex(&Sha256::hash(b"abc")),
+        "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+    );
 }
 
 #[test]
 fn sha256_448bit() {
-    let digest = Sha256::hash(b"abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq");
-    let expected = [
-        0x24, 0x8d, 0x6a, 0x61, 0xd2, 0x06, 0x38, 0xb8, 0xe5, 0xc0, 0x26, 0x93, 0x0c, 0x3e, 0x60,
-        0x39, 0xa3, 0x3c, 0xe4, 0x59, 0x64, 0xff, 0x21, 0x67, 0xf6, 0xec, 0xed, 0xd4, 0x19, 0xdb,
-        0x06, 0xc1,
-    ];
-    assert_eq!(digest, expected);
+    // FIPS 180-4 4.1
+    let input = b"abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq";
+    assert_eq!(
+        hex(&Sha256::hash(input)),
+        "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1"
+    );
 }
 
 #[test]
 fn sha256_incremental() {
-    // Feeding data in chunks must produce the same result as one-shot
     let mut hasher = Sha256::new();
     hasher.update(b"abc");
     hasher.update(b"dbcdecdefdefg");
     hasher.update(b"efghfghighijhijkijkljklmklmnlmnomnopnopq");
     let incremental = hasher.finish();
     let oneshot = Sha256::hash(b"abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq");
-    assert_eq!(incremental, oneshot);
+    assert_eq!(hex(&incremental), hex(&oneshot));
 }
 
 #[test]
 fn sha256_clone() {
-    // Cloning preserves internal state — both branches produce correct results
     let mut h = Sha256::new();
     h.update(b"abc");
     let fork = h.clone();
-
-    // Original continues with more data
     h.update(b"def");
     let full = h.finish();
-
-    // Fork finishes with just "abc"
     let partial = fork.finish();
-
-    assert_eq!(partial, Sha256::hash(b"abc"));
-    assert_eq!(full, Sha256::hash(b"abcdef"));
+    assert_eq!(hex(&partial), hex(&Sha256::hash(b"abc")));
+    assert_eq!(hex(&full), hex(&Sha256::hash(b"abcdef")));
     assert_ne!(partial, full);
 }
 
-// ── HMAC-SHA256 (RFC 4231 Test Case 2) ──────────────────────────────
+// ── HMAC-SHA256 (RFC 4231) ───────────────────────────────────────────
 
 #[test]
 fn hmac_sha256_rfc4231_tc2() {
+    // RFC 4231 Test Case 2: key = "Jefe", data = "what do ya want for nothing?"
     let mac = hmac_sha256(b"Jefe", b"what do ya want for nothing?");
-    let expected = [
-        0x5b, 0xdc, 0xc1, 0x46, 0xbf, 0x60, 0x75, 0x4e, 0x6a, 0x04, 0x24, 0x26, 0x08, 0x95, 0x75,
-        0xc7, 0x5a, 0x00, 0x3f, 0x08, 0x9d, 0x27, 0x39, 0x83, 0x9d, 0xec, 0x58, 0xb9, 0x64, 0xec,
-        0x38, 0x43,
-    ];
-    assert_eq!(mac, expected);
+    assert_eq!(
+        hex(&mac),
+        "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843"
+    );
 }
 
-// ── HKDF (RFC 5869 Test Case 1) ─────────────────────────────────────
+// ── HKDF (RFC 5869) ─────────────────────────────────────────────────
 
 #[test]
 fn hkdf_extract_rfc5869_tc1() {
+    // RFC 5869 Test Case 1
     let ikm = [0x0bu8; 22];
     let salt: Vec<u8> = (0x00..=0x0cu8).collect();
     let prk = hkdf_extract(&salt, &ikm);
-    let expected = [
-        0x07, 0x77, 0x09, 0x36, 0x2c, 0x2e, 0x32, 0xdf, 0x0d, 0xdc, 0x3f, 0x0d, 0xc4, 0x7b, 0xba,
-        0x63, 0x90, 0xb6, 0xc7, 0x3b, 0xb5, 0x0f, 0x9c, 0x31, 0x22, 0xec, 0x84, 0x4a, 0xd7, 0xc2,
-        0xb3, 0xe5,
-    ];
-    assert_eq!(prk, expected);
+    assert_eq!(
+        hex(&prk),
+        "077709362c2e32df0ddc3f0dc47bba6390b6c73bb50f9c3122ec844ad7c2b3e5"
+    );
 }
 
 #[test]
 fn hkdf_expand_rfc5869_tc1() {
+    // RFC 5869 Test Case 1
     let prk = [
-        0x07, 0x77, 0x09, 0x36, 0x2c, 0x2e, 0x32, 0xdf, 0x0d, 0xdc, 0x3f, 0x0d, 0xc4, 0x7b, 0xba,
-        0x63, 0x90, 0xb6, 0xc7, 0x3b, 0xb5, 0x0f, 0x9c, 0x31, 0x22, 0xec, 0x84, 0x4a, 0xd7, 0xc2,
-        0xb3, 0xe5,
+        0x07, 0x77, 0x09, 0x36, 0x2c, 0x2e, 0x32, 0xdf, 0x0d, 0xdc, 0x3f, 0x0d, 0xc4, 0x7b,
+        0xba, 0x63, 0x90, 0xb6, 0xc7, 0x3b, 0xb5, 0x0f, 0x9c, 0x31, 0x22, 0xec, 0x84, 0x4a,
+        0xd7, 0xc2, 0xb3, 0xe5,
     ];
     let info: Vec<u8> = (0xf0..=0xf9u8).collect();
     let mut okm = [0u8; 42];
     let _ = hkdf_expand(&prk, &info, &mut okm);
-    let expected = [
-        0x3c, 0xb2, 0x5f, 0x25, 0xfa, 0xac, 0xd5, 0x7a, 0x90, 0x43, 0x4f, 0x64, 0xd0, 0x36, 0x2f,
-        0x2a, 0x2d, 0x2d, 0x0a, 0x90, 0xcf, 0x1a, 0x5a, 0x4c, 0x5d, 0xb0, 0x2d, 0x56, 0xec, 0xc4,
-        0xc5, 0xbf, 0x34, 0x00, 0x72, 0x08, 0xd5, 0xb8, 0x87, 0x18, 0x58, 0x65,
-    ];
-    assert_eq!(okm, expected);
+    assert_eq!(
+        hex(&okm),
+        "3cb25f25faacd57a90434f64d0362f2a2d2d0a90cf1a5a4c5db02d56ecc4c5bf34007208d5b887185865"
+    );
 }

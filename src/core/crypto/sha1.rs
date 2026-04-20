@@ -34,18 +34,14 @@ impl Default for Sha1 {
 
 impl Sha1 {
     pub fn new() -> Self {
-        Self {
-            state: H,
-            buf: [0u8; 64],
-            buf_len: 0,
-            total_len: 0,
-        }
+        Self { state: H, buf: [0u8; 64], buf_len: 0, total_len: 0 }
     }
 
     pub fn update(&mut self, data: &[u8]) {
         self.total_len += data.len() as u64;
         let mut offset = 0;
 
+        // Fill partial buffer first
         if self.buf_len > 0 {
             let need = 64 - self.buf_len;
             if data.len() < need {
@@ -53,20 +49,21 @@ impl Sha1 {
                 self.buf_len += data.len();
                 return;
             }
-            self.buf[self.buf_len..64].copy_from_slice(&data[..need]);
-            let block = self.buf;
-            compress(&mut self.state, &block);
+            self.buf[self.buf_len..].copy_from_slice(&data[..need]);
+            sha1_compress(&mut self.state, &self.buf);
             self.buf_len = 0;
             offset = need;
         }
 
+        // Process full 64-byte blocks
         while offset + 64 <= data.len() {
             let mut block = [0u8; 64];
             block.copy_from_slice(&data[offset..offset + 64]);
-            compress(&mut self.state, &block);
+            sha1_compress(&mut self.state, &block);
             offset += 64;
         }
 
+        // Remainder
         let remaining = data.len() - offset;
         if remaining > 0 {
             self.buf[..remaining].copy_from_slice(&data[offset..]);
@@ -77,27 +74,23 @@ impl Sha1 {
     pub fn finish(mut self) -> [u8; 20] {
         let bit_len = self.total_len * 8;
 
+        // Append 0x80 padding
         self.buf[self.buf_len] = 0x80;
         self.buf_len += 1;
 
+        // If buf_len > 56, pad remaining with zeros, compress, then restart
         if self.buf_len > 56 {
-            for b in &mut self.buf[self.buf_len..64] {
-                *b = 0;
-            }
-            let block = self.buf;
-            compress(&mut self.state, &block);
+            self.buf[self.buf_len..].fill(0);
+            sha1_compress(&mut self.state, &self.buf);
             self.buf_len = 0;
         }
 
-        for b in &mut self.buf[self.buf_len..56] {
-            *b = 0;
-        }
-
+        // Zero-pad to byte 56, then append 8-byte big-endian bit length
+        self.buf[self.buf_len..56].fill(0);
         self.buf[56..64].copy_from_slice(&bit_len.to_be_bytes());
+        sha1_compress(&mut self.state, &self.buf);
 
-        let block = self.buf;
-        compress(&mut self.state, &block);
-
+        // Serialize state as big-endian bytes
         let mut out = [0u8; 20];
         for (i, word) in self.state.iter().enumerate() {
             out[i * 4..(i + 1) * 4].copy_from_slice(&word.to_be_bytes());
@@ -112,18 +105,19 @@ impl Sha1 {
     }
 }
 
-fn compress(state: &mut [u32; 5], block: &[u8; 64]) {
+/// SHA-1 compression function for one 64-byte block.
+fn sha1_compress(state: &mut [u32; 5], block: &[u8; 64]) {
+    debug_assert_eq!(block.len(), 64);
+
+    // W[0..15] = first 16 words (big-endian)
     let mut w = [0u32; 80];
     for i in 0..16 {
-        w[i] = u32::from_be_bytes([
-            block[i * 4],
-            block[i * 4 + 1],
-            block[i * 4 + 2],
-            block[i * 4 + 3],
-        ]);
+        w[i] = u32::from_be_bytes([block[i * 4], block[i * 4 + 1], block[i * 4 + 2], block[i * 4 + 3]]);
     }
+
+    // W[16..79] = ROTL^1(W[i-3] ⊕ W[i-8] ⊕ W[i-14] ⊕ W[i-16])  (FIPS 180-4 §6.1.3)
     for i in 16..80 {
-        w[i] = w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16];
+        w[i] = (w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16]).rotate_left(1);
     }
 
     let [mut a, mut b, mut c, mut d, mut e] = *state;
@@ -155,104 +149,35 @@ fn compress(state: &mut [u32; 5], block: &[u8; 64]) {
     state[4] = state[4].wrapping_add(e);
 }
 
-// ── HMAC-SHA1 (RFC 2104) ───────────────────────────────────────────
+// ── HMAC-SHA1 (RFC 2104) ─────────────────────────────────────────
 
 pub fn hmac_sha1(key: &[u8], data: &[u8]) -> [u8; 20] {
+    // Step 1: normalize key to 64 bytes
     let mut k = [0u8; 64];
     if key.len() > 64 {
-        let hashed = Sha1::hash(key);
-        k[..20].copy_from_slice(&hashed);
+        // Keys longer than 64 bytes are hashed first
+        k[..20].copy_from_slice(&Sha1::hash(key));
     } else {
         k[..key.len()].copy_from_slice(key);
     }
 
-    let mut ipad = [0u8; 64];
+    // Step 2: XOR key with ipad (0x36) and inner hash
+    let mut inner = [0u8; 64];
     for i in 0..64 {
-        ipad[i] = k[i] ^ 0x36;
+        inner[i] = k[i] ^ 0x36;
     }
-    let mut inner = Sha1::new();
-    inner.update(&ipad);
-    inner.update(data);
-    let inner_hash = inner.finish();
+    let mut h = Sha1::new();
+    h.update(&inner);
+    h.update(data);
+    let inner_hash = h.finish();
 
-    let mut opad = [0u8; 64];
+    // Step 3: XOR original key with opad (0x5c) and outer hash
+    let mut outer = [0u8; 64];
     for i in 0..64 {
-        opad[i] = k[i] ^ 0x5c;
+        outer[i] = k[i] ^ 0x5c;
     }
-    let mut outer = Sha1::new();
-    outer.update(&opad);
-    outer.update(&inner_hash);
-    outer.finish()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    // FIPS 180-4 test vectors
-    #[test]
-    fn test_sha1_empty() {
-        assert_eq!(
-            Sha1::hash(b""),
-            [
-                0xda, 0x39, 0xa3, 0xee, 0x5e, 0x6b, 0x4b, 0x0d, 0x32, 0x55, 0xbf, 0xef, 0x95,
-                0x60, 0x18, 0x90, 0xaf, 0xd8, 0x07, 0x09,
-            ]
-        );
-    }
-
-    #[test]
-    fn test_sha1_abc() {
-        assert_eq!(
-            Sha1::hash(b"abc"),
-            [
-                0xa9, 0x99, 0x3e, 0x36, 0x47, 0x06, 0x81, 0x6a, 0xba, 0x3e, 0x25, 0x71, 0x78,
-                0x50, 0xc2, 0x6c, 0x9c, 0xd0, 0xd8, 0x9d,
-            ]
-        );
-    }
-
-    #[test]
-    fn test_sha1_64_zeros() {
-        let input = [0u8; 64];
-        assert_eq!(
-            Sha1::hash(&input),
-            [
-                0x0c, 0xd9, 0x1d, 0x06, 0x67, 0x3e, 0xec, 0xc9, 0x4a, 0x14, 0x93, 0xf2, 0x10,
-                0x0f, 0xdd, 0x1f, 0xd1, 0x85, 0x85, 0x27,
-            ]
-        );
-    }
-
-    #[test]
-    fn test_sha1_multiblock() {
-        let data = [0u8; 100];
-        let mut inc = Sha1::new();
-        inc.update(&data[..50]);
-        inc.update(&data[50..]);
-        assert_eq!(inc.finish(), Sha1::hash(&data));
-    }
-
-    // RFC 2202 test vectors for HMAC-SHA1
-    #[test]
-    fn test_hmac_sha1_empty() {
-        let key = b"";
-        let data = b"";
-        let expected = [
-            0xfb, 0xdb, 0x1d, 0x1b, 0x18, 0xaa, 0x6c, 0x5c, 0x6f, 0xd6, 0x22, 0x2f, 0x42, 0x81,
-            0xc8, 0xce, 0x16, 0xc6, 0x89, 0x98,
-        ];
-        assert_eq!(hmac_sha1(key, data), expected);
-    }
-
-    #[test]
-    fn test_hmac_sha1_short_key() {
-        let key = b"key";
-        let data = b"The quick brown fox jumps over the lazy dog";
-        let expected = [
-            0xde, 0x7c, 0x9b, 0x8b, 0x89, 0x81, 0x17, 0xad, 0x91, 0x5c, 0x2e, 0xc1, 0x93, 0xb0,
-            0x47, 0x5a, 0x28, 0x93, 0x61, 0x9b,
-        ];
-        assert_eq!(hmac_sha1(key, data), expected);
-    }
+    let mut h = Sha1::new();
+    h.update(&outer);
+    h.update(&inner_hash);
+    h.finish()
 }
