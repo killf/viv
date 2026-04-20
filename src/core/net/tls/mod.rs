@@ -8,6 +8,7 @@ pub mod codec;
 pub mod ecdsa;
 pub mod p256;
 pub mod rsa;
+pub mod tls12;
 pub mod tls13;
 pub mod x509;
 

@@ -9,4 +9,5 @@ pub mod p256_test;
 pub mod record_test;
 pub mod rsa_test;
 pub mod stream_test;
+pub mod tls12;
 pub mod x509_test;
