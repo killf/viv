@@ -13,6 +13,7 @@ pub mod paragraph;
 pub mod permission;
 pub mod qrcode;
 pub mod renderer;
+pub mod selection;
 pub mod spinner;
 pub mod status;
 pub mod syntax;

@@ -15,6 +15,7 @@ mod permission_test;
 mod qrcode;
 mod qrcode_test;
 mod renderer_test;
+mod selection_test;
 mod spinner_test;
 mod status_test;
 mod syntax_test;
