@@ -4,9 +4,9 @@
 // The caller (TlsStream) reads records and feeds handshake messages
 // to `handle_message`.
 
-use super::codec::{self, HandshakeMessage};
-use super::crypto::sha256::{Sha256, hmac_sha256};
-use super::crypto::x25519;
+use crate::core::net::tls::codec::{self, HandshakeMessage};
+use crate::core::net::tls::crypto::sha256::{Sha256, hmac_sha256};
+use crate::core::net::tls::crypto::x25519;
 use super::key_schedule::KeySchedule;
 use super::record::RecordLayer;
 
@@ -27,6 +27,7 @@ enum State {
 pub enum HandshakeResult {
     Continue,
     Complete,
+    NegotiatedTls12 { server_random: [u8; 32], cipher_suite: u16 },
 }
 
 // ── Handshake ──────────────────────────────────────────────────────
@@ -51,10 +52,10 @@ impl Handshake {
         let (secret, public) = x25519::keypair()?;
 
         let mut random = [0u8; 32];
-        super::crypto::getrandom(&mut random)?;
+        crate::core::net::tls::crypto::getrandom(&mut random)?;
 
         let mut session_id = [0u8; 32];
-        super::crypto::getrandom(&mut session_id)?;
+        crate::core::net::tls::crypto::getrandom(&mut session_id)?;
 
         Ok(Self {
             state: State::ExpectServerHello,
@@ -232,5 +233,10 @@ impl Handshake {
         record.install_encrypter(client_app.key, client_app.iv);
         record.install_decrypter(server_app.key, server_app.iv);
         Ok(())
+    }
+
+    /// Expose client random for TLS 1.2 fallback.
+    pub fn client_random(&self) -> &[u8; 32] {
+        &self.random
     }
 }

@@ -4,7 +4,8 @@
 // records are plaintext. After install_encrypter/install_decrypter,
 // records use AES-128-GCM with per-record nonce derivation.
 
-use super::crypto::aes_gcm::Aes128Gcm;
+use crate::core::net::tls::crypto::aes_gcm::Aes128Gcm;
+use crate::core::net::tls::codec::APPLICATION_DATA;
 
 // ── Record encrypter ───────────────────────────────────────────────
 
@@ -47,7 +48,7 @@ impl RecordEncrypter {
 
         // Record header: outer type APPLICATION_DATA, version 0x0303
         let header_start = out.len();
-        out.push(super::codec::APPLICATION_DATA);
+        out.push(APPLICATION_DATA);
         out.push(0x03);
         out.push(0x03);
         out.push((ct_len >> 8) as u8);
@@ -209,7 +210,7 @@ impl RecordLayer {
         let consumed = 5 + length;
         let payload = &data[5..consumed];
 
-        if content_type == super::codec::APPLICATION_DATA
+        if content_type == APPLICATION_DATA
             && let Some(dec) = &mut self.decrypter
         {
             let header: [u8; 5] = [data[0], data[1], data[2], data[3], data[4]];

@@ -7,19 +7,22 @@
 pub mod codec;
 pub mod crypto;
 pub mod ecdsa;
-pub mod handshake;
-pub mod key_schedule;
 pub mod p256;
-pub mod record;
 pub mod rsa;
+pub mod tls13;
 pub mod x509;
+
+// Keep existing paths valid: viv::core::net::tls::{handshake, key_schedule, record}
+pub use tls13::handshake;
+pub use tls13::key_schedule;
+pub use tls13::record;
 
 use std::io::{self, Read, Write};
 
 use super::tcp;
 use codec::{ALERT, CHANGE_CIPHER_SPEC, HANDSHAKE};
-use handshake::{Handshake, HandshakeResult};
-use record::RecordLayer;
+use tls13::handshake::{Handshake, HandshakeResult};
+use tls13::record::RecordLayer;
 
 // ── TlsStream (sync) ──────────────────────────────────────────────
 

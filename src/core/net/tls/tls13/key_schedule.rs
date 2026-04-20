@@ -4,7 +4,7 @@
 // Implements the full key derivation chain: Early Secret -> Handshake
 // Secret -> Master Secret, producing traffic keys at each phase.
 
-use super::crypto::sha256::{Sha256, hkdf_expand, hkdf_extract};
+use crate::core::net::tls::crypto::sha256::{Sha256, hkdf_expand, hkdf_extract};
 
 // ── Traffic Keys ────────────────────────────────────────────────────
 
