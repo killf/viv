@@ -38,6 +38,8 @@ pub struct ToolCallState {
     pub status: ToolStatus,
     /// Vertical scroll offset for the expanded input view (future use).
     pub output_scroll: u16,
+    /// Timestamp when this tool call entered Running state (used for breath animation).
+    pub running_start: Option<std::time::Instant>,
 }
 
 impl ToolCallState {
@@ -47,6 +49,7 @@ impl ToolCallState {
             folded: true,
             status: ToolStatus::Running,
             output_scroll: 0,
+            running_start: Some(std::time::Instant::now()),
         }
     }
 
@@ -56,6 +59,7 @@ impl ToolCallState {
             folded: true,
             status: ToolStatus::Success { summary },
             output_scroll: 0,
+            running_start: None,
         }
     }
 
@@ -65,6 +69,7 @@ impl ToolCallState {
             folded: true,
             status: ToolStatus::Error { message },
             output_scroll: 0,
+            running_start: None,
         }
     }
 
@@ -101,6 +106,21 @@ impl<'a> ToolCallWidget<'a> {
         self
     }
 
+    // ── Breathing animation helpers ──────────────────────────────────────────
+
+    /// Returns a 0..1 alpha that oscillates on a 1-second period using sine.
+    fn breath_alpha(running_start: std::time::Instant) -> f32 {
+        let elapsed = running_start.elapsed().as_millis() as f32;
+        let phase =
+            (elapsed % 1000.0) / 1000.0 * 2.0 * std::f32::consts::PI;
+        phase.sin() * 0.5 + 0.5 // 0..1, period 1 s
+    }
+
+    /// Linearly interpolate between two 8-bit color components.
+    fn lerp_channel(a: u8, b: u8, t: f32) -> u8 {
+        (a as f32 + (b as f32 - a as f32) * t) as u8
+    }
+
     // ── Header row rendering ─────────────────────────────────────────────────
 
     /// Render the single header row at `y` within `area`.
@@ -110,6 +130,24 @@ impl<'a> ToolCallWidget<'a> {
         }
 
         let y = area.y;
+
+        // Apply breathing background for Running state
+        if matches!(state.status, ToolStatus::Running) {
+            if let Some(start) = state.running_start {
+                let t = Self::breath_alpha(start);
+                // dark: (15,15,25) -> light: (35,30,50) interpolated by t
+                let bg = Color::Rgb(
+                    Self::lerp_channel(15, 35, t),
+                    Self::lerp_channel(15, 30, t),
+                    Self::lerp_channel(25, 50, t),
+                );
+                for x in area.x..(area.x + area.width) {
+                    let cell = buf.get_mut(x, y);
+                    cell.bg = Some(bg);
+                }
+            }
+        }
+
         let mut x = area.x;
         let max_x = area.x + area.width;
 
