@@ -1,6 +1,9 @@
+use viv::core::net::http::HttpRequest;
+use viv::core::net::tls::TlsStream;
+use viv::core::runtime::executor::block_on;
+
 #[test]
 fn tls_stream_is_constructible() {
-    use viv::core::net::tls::TlsStream;
     let _size = std::mem::size_of::<TlsStream>();
 }
 
@@ -12,10 +15,6 @@ fn tls_stream_is_constructible() {
 #[cfg(feature = "full_test")]
 #[test]
 fn tls13_pure_rust_https_get() {
-    use viv::core::net::http::HttpRequest;
-    use viv::core::net::tls::TlsStream;
-
-    use viv::core::runtime::executor::block_on;
     block_on(async {
         let host = "www.wechat.com";
         let mut tls = TlsStream::connect(host, 443).await.expect("TLS 1.3 connect failed");
@@ -65,10 +64,6 @@ fn tls13_pure_rust_https_get() {
 #[cfg(feature = "full_test")]
 #[test]
 fn tls12_pure_rust_https_get() {
-    use viv::core::net::http::HttpRequest;
-    use viv::core::net::tls::TlsStream;
-
-    use viv::core::runtime::executor::block_on;
     block_on(async {
         let host = "www.wechat.com";
         let mut tls = TlsStream::connect(host, 443).await.expect("TLS connect failed");
