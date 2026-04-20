@@ -2,6 +2,7 @@ mod asn1_test;
 mod bigint_test;
 mod crypto;
 mod encoding;
+mod json_test;
 mod jsonrpc_test;
 mod log;
 mod net;
