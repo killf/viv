@@ -36,9 +36,10 @@ pub enum HandshakeMessage {
 }
 
 pub struct ServerHello {
+    pub version: u16,                    // 0x0303 TLS1.2 or 0x0304 TLS1.3
     pub random: [u8; 32],
     pub cipher_suite: u16,
-    pub x25519_public: [u8; 32],
+    pub x25519_public: Option<[u8; 32]>, // TLS 1.3 only
 }
 
 // ── Helpers ────────────────────────────────────────────────────────
@@ -100,9 +101,11 @@ pub fn encode_client_hello(
     body.push(32);
     body.extend_from_slice(session_id);
 
-    // cipher_suites: length(2) + TLS_AES_128_GCM_SHA256
-    push_u16(&mut body, 2);
-    push_u16(&mut body, 0x1301);
+    // cipher_suites: length(2) + 3 suites * 2 bytes each = 6 bytes
+    push_u16(&mut body, 6);
+    push_u16(&mut body, 0x1301); // TLS_AES_128_GCM_SHA256 (TLS 1.3)
+    push_u16(&mut body, 0xC02B); // TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+    push_u16(&mut body, 0xC02C); // TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
 
     // compression_methods: length(1) + null
     body.push(1);
@@ -159,16 +162,18 @@ fn encode_ext_server_name(name: &str, out: &mut Vec<u8>) {
 
 fn encode_ext_supported_versions(out: &mut Vec<u8>) {
     push_u16(out, EXT_SUPPORTED_VERSIONS);
-    push_u16(out, 3); // extension data length
-    out.push(2); // list length (1 * 2 bytes)
+    push_u16(out, 5); // extension data length: list_len(1) + 2 versions * 2 bytes
+    out.push(4);      // list length
     push_u16(out, 0x0304); // TLS 1.3
+    push_u16(out, 0x0303); // TLS 1.2
 }
 
 fn encode_ext_supported_groups(out: &mut Vec<u8>) {
     push_u16(out, EXT_SUPPORTED_GROUPS);
-    push_u16(out, 4); // extension data length
-    push_u16(out, 2); // list length
+    push_u16(out, 6); // ext data length
+    push_u16(out, 4); // list length
     push_u16(out, 0x001d); // x25519
+    push_u16(out, 0x0017); // secp256r1 (P-256) for TLS 1.2
 }
 
 fn encode_ext_key_share(pub_key: &[u8; 32], out: &mut Vec<u8>) {
@@ -204,6 +209,24 @@ fn encode_ext_signature_algorithms(out: &mut Vec<u8>) {
 
 // ── Decode: handshake message ──────────────────────────────────────
 
+/// Extract the negotiated version from a raw ServerHello handshake message.
+/// `msg_bytes` = type(1) + len(3) + body.
+/// Returns 0x0303 for TLS 1.2, 0x0304 for TLS 1.3.
+pub fn peek_server_hello_version(msg_bytes: &[u8]) -> crate::Result<u16> {
+    if msg_bytes.len() < 4 {
+        return Err(crate::Error::Tls("ServerHello too short to peek version".into()));
+    }
+    let body_len = read_u24(msg_bytes, 1)? as usize;
+    if msg_bytes.len() < 4 + body_len {
+        return Err(crate::Error::Tls("ServerHello body truncated".into()));
+    }
+    let body = &msg_bytes[4..4 + body_len];
+    match decode_server_hello(body)? {
+        HandshakeMessage::ServerHello(sh) => Ok(sh.version),
+        _ => Err(crate::Error::Tls("expected ServerHello".into())),
+    }
+}
+
 /// Decode a handshake message from raw bytes (starting at the handshake
 /// header: type(1) + length(3) + body). Returns the parsed message.
 pub fn decode_handshake(data: &[u8]) -> crate::Result<HandshakeMessage> {
@@ -234,44 +257,26 @@ pub fn decode_handshake(data: &[u8]) -> crate::Result<HandshakeMessage> {
 // ── Decode: ServerHello ────────────────────────────────────────────
 
 fn decode_server_hello(body: &[u8]) -> crate::Result<HandshakeMessage> {
-    // legacy_version(2) + random(32) + session_id_len(1) = 35 minimum
     if body.len() < 35 {
         return Err(crate::Error::Tls("ServerHello too short".into()));
     }
-
-    let mut pos: usize = 0;
-
-    // legacy_version (skip)
+    let mut pos = 0;
+    let legacy_version = read_u16(body, pos)?;
     pos += 2;
-
-    // random
     let mut random = [0u8; 32];
     random.copy_from_slice(&body[pos..pos + 32]);
     pos += 32;
-
-    // session_id
     let sid_len = body[pos] as usize;
-    pos += 1;
-    if pos + sid_len > body.len() {
-        return Err(crate::Error::Tls("ServerHello session_id truncated".into()));
+    pos += 1 + sid_len;
+    if pos + 3 > body.len() {
+        return Err(crate::Error::Tls("ServerHello truncated at cipher".into()));
     }
-    pos += sid_len;
-
-    // cipher_suite
     let cipher_suite = read_u16(body, pos)?;
     pos += 2;
+    pos += 1; // compression
 
-    // compression_method (skip 1 byte)
-    if pos >= body.len() {
-        return Err(crate::Error::Tls(
-            "ServerHello truncated at compression".into(),
-        ));
-    }
-    pos += 1;
-
-    // extensions
-    let mut x25519_public = [0u8; 32];
-    let mut found_key_share = false;
+    let mut x25519_public: Option<[u8; 32]> = None;
+    let mut negotiated_version = legacy_version;
 
     if pos + 2 <= body.len() {
         let exts_len = read_u16(body, pos)? as usize;
@@ -280,47 +285,42 @@ fn decode_server_hello(body: &[u8]) -> crate::Result<HandshakeMessage> {
         if exts_end > body.len() {
             return Err(crate::Error::Tls("ServerHello extensions truncated".into()));
         }
-
         while pos + 4 <= exts_end {
             let ext_type = read_u16(body, pos)?;
             let ext_len = read_u16(body, pos + 2)? as usize;
             pos += 4;
-
             if pos + ext_len > exts_end {
                 return Err(crate::Error::Tls("extension data truncated".into()));
             }
-
             match ext_type {
                 EXT_KEY_SHARE if ext_len >= 4 => {
-                    // ServerHello key_share: group(2) + key_len(2) + key
                     let key_len = read_u16(body, pos + 2)? as usize;
                     if key_len == 32 && pos + 4 + 32 <= exts_end {
-                        x25519_public.copy_from_slice(&body[pos + 4..pos + 4 + 32]);
-                        found_key_share = true;
+                        let mut k = [0u8; 32];
+                        k.copy_from_slice(&body[pos + 4..pos + 4 + 32]);
+                        x25519_public = Some(k);
                     }
                 }
                 EXT_SUPPORTED_VERSIONS if ext_len >= 2 => {
-                    // Just validate it's TLS 1.3 (0x0304)
-                    let ver = read_u16(body, pos)?;
-                    if ver != 0x0304 {
+                    negotiated_version = read_u16(body, pos)?;
+                    if negotiated_version != 0x0304 && negotiated_version != 0x0303 {
                         return Err(crate::Error::Tls(format!(
-                            "unsupported TLS version: 0x{:04x}",
-                            ver
+                            "unsupported TLS version: 0x{:04x}", negotiated_version
                         )));
                     }
                 }
-                _ => {} // skip unknown extensions
+                _ => {}
             }
-
             pos += ext_len;
         }
     }
 
-    if !found_key_share {
-        return Err(crate::Error::Tls("ServerHello missing key_share".into()));
+    if negotiated_version == 0x0304 && x25519_public.is_none() {
+        return Err(crate::Error::Tls("TLS 1.3 ServerHello missing key_share".into()));
     }
 
     Ok(HandshakeMessage::ServerHello(ServerHello {
+        version: negotiated_version,
         random,
         cipher_suite,
         x25519_public,

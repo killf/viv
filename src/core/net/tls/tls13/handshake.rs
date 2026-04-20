@@ -5,8 +5,8 @@
 // to `handle_message`.
 
 use crate::core::net::tls::codec::{self, HandshakeMessage};
-use crate::core::net::tls::crypto::sha256::{Sha256, hmac_sha256};
-use crate::core::net::tls::crypto::x25519;
+use crate::core::crypto::sha256::{Sha256, hmac_sha256};
+use crate::core::crypto::x25519;
 use super::key_schedule::KeySchedule;
 use super::record::RecordLayer;
 
@@ -52,10 +52,10 @@ impl Handshake {
         let (secret, public) = x25519::keypair()?;
 
         let mut random = [0u8; 32];
-        crate::core::net::tls::crypto::getrandom(&mut random)?;
+        crate::core::crypto::getrandom(&mut random)?;
 
         let mut session_id = [0u8; 32];
-        crate::core::net::tls::crypto::getrandom(&mut session_id)?;
+        crate::core::crypto::getrandom(&mut session_id)?;
 
         Ok(Self {
             state: State::ExpectServerHello,
@@ -103,7 +103,15 @@ impl Handshake {
                 // Add ServerHello to transcript
                 self.transcript.update(msg_bytes);
 
-                // Verify cipher suite
+                // TLS 1.2 negotiated — signal to caller
+                if sh.version == 0x0303 {
+                    return Ok(HandshakeResult::NegotiatedTls12 {
+                        server_random: sh.random,
+                        cipher_suite: sh.cipher_suite,
+                    });
+                }
+
+                // Verify cipher suite (TLS 1.3 only path from here)
                 if sh.cipher_suite != 0x1301 {
                     return Err(crate::Error::Tls(format!(
                         "unsupported cipher suite: 0x{:04x}",
@@ -112,7 +120,10 @@ impl Handshake {
                 }
 
                 // Compute shared secret
-                let shared = x25519::shared_secret(&self.x25519_secret, &sh.x25519_public);
+                let x25519_pub = sh.x25519_public.ok_or_else(|| {
+                    crate::Error::Tls("TLS 1.3 ServerHello missing key_share".into())
+                })?;
+                let shared = x25519::shared_secret(&self.x25519_secret, &x25519_pub);
 
                 // RFC 7748 §6.1: reject all-zero shared secret (low-order point)
                 if shared == [0u8; 32] {

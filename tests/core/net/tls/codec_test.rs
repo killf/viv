@@ -33,18 +33,26 @@ fn encode_client_hello_has_correct_handshake_header() {
     // session_id at offset 39..71
     assert_eq!(&out[39..71], &[0xBB; 32]);
 
-    // cipher_suites_len at offset 71..73: 0x0002
+    // cipher_suites_len at offset 71..73: 0x0006 (3 suites * 2 bytes)
     assert_eq!(out[71], 0x00);
-    assert_eq!(out[72], 0x02);
+    assert_eq!(out[72], 0x06);
 
-    // cipher_suite: TLS_AES_128_GCM_SHA256 = 0x1301
+    // cipher_suite 1: TLS_AES_128_GCM_SHA256 = 0x1301
     assert_eq!(out[73], 0x13);
     assert_eq!(out[74], 0x01);
 
-    // compression_methods_len at offset 75: 1
-    assert_eq!(out[75], 0x01);
+    // cipher_suite 2: TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256 = 0xC02B
+    assert_eq!(out[75], 0xC0);
+    assert_eq!(out[76], 0x2B);
+
+    // cipher_suite 3: TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256 = 0xC02C
+    assert_eq!(out[77], 0xC0);
+    assert_eq!(out[78], 0x2C);
+
+    // compression_methods_len at offset 79: 1
+    assert_eq!(out[79], 0x01);
     // compression: null
-    assert_eq!(out[76], 0x00);
+    assert_eq!(out[80], 0x00);
 }
 
 #[test]
@@ -192,7 +200,7 @@ fn decode_server_hello_with_known_bytes() {
         codec::HandshakeMessage::ServerHello(sh) => {
             assert_eq!(sh.random, random);
             assert_eq!(sh.cipher_suite, 0x1301);
-            assert_eq!(sh.x25519_public, server_pub);
+            assert_eq!(sh.x25519_public, Some(server_pub));
         }
         _ => panic!("expected ServerHello"),
     }
@@ -222,4 +230,57 @@ fn decode_truncated_message_returns_error() {
     // Only 3 bytes — not enough for a handshake header
     let data = [0x02, 0x00, 0x00];
     assert!(codec::decode_handshake(&data).is_err());
+}
+
+#[test]
+fn client_hello_offers_tls12_cipher_suites() {
+    let random = [0u8; 32];
+    let session_id = [0u8; 32];
+    let x25519_pub = [0u8; 32];
+    let mut out = Vec::new();
+    codec::encode_client_hello(&random, &session_id, "example.com", &x25519_pub, &mut out);
+    let found_c02b = out.windows(2).any(|w| w == [0xC0, 0x2B]);
+    let found_c02c = out.windows(2).any(|w| w == [0xC0, 0x2C]);
+    assert!(found_c02b, "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256 (0xC02B) not in ClientHello");
+    assert!(found_c02c, "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256 (0xC02C) not in ClientHello");
+}
+
+#[test]
+fn client_hello_supported_versions_includes_tls12() {
+    let random = [0u8; 32];
+    let session_id = [0u8; 32];
+    let x25519_pub = [0u8; 32];
+    let mut out = Vec::new();
+    codec::encode_client_hello(&random, &session_id, "example.com", &x25519_pub, &mut out);
+    // 0x0303 must appear in supported_versions extension
+    let found_v12 = out.windows(2).any(|w| w == [0x03, 0x03]);
+    assert!(found_v12, "TLS 1.2 version 0x0303 not in ClientHello");
+}
+
+#[test]
+fn decode_tls12_server_hello_extracts_version() {
+    // Minimal TLS 1.2 ServerHello (no extensions at all — version = legacy_version)
+    let mut body = Vec::new();
+    body.extend_from_slice(&[0x03, 0x03]); // legacy_version = TLS 1.2
+    body.extend_from_slice(&[0x42u8; 32]); // random
+    body.push(0); // session_id length = 0
+    body.extend_from_slice(&[0xC0, 0x2B]); // cipher_suite
+    body.push(0); // compression
+    // No extensions
+
+    let mut msg = Vec::new();
+    msg.push(0x02); // SERVER_HELLO
+    let len = body.len() as u32;
+    msg.push((len >> 16) as u8);
+    msg.push((len >> 8) as u8);
+    msg.push(len as u8);
+    msg.extend_from_slice(&body);
+
+    let decoded = codec::decode_handshake(&msg).unwrap();
+    if let codec::HandshakeMessage::ServerHello(sh) = decoded {
+        assert_eq!(sh.version, 0x0303, "Expected TLS 1.2 version");
+        assert!(sh.x25519_public.is_none(), "TLS 1.2 ServerHello has no key_share");
+    } else {
+        panic!("expected ServerHello");
+    }
 }

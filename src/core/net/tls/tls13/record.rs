@@ -4,7 +4,7 @@
 // records are plaintext. After install_encrypter/install_decrypter,
 // records use AES-128-GCM with per-record nonce derivation.
 
-use crate::core::net::tls::crypto::aes_gcm::Aes128Gcm;
+use crate::core::crypto::aes_gcm::Aes128Gcm;
 use crate::core::net::tls::codec::APPLICATION_DATA;
 
 // ── Record encrypter ───────────────────────────────────────────────
