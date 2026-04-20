@@ -1,4 +1,11 @@
+use crate::core::encoding::base64;
 use crate::error::Error;
+
+/// Base64 encode (RFC 4648, standard alphabet, with padding).
+/// Re-exported from crate::core::encoding::base64 for backwards compatibility.
+pub fn base64_encode(data: &[u8]) -> String {
+    base64::encode(data)
+}
 
 /// WebSocket frame opcodes (RFC 6455 Section 5.2).
 #[derive(Debug, Clone, PartialEq)]
@@ -206,48 +213,9 @@ pub fn build_upgrade_request(host: &str, path: &str) -> Vec<u8> {
     req.into_bytes()
 }
 
-/// Base64 encode (RFC 4648, standard alphabet, with padding).
-pub fn base64_encode(data: &[u8]) -> String {
-    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-
-    let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
-
-    let chunks = data.chunks(3);
-    for chunk in chunks {
-        match chunk.len() {
-            3 => {
-                let n = (chunk[0] as u32) << 16 | (chunk[1] as u32) << 8 | chunk[2] as u32;
-                out.push(ALPHABET[((n >> 18) & 0x3F) as usize] as char);
-                out.push(ALPHABET[((n >> 12) & 0x3F) as usize] as char);
-                out.push(ALPHABET[((n >> 6) & 0x3F) as usize] as char);
-                out.push(ALPHABET[(n & 0x3F) as usize] as char);
-            }
-            2 => {
-                let n = (chunk[0] as u32) << 16 | (chunk[1] as u32) << 8;
-                out.push(ALPHABET[((n >> 18) & 0x3F) as usize] as char);
-                out.push(ALPHABET[((n >> 12) & 0x3F) as usize] as char);
-                out.push(ALPHABET[((n >> 6) & 0x3F) as usize] as char);
-                out.push('=');
-            }
-            1 => {
-                let n = (chunk[0] as u32) << 16;
-                out.push(ALPHABET[((n >> 18) & 0x3F) as usize] as char);
-                out.push(ALPHABET[((n >> 12) & 0x3F) as usize] as char);
-                out.push('=');
-                out.push('=');
-            }
-            _ => {}
-        }
-    }
-
-    out
-}
-
 // ---- helpers ----------------------------------------------------------------
 
-/// Generate a 4-byte mask key from the current timestamp.
 fn generate_mask_key() -> [u8; 4] {
-    // Use timestamp nanoseconds for pseudo-randomness (no external deps).
     let mut ts = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -256,13 +224,11 @@ fn generate_mask_key() -> [u8; 4] {
     let mut key = [0u8; 4];
     for b in &mut key {
         *b = (ts & 0xFF) as u8;
-        // Simple LCG-like mixing to avoid identical bytes
         ts = ts.wrapping_mul(6364136223846793005).wrapping_add(1);
     }
     key
 }
 
-/// Generate a random 16-byte Sec-WebSocket-Key, base64-encoded.
 fn generate_ws_key() -> String {
     let mut ts = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -276,5 +242,5 @@ fn generate_ws_key() -> String {
             .wrapping_add(1442695040888963407);
         *b = ((ts >> 33) & 0xFF) as u8;
     }
-    base64_encode(&bytes)
+    base64::encode(&bytes)
 }
