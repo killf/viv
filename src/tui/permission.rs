@@ -108,7 +108,11 @@ impl Default for PermissionState {
 ///   │  ◯ 总是允许          │
 ///   └─────────────────────┘
 /// ```
-pub struct PermissionWidget;
+#[allow(dead_code)]
+pub struct PermissionWidget<'a> {
+    tool: &'a str,
+    input: &'a str,
+}
 
 impl<'a> PermissionWidget<'a> {
     /// Create a new permission widget.
@@ -197,7 +201,6 @@ impl StatefulWidget for PermissionWidget<'_> {
         }
 
         let options = permission_options();
-        let inner_width = area.width.saturating_sub(1); // 1 col padding each side
 
         // ── Box border ─────────────────────────────────────────────────────────
         let block = Block::new()

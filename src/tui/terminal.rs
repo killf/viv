@@ -269,9 +269,11 @@ impl TerminalUI {
                     Event::Tick => {}
                     Event::Mouse(MouseEvent::WheelUp) => {
                         self.conversation_state.scroll_up(3);
+                        dirty = true;
                     }
                     Event::Mouse(MouseEvent::WheelDown) => {
                         self.conversation_state.scroll_down(3);
+                        dirty = true;
                     }
                     Event::Mouse(_) => {}
                 }
@@ -1098,7 +1100,10 @@ impl LineEditor {
                 self.col = self.lines[self.row].len();
                 EditAction::Continue
             }
-            KeyEvent::CtrlC => EditAction::Interrupt,
+            KeyEvent::CtrlC => {
+                self.clear();
+                EditAction::Interrupt
+            }
             KeyEvent::CtrlD => {
                 if self.is_empty() {
                     EditAction::Exit

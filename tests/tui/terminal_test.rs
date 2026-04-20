@@ -61,6 +61,8 @@ fn ctrl_c_resets_mode_to_chat() {
     let mut editor = LineEditor::new();
     let _ = press(&mut editor, '/');
     assert_eq!(editor.mode, InputMode::SlashCommand);
+    // Ctrl+C triggers EditAction::Interrupt; LineEditor::handle_key calls
+    // editor.clear() which resets mode back to Chat.
     let _ = ctrl_c(&mut editor);
     assert_eq!(editor.mode, InputMode::Chat);
 }
