@@ -1,5 +1,3 @@
-use std::io::{Read, Write};
-
 use crate::config::ModelConfig;
 use crate::core::json::{JsonValue, ToJson};
 use crate::core::net::http::HttpRequest;
@@ -213,7 +211,7 @@ impl LLMClient {
 
     /// Send a streaming request to the Claude API, calling `on_text` for each text delta.
     /// Returns the full accumulated response text.
-    pub fn stream(
+    pub async fn stream(
         &self,
         messages: &[Message],
         tier: ModelTier,
@@ -224,10 +222,10 @@ impl LLMClient {
         let url = &self.url;
 
         // Connect via TLS
-        let mut tls = TlsStream::connect(&url.host, url.port)?;
+        let mut tls = TlsStream::connect(&url.host, url.port).await?;
 
         // Send request
-        tls.write_all(&bytes)?;
+        tls.write_all(&bytes).await?;
 
         // Read until we have the full SSE body
         let mut raw: Vec<u8> = Vec::new();
@@ -235,7 +233,7 @@ impl LLMClient {
 
         let mut header_end: Option<usize> = None;
         loop {
-            let n = tls.read(&mut tmp)?;
+            let n = tls.read(&mut tmp).await?;
             if n == 0 {
                 break;
             }
@@ -254,7 +252,7 @@ impl LLMClient {
                 if status != 200 {
                     // Read more to get the error body
                     loop {
-                        let n2 = tls.read(&mut tmp)?;
+                        let n2 = tls.read(&mut tmp).await?;
                         if n2 == 0 {
                             break;
                         }
@@ -346,7 +344,7 @@ pub struct StreamResult {
 impl LLMClient {
     /// 支持 tool_use 的流式请求：解析 text_delta 和 input_json_delta。
     /// system_blocks 对应 Anthropic API system 数组（带 cache_control）。
-    pub fn stream_agent(
+    pub async fn stream_agent(
         &self,
         system_blocks: &[crate::agent::message::SystemBlock],
         messages: &[crate::agent::message::Message],
@@ -358,15 +356,15 @@ impl LLMClient {
         let bytes = req.to_bytes();
         let url = &self.url;
 
-        let mut tls = TlsStream::connect(&url.host, url.port)?;
-        tls.write_all(&bytes)?;
+        let mut tls = TlsStream::connect(&url.host, url.port).await?;
+        tls.write_all(&bytes).await?;
 
         let mut raw: Vec<u8> = Vec::new();
         let mut tmp = [0u8; 4096];
         let mut header_end: Option<usize> = None;
 
         loop {
-            let n = tls.read(&mut tmp)?;
+            let n = tls.read(&mut tmp).await?;
             if n == 0 {
                 break;
             }
@@ -381,7 +379,7 @@ impl LLMClient {
                 let status = parse_status_line(header_section)?;
                 if status != 200 {
                     loop {
-                        let n2 = tls.read(&mut tmp)?;
+                        let n2 = tls.read(&mut tmp).await?;
                         if n2 == 0 {
                             break;
                         }
@@ -637,7 +635,7 @@ pub fn parse_agent_stream_pub(
 // ---- async agent stream -----------------------------------------------------
 
 impl LLMClient {
-    /// Async version of `stream_agent()` — uses `AsyncTlsStream` for non-blocking I/O.
+    /// Async version of `stream_agent()` — uses `TlsStream` for non-blocking I/O.
     pub async fn stream_agent_async(
         &self,
         system_blocks: &[crate::agent::message::SystemBlock],
@@ -646,12 +644,12 @@ impl LLMClient {
         tier: ModelTier,
         mut on_text: impl FnMut(&str),
     ) -> crate::Result<StreamResult> {
-        use crate::core::net::tls::AsyncTlsStream;
+        use crate::core::net::tls::TlsStream;
 
         let req = self.build_agent_request(system_blocks, messages, tools_json, tier);
         let url = &self.url;
 
-        let mut stream = AsyncTlsStream::connect(&url.host, url.port).await?;
+        let mut stream = TlsStream::connect(&url.host, url.port).await?;
         stream.write_all(&req.to_bytes()).await?;
 
         // Read HTTP response header (until \r\n\r\n)

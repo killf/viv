@@ -1,6 +1,6 @@
 use crate::core::json::JsonValue;
 use crate::core::net::http::HttpRequest;
-use crate::core::net::tls::AsyncTlsStream;
+use crate::core::net::tls::TlsStream;
 use crate::core::runtime::AssertSend;
 use crate::error::Error;
 use crate::tools::{PermissionLevel, Tool};
@@ -116,7 +116,7 @@ impl Tool for WebSearchTool {
                 body: Some(body_str),
             };
 
-            let mut tls = AsyncTlsStream::connect("api.tavily.com", 443).await?;
+            let mut tls = TlsStream::connect("api.tavily.com", 443).await?;
             tls.write_all(&req.to_bytes()).await?;
 
             let mut raw: Vec<u8> = Vec::new();

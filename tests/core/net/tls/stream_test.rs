@@ -2,23 +2,25 @@
 
 use viv::core::net::tls::codec;
 use viv::core::net::tls::record::RecordLayer;
+use viv::core::runtime::block_on_local;
 
 // ── TlsStream connect error paths ─────────────────────────────────
 
 #[test]
 fn tls_connect_to_unreachable_host_fails() {
     use viv::core::net::tls::TlsStream;
-    // 10.255.255.1 is a non-routable test address; this should fail at the
-    // network level (not DNS) since the IP is valid but unreachable.
-    let result = TlsStream::connect("10.255.255.1", 443);
+    let result = block_on_local(Box::pin(async {
+        TlsStream::connect("10.255.255.1", 443).await
+    }));
     assert!(result.is_err(), "connect to unreachable host should fail");
 }
 
 #[test]
 fn tls_connect_to_connection_refused_fails() {
     use viv::core::net::tls::TlsStream;
-    // Connect to localhost port where nothing is listening — should get connection refused
-    let result = TlsStream::connect("127.0.0.1", 59999);
+    let result = block_on_local(Box::pin(async {
+        TlsStream::connect("127.0.0.1", 59999).await
+    }));
     assert!(result.is_err(), "connect to closed port should fail");
 }
 

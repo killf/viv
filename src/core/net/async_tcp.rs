@@ -25,6 +25,10 @@ impl AsyncTcpStream {
         &mut self.inner
     }
 
+    pub fn into_inner(self) -> TcpStream {
+        self.inner
+    }
+
     pub fn connect(host: &str, port: u16) -> ConnectFuture {
         ConnectFuture {
             host: host.to_string(),

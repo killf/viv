@@ -1,6 +1,6 @@
 use crate::core::json::JsonValue;
 use crate::core::net::http::HttpRequest;
-use crate::core::net::tls::AsyncTlsStream;
+use crate::core::net::tls::TlsStream;
 use crate::core::runtime::AssertSend;
 use crate::error::Error;
 use crate::llm::{LLMClient, ModelTier};
@@ -109,7 +109,7 @@ async fn fetch_url_async(url: &str) -> crate::Result<String> {
         body: None,
     };
 
-    let mut tls = AsyncTlsStream::connect(host, port).await?;
+    let mut tls = TlsStream::connect(host, port).await?;
     tls.write_all(&req.to_bytes()).await?;
 
     let mut raw: Vec<u8> = Vec::new();
