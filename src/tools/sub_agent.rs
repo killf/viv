@@ -1,5 +1,5 @@
-use crate::bus::channel::agent_channel;
-use crate::bus::{AgentEvent, AgentMessage};
+use crate::agent::channel::agent_channel;
+use crate::agent::protocol::{AgentEvent, AgentMessage};
 use crate::core::json::JsonValue;
 use crate::core::runtime::AssertSend;
 use crate::core::runtime::join;

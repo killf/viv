@@ -1,4 +1,4 @@
-use crate::bus::{AgentEvent, AgentMessage};
+use crate::agent::protocol::{AgentEvent, AgentMessage};
 use crate::core::runtime::channel::{AsyncReceiver, NotifySender, async_channel};
 use std::sync::mpsc;
 

@@ -1,7 +1,7 @@
 use crate::agent::evolution::evolve_from_session;
 use crate::agent::message::{ContentBlock, Message, PromptCache};
 use crate::agent::prompt::{build_system_prompt, SystemPrompt};
-use crate::bus::{AgentEvent, AgentMessage};
+use crate::agent::protocol::{AgentEvent, AgentMessage};
 use crate::config::ConfigPaths;
 use crate::core::json::JsonValue;
 use crate::core::runtime::channel::AsyncReceiver;
@@ -86,7 +86,7 @@ impl Agent {
     /// The sub-agent shares the parent's LLM client and uses a temporary memory directory.
     pub async fn new_sub(
         config: AgentConfig,
-        endpoint: crate::bus::channel::AgentEndpoint,
+        endpoint: crate::agent::channel::AgentEndpoint,
         llm: Arc<LLMClient>,
     ) -> Result<Self> {
         let tools = ToolRegistry::default_tools_without("Agent", Arc::clone(&llm));

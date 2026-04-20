@@ -1,6 +1,3 @@
-pub mod channel;
-pub mod terminal;
-
 /// UI 线程 → Agent 线程
 #[derive(Debug)]
 pub enum AgentEvent {

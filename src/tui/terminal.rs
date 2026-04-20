@@ -1,6 +1,6 @@
 use std::sync::mpsc::Receiver;
 
-use crate::bus::{AgentEvent, AgentMessage};
+use crate::agent::protocol::{AgentEvent, AgentMessage};
 use crate::core::runtime::channel::NotifySender;
 use crate::core::terminal::backend::{Backend, CrossBackend};
 use crate::core::terminal::buffer::Rect;

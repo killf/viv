@@ -16,6 +16,7 @@ pub mod renderer;
 pub mod spinner;
 pub mod status;
 pub mod syntax;
+pub mod terminal;
 pub mod tool_call;
 pub mod welcome;
 pub mod widget;
