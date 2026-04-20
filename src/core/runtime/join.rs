@@ -30,7 +30,6 @@ where
         match std::mem::replace(self, MaybeDone::Taken) {
             MaybeDone::Done(v) => Some(v),
             other => {
-                // Restore state; caller must only call take() after poll() returned true.
                 *self = other;
                 None
             }
@@ -74,9 +73,6 @@ where
         if a_done && b_done {
             match (this.a.take(), this.b.take()) {
                 (Some(a), Some(b)) => Poll::Ready((a, b)),
-                // Invariant: both were Done; if take() returned None we treat
-                // it as pending rather than panicking. The waker remains
-                // registered via the inner futures.
                 _ => Poll::Pending,
             }
         } else {

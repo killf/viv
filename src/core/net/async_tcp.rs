@@ -1,7 +1,6 @@
 use super::tcp::connect as tcp_connect;
 use crate::core::platform;
-use crate::core::runtime::reactor::reactor;
-use crate::core::sync::lock_or_recover;
+use crate::core::runtime::reactor::with_reactor;
 use std::future::Future;
 use std::io::{self, Read, Write};
 use std::net::TcpStream;
@@ -88,22 +87,20 @@ impl<'a> Future for ReadFuture<'a> {
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.as_mut().get_mut();
 
-        // 清除上次注册（重新注册新 waker）
         if let Some(t) = this.token.take() {
-            let r = reactor();
-            lock_or_recover(&r).remove(t);
+            with_reactor(|r| r.remove(t)).ok();
         }
 
         match this.stream.inner.read(this.buf) {
             Ok(n) => Poll::Ready(Ok(n)),
             Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
                 let fd = this.stream.raw_handle();
-                let r = reactor();
-                match lock_or_recover(&r).register_readable(fd, cx.waker().clone()) {
-                    Ok(token) => {
+                match with_reactor(|r| r.register_readable(fd, cx.waker().clone())) {
+                    Ok(Ok(token)) => {
                         this.token = Some(token);
                         Poll::Pending
                     }
+                    Ok(Err(e)) => Poll::Ready(Err(e)),
                     Err(e) => Poll::Ready(Err(e)),
                 }
             }
@@ -115,8 +112,7 @@ impl<'a> Future for ReadFuture<'a> {
 impl Drop for ReadFuture<'_> {
     fn drop(&mut self) {
         if let Some(t) = self.token.take() {
-            let r = reactor();
-            lock_or_recover(&r).remove(t);
+            with_reactor(|r| r.remove(t)).ok();
         }
     }
 }
@@ -136,8 +132,7 @@ impl<'a> Future for WriteFuture<'a> {
         let this = self.as_mut().get_mut();
 
         if let Some(t) = this.token.take() {
-            let r = reactor();
-            lock_or_recover(&r).remove(t);
+            with_reactor(|r| r.remove(t)).ok();
         }
 
         loop {
@@ -148,12 +143,12 @@ impl<'a> Future for WriteFuture<'a> {
                 Ok(n) => this.written += n,
                 Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
                     let fd = this.stream.raw_handle();
-                    let r = reactor();
-                    match lock_or_recover(&r).register_writable(fd, cx.waker().clone()) {
-                        Ok(token) => {
+                    match with_reactor(|r| r.register_writable(fd, cx.waker().clone())) {
+                        Ok(Ok(token)) => {
                             this.token = Some(token);
                             return Poll::Pending;
                         }
+                        Ok(Err(e)) => return Poll::Ready(Err(e)),
                         Err(e) => return Poll::Ready(Err(e)),
                     }
                 }
@@ -166,8 +161,7 @@ impl<'a> Future for WriteFuture<'a> {
 impl Drop for WriteFuture<'_> {
     fn drop(&mut self) {
         if let Some(t) = self.token.take() {
-            let r = reactor();
-            lock_or_recover(&r).remove(t);
+            with_reactor(|r| r.remove(t)).ok();
         }
     }
 }

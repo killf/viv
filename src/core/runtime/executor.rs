@@ -15,11 +15,7 @@ pub fn noop_waker() -> Waker {
 }
 
 fn wait_for_io() {
-    if let Ok(mut r) = crate::core::runtime::reactor::reactor().try_lock() {
-        r.wait(Duration::from_millis(10));
-    } else {
-        std::thread::yield_now();
-    }
+    crate::core::runtime::reactor::with_reactor(|r| r.wait(Duration::from_millis(10))).ok();
 }
 
 pub struct Executor {

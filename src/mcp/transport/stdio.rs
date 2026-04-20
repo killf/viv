@@ -14,7 +14,7 @@ use crate::core::json::JsonValue;
 #[cfg(unix)]
 use crate::core::platform::{self, RawHandle};
 #[cfg(unix)]
-use crate::core::runtime::reactor::reactor;
+use crate::core::runtime::reactor::with_reactor;
 
 #[cfg(unix)]
 use super::Transport;
@@ -151,14 +151,12 @@ impl Future for WaitReadable {
             self.token = None;
             return Poll::Ready(Ok(()));
         }
-        let r = reactor();
-        match crate::core::sync::lock_or_recover(&r)
-            .register_readable(self.fd, cx.waker().clone())
-        {
-            Ok(t) => {
+        match with_reactor(|r| r.register_readable(self.fd, cx.waker().clone())) {
+            Ok(Ok(t)) => {
                 self.token = Some(t);
                 Poll::Pending
             }
+            Ok(Err(e)) => Poll::Ready(Err(e)),
             Err(e) => Poll::Ready(Err(e)),
         }
     }
@@ -168,8 +166,7 @@ impl Future for WaitReadable {
 impl Drop for WaitReadable {
     fn drop(&mut self) {
         if let Some(t) = self.token.take() {
-            let r = reactor();
-            crate::core::sync::lock_or_recover(&r).remove(t);
+            with_reactor(|r| r.remove(t)).ok();
         }
     }
 }
