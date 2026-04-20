@@ -277,3 +277,20 @@ fn scalar_mul_by_order_is_infinity() {
     ];
     assert!(g.scalar_mul(&n_bytes).is_infinity());
 }
+
+#[test]
+fn generator_to_uncompressed_starts_with_04() {
+    let g = Point::generator();
+    let bytes = g.to_uncompressed().expect("generator is not infinity");
+    assert_eq!(bytes[0], 0x04, "uncompressed point must start with 0x04");
+    assert_eq!(bytes.len(), 65);
+}
+
+#[test]
+fn scalar_mul_to_uncompressed_roundtrip() {
+    let scalar = [2u8; 32];
+    let pt = Point::generator().scalar_mul(&scalar);
+    let bytes = pt.to_uncompressed().expect("non-infinity point");
+    let pt2 = Point::from_uncompressed(&bytes).expect("valid uncompressed point");
+    assert_eq!(pt.affine_x_bytes().unwrap(), pt2.affine_x_bytes().unwrap());
+}

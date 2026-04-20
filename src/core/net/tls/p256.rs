@@ -230,6 +230,26 @@ impl Point {
         Some(self.x.mul(&z2_inv).to_bytes_be())
     }
 
+    /// Serialize to uncompressed SEC1 format: 0x04 || x(32) || y(32).
+    /// Returns None for the point at infinity.
+    pub fn to_uncompressed(&self) -> Option<[u8; 65]> {
+        if self.is_infinity() {
+            return None;
+        }
+        // Convert Jacobian to affine: x_affine = X/Z², y_affine = Y/Z³
+        let z2 = self.z.square();
+        let z3 = z2.mul(&self.z);
+        let z2_inv = z2.invert()?;
+        let z3_inv = z3.invert()?;
+        let ax = self.x.mul(&z2_inv).to_bytes_be();
+        let ay = self.y.mul(&z3_inv).to_bytes_be();
+        let mut out = [0u8; 65];
+        out[0] = 0x04;
+        out[1..33].copy_from_slice(&ax);
+        out[33..65].copy_from_slice(&ay);
+        Some(out)
+    }
+
     /// Point doubling in Jacobian coordinates (a = -3 specialization).
     pub fn double(&self) -> Self {
         if self.is_infinity() || self.y.0.is_zero() {
