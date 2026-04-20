@@ -173,6 +173,12 @@ impl Handshake {
 
             // ── Finished ───────────────────────────────────────────
             (State::ExpectFinished, HandshakeMessage::Finished { verify_data }) => {
+                if verify_data.len() < 32 {
+                    return Err(crate::Error::Tls("TLS 1.3 Finished too short".into()));
+                }
+                let mut vd = [0u8; 32];
+                vd.copy_from_slice(&verify_data[..32]);
+
                 // CRITICAL: snapshot transcript BEFORE adding Finished message
                 let transcript_before = self.transcript.clone().finish();
 
@@ -183,7 +189,7 @@ impl Handshake {
                 // Constant-time comparison
                 let mut diff = 0u8;
                 for i in 0..32 {
-                    diff |= verify_data[i] ^ expected[i];
+                    diff |= vd[i] ^ expected[i];
                 }
                 if diff != 0 {
                     return Err(crate::Error::Tls("server Finished verify failed".into()));

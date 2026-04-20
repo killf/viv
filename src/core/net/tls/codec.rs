@@ -15,7 +15,10 @@ pub const CLIENT_HELLO: u8 = 0x01;
 pub const SERVER_HELLO: u8 = 0x02;
 pub const ENCRYPTED_EXTENSIONS: u8 = 0x08;
 pub const CERTIFICATE: u8 = 0x0b;
+pub const SERVER_KEY_EXCHANGE: u8 = 0x0c;
+pub const SERVER_HELLO_DONE: u8 = 0x0e;
 pub const CERTIFICATE_VERIFY: u8 = 0x0f;
+pub const CLIENT_KEY_EXCHANGE: u8 = 0x10;
 pub const FINISHED: u8 = 0x14;
 
 // ── Extension types ────────────────────────────────────────────────
@@ -32,7 +35,18 @@ pub enum HandshakeMessage {
     EncryptedExtensions,
     Certificate(Vec<Vec<u8>>),
     CertificateVerify { scheme: u16, signature: Vec<u8> },
-    Finished { verify_data: [u8; 32] },
+    Finished { verify_data: Vec<u8> },
+    // TLS 1.2 specific:
+    ServerKeyExchange(ServerKeyExchange),
+    ServerHelloDone,
+}
+
+pub struct ServerKeyExchange {
+    pub named_curve: u16,
+    pub public_key: Vec<u8>,   // uncompressed P-256: 65 bytes
+    pub sig_scheme: u16,
+    pub signature: Vec<u8>,
+    pub signed_data: Vec<u8>,  // bytes that were signed (for verification)
 }
 
 pub struct ServerHello {
@@ -246,6 +260,8 @@ pub fn decode_handshake(data: &[u8]) -> crate::Result<HandshakeMessage> {
         ENCRYPTED_EXTENSIONS => Ok(HandshakeMessage::EncryptedExtensions),
         CERTIFICATE => decode_certificate(body),
         CERTIFICATE_VERIFY => decode_certificate_verify(body),
+        SERVER_KEY_EXCHANGE => decode_server_key_exchange(body),
+        SERVER_HELLO_DONE => Ok(HandshakeMessage::ServerHelloDone),
         FINISHED => decode_finished(body),
         _ => Err(crate::Error::Tls(format!(
             "unknown handshake type: 0x{:02x}",
@@ -391,10 +407,54 @@ fn decode_certificate_verify(body: &[u8]) -> crate::Result<HandshakeMessage> {
 // ── Decode: Finished ───────────────────────────────────────────────
 
 fn decode_finished(body: &[u8]) -> crate::Result<HandshakeMessage> {
-    if body.len() < 32 {
-        return Err(crate::Error::Tls("Finished verify_data too short".into()));
+    Ok(HandshakeMessage::Finished { verify_data: body.to_vec() })
+}
+
+// ── Decode: ServerKeyExchange ──────────────────────────────────────
+
+fn decode_server_key_exchange(body: &[u8]) -> crate::Result<HandshakeMessage> {
+    if body.len() < 4 {
+        return Err(crate::Error::Tls("ServerKeyExchange too short".into()));
     }
-    let mut verify_data = [0u8; 32];
-    verify_data.copy_from_slice(&body[..32]);
-    Ok(HandshakeMessage::Finished { verify_data })
+    let curve_type = body[0];
+    if curve_type != 3 {
+        return Err(crate::Error::Tls(format!(
+            "unsupported SKE curve type: {}",
+            curve_type
+        )));
+    }
+    let named_curve = read_u16(body, 1)?;
+    let pubkey_len = body[3] as usize;
+    if body.len() < 4 + pubkey_len + 4 {
+        return Err(crate::Error::Tls("ServerKeyExchange pubkey truncated".into()));
+    }
+    let public_key = body[4..4 + pubkey_len].to_vec();
+    let signed_data = body[..4 + pubkey_len].to_vec();
+
+    let sp = 4 + pubkey_len;
+    let sig_scheme = read_u16(body, sp)?;
+    let sig_len = read_u16(body, sp + 2)? as usize;
+    if body.len() < sp + 4 + sig_len {
+        return Err(crate::Error::Tls("ServerKeyExchange sig truncated".into()));
+    }
+    let signature = body[sp + 4..sp + 4 + sig_len].to_vec();
+
+    Ok(HandshakeMessage::ServerKeyExchange(ServerKeyExchange {
+        named_curve,
+        public_key,
+        sig_scheme,
+        signature,
+        signed_data,
+    }))
+}
+
+// ── Encode: ClientKeyExchange ──────────────────────────────────────
+
+/// Encode a TLS 1.2 ClientKeyExchange message (ECDHE uncompressed P-256 public key).
+pub fn encode_client_key_exchange(pubkey: &[u8; 65], out: &mut Vec<u8>) {
+    // type(1) + len(3) + pubkey_len(1) + pubkey(65)
+    out.push(CLIENT_KEY_EXCHANGE);
+    push_u24(out, 66); // 1 + 65
+    out.push(65);
+    out.extend_from_slice(pubkey);
 }
