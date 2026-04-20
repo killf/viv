@@ -56,7 +56,7 @@ fn gcm_tc1_empty_pt_empty_aad() {
     // Encrypt with empty plaintext → output is just the 16-byte tag
     let mut out = [0u8; 16];
     let gcm = Aes128Gcm::new(&key);
-    gcm.encrypt(&nonce, &[], &[], &mut out);
+    let _ = gcm.encrypt(&nonce, &[], &[], &mut out);
     assert_eq!(&out[..16], &expected_tag);
 }
 
@@ -78,7 +78,7 @@ fn gcm_tc2_16byte_pt_empty_aad() {
 
     let gcm = Aes128Gcm::new(&key);
     let mut out = [0u8; 32]; // 16 ct + 16 tag
-    gcm.encrypt(&nonce, &[], &pt, &mut out);
+    let _ = gcm.encrypt(&nonce, &[], &pt, &mut out);
     assert_eq!(&out[..16], &expected_ct);
     assert_eq!(&out[16..32], &expected_tag);
 }
@@ -95,7 +95,7 @@ fn gcm_decrypt_roundtrip() {
 
     // Encrypt
     let mut ct_and_tag = [0u8; 32];
-    gcm.encrypt(&nonce, &[], &pt, &mut ct_and_tag);
+    let _ = gcm.encrypt(&nonce, &[], &pt, &mut ct_and_tag);
 
     // Decrypt
     let mut decrypted = [0u8; 16];
@@ -117,7 +117,7 @@ fn gcm_tampered_tag_rejected() {
     let gcm = Aes128Gcm::new(&key);
 
     let mut ct_and_tag = [0u8; 32];
-    gcm.encrypt(&nonce, &[], &pt, &mut ct_and_tag);
+    let _ = gcm.encrypt(&nonce, &[], &pt, &mut ct_and_tag);
 
     // Flip one bit in the tag
     ct_and_tag[31] ^= 0x01;
@@ -141,7 +141,7 @@ fn gcm_encrypt_decrypt_with_aad() {
     let gcm = Aes128Gcm::new(&key);
 
     let mut ct_and_tag = [0u8; 32];
-    gcm.encrypt(&nonce, aad, pt, &mut ct_and_tag);
+    let _ = gcm.encrypt(&nonce, aad, pt, &mut ct_and_tag);
 
     // Decrypt should succeed and produce original plaintext
     let mut decrypted = [0u8; 16];
@@ -185,7 +185,7 @@ fn gcm_non_aligned_plaintext() {
     let gcm = Aes128Gcm::new(&key);
 
     let mut ct_and_tag = [0u8; 7 + 16]; // 7 ct + 16 tag
-    gcm.encrypt(&nonce, &[], pt, &mut ct_and_tag);
+    let _ = gcm.encrypt(&nonce, &[], pt, &mut ct_and_tag);
 
     let mut decrypted = [0u8; 7];
     let n = gcm

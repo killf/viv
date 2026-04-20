@@ -25,7 +25,7 @@ pub fn spawn_piped_with_env(
     args: &[&str],
     env: &HashMap<String, String>,
 ) -> crate::Result<ChildProcess> {
-    let mut child = Command::new(cmd)
+    let child = Command::new(cmd)
         .args(args)
         .envs(env.iter())
         .stdin(Stdio::piped())

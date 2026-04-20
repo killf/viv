@@ -42,7 +42,7 @@ fn index_save_and_load() {
 
 #[test]
 fn index_keyword_search() {
-    let store = tmp_store();
+    let _store = tmp_store();
     let mut idx = MemoryIndex { entries: vec![] };
     idx.upsert(MemoryEntry {
         id: "k1".into(),

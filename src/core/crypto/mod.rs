@@ -2,6 +2,7 @@ pub mod aes_gcm;
 pub mod asn1;
 pub mod bigint;
 pub mod md5;
+pub mod sha1;
 pub mod sha256;
 pub mod x25519;
 

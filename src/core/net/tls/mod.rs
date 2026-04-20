@@ -20,7 +20,7 @@ pub use tls13::record;
 use std::io::{self, Read, Write};
 
 use super::tcp;
-use codec::{ALERT, CHANGE_CIPHER_SPEC, HANDSHAKE};
+use codec::{ALERT, APPLICATION_DATA, CHANGE_CIPHER_SPEC, HANDSHAKE};
 use tls12::record::Tls12RecordLayer;
 use tls13::handshake::{Handshake, HandshakeResult};
 use tls13::record::RecordLayer;
@@ -90,6 +90,7 @@ impl TlsStream {
         let mut tls12_triggered = false;
         let mut tls12_server_random = [0u8; 32];
         let mut tls12_cipher_suite = 0u16;
+        let mut tls12_transcript_sha: Option<crate::core::crypto::sha256::Sha256> = None;
 
         'outer: loop {
             // Try to parse records from what we have
@@ -150,10 +151,12 @@ impl TlsStream {
                                 HandshakeResult::NegotiatedTls12 {
                                     server_random,
                                     cipher_suite,
+                                    transcript,
                                 } => {
                                     tls12_triggered = true;
                                     tls12_server_random = server_random;
                                     tls12_cipher_suite = cipher_suite;
+                                    tls12_transcript_sha = Some(transcript);
                                     break 'outer;
                                 }
                                 HandshakeResult::Continue => {}
@@ -180,12 +183,19 @@ impl TlsStream {
         }
 
         // Branch: TLS 1.2 fallback
+        // Pass buffered bytes to connect_tls12. They contain the server's unencrypted
+        // Certificate/ServerKeyExchange/ServerHelloDone records (tls12_record has no decrypter
+        // installed, so read_record returns plaintext payloads — correct for TLS 1.2).
         if tls12_triggered {
+            let transcript = tls12_transcript_sha.ok_or_else(|| {
+                crate::Error::Tls("TLS 1.2 triggered but transcript missing".into())
+            })?;
             return Self::connect_tls12(
                 tcp_stream,
                 &client_random,
                 &tls12_server_random,
                 tls12_cipher_suite,
+                transcript,
                 read_buf,
             );
         }
@@ -223,11 +233,12 @@ impl TlsStream {
         client_random: &[u8; 32],
         server_random: &[u8; 32],
         cipher_suite: u16,
+        transcript: crate::core::crypto::sha256::Sha256,
         mut read_buf: Vec<u8>,
     ) -> crate::Result<Self> {
         use tls12::handshake::{Tls12Handshake, Tls12HandshakeResult};
 
-        let mut hs = Tls12Handshake::new(client_random, server_random, cipher_suite)?;
+        let mut hs = Tls12Handshake::new(transcript, client_random, server_random, cipher_suite)?;
         let mut tls12_record = Tls12RecordLayer::new();
         let mut tmp = [0u8; 8192];
 
@@ -243,6 +254,7 @@ impl TlsStream {
 
                 let (ct, payload, consumed) = tls12_record.read_record(&read_buf)?;
                 read_buf.drain(..consumed);
+                eprintln!("[TLS12] ct=0x{:02x} payload_len={} state={:?}", ct, payload.len(), hs.state());
 
                 match ct {
                     CHANGE_CIPHER_SPEC => {
@@ -257,7 +269,10 @@ impl TlsStream {
                         }
                         return Err(crate::Error::Tls("TLS alert received".into()));
                     }
-                    HANDSHAKE => {
+                    HANDSHAKE | APPLICATION_DATA => {
+                        // TLS 1.2 sends handshake messages (Certificate, ServerKeyExchange,
+                        // ServerHelloDone) as APPLICATION_DATA records before keys are installed.
+                        // Check payload[0] for the actual handshake message type.
                         let mut pos = 0;
                         while pos < payload.len() {
                             if pos + 4 > payload.len() {
@@ -265,9 +280,10 @@ impl TlsStream {
                                     "truncated TLS 1.2 handshake".into(),
                                 ));
                             }
+                            let _msg_type = payload[pos];
                             let msg_len = ((payload[pos + 1] as usize) << 16)
                                 | ((payload[pos + 2] as usize) << 8)
-                                | (payload[pos + 3] as usize);
+                                | payload[pos + 3] as usize;
                             let msg_end = pos + 4 + msg_len;
                             if msg_end > payload.len() {
                                 return Err(crate::Error::Tls(
@@ -305,11 +321,12 @@ impl TlsStream {
 
             let n = tcp_stream.read(&mut tmp).map_err(crate::Error::Io)?;
             if n == 0 {
-                return Err(crate::Error::Tls(
-                    "connection closed during TLS 1.2 handshake".into(),
-                ));
+                eprintln!("[TLS12] TCP EOF (buf has {} bytes)", read_buf.len());
+                return Err(crate::Error::Tls("connection closed during TLS 1.2 handshake".into()));
             }
+            let prev = read_buf.len();
             read_buf.extend_from_slice(&tmp[..n]);
+            eprintln!("[TLS12] TCP read {} bytes, buf {} -> {}", n, prev, read_buf.len());
         }
     }
 }

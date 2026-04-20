@@ -27,7 +27,7 @@ enum State {
 pub enum HandshakeResult {
     Continue,
     Complete,
-    NegotiatedTls12 { server_random: [u8; 32], cipher_suite: u16 },
+    NegotiatedTls12 { server_random: [u8; 32], cipher_suite: u16, transcript: Sha256 },
 }
 
 // ── Handshake ──────────────────────────────────────────────────────
@@ -103,11 +103,12 @@ impl Handshake {
                 // Add ServerHello to transcript
                 self.transcript.update(msg_bytes);
 
-                // TLS 1.2 negotiated — signal to caller
+                // TLS 1.2 negotiated — signal to caller with full transcript
                 if sh.version == 0x0303 {
                     return Ok(HandshakeResult::NegotiatedTls12 {
                         server_random: sh.random,
                         cipher_suite: sh.cipher_suite,
+                        transcript: self.transcript.clone(),
                     });
                 }
 

@@ -15,8 +15,8 @@ use crate::core::net::tls::tls12::record::Tls12RecordLayer;
 
 // ── State ──────────────────────────────────────────────────────────
 
-#[derive(Debug, PartialEq)]
-enum State {
+#[derive(Debug, PartialEq, Clone)]
+pub enum State {
     ExpectCertificate,
     ExpectServerKeyExchange,
     ExpectServerHelloDone,
@@ -48,7 +48,13 @@ pub struct Tls12Handshake {
 }
 
 impl Tls12Handshake {
-    pub fn new(client_random: &[u8; 32], server_random: &[u8; 32], cipher_suite: u16) -> crate::Result<Self> {
+    /// `transcript` must already contain ClientHello + ServerHello bytes.
+    pub fn new(
+        transcript: Sha256,
+        client_random: &[u8; 32],
+        server_random: &[u8; 32],
+        cipher_suite: u16,
+    ) -> crate::Result<Self> {
         let mut secret = [0u8; 32];
         crate::core::crypto::getrandom(&mut secret)?;
         let public_point = Point::generator().scalar_mul(&secret);
@@ -57,7 +63,7 @@ impl Tls12Handshake {
             .ok_or_else(|| crate::Error::Tls("P-256 keygen produced infinity".into()))?;
         Ok(Self {
             state: State::ExpectCertificate,
-            transcript: Sha256::new(),
+            transcript,
             client_random: *client_random,
             server_random: *server_random,
             cipher_suite,
@@ -67,12 +73,26 @@ impl Tls12Handshake {
         })
     }
 
+    /// Expose current state for routing decisions in `connect_tls12`.
+    pub fn state(&self) -> &State {
+        &self.state
+    }
+
     pub fn handle_message(
         &mut self,
         msg_bytes: &[u8],
         record: &mut Tls12RecordLayer,
     ) -> crate::Result<Tls12HandshakeResult> {
-        let msg = codec::decode_handshake(msg_bytes)?;
+        if msg_bytes.is_empty() {
+            return Err(crate::Error::Tls("empty TLS 1.2 handshake message".into()));
+        }
+        // TLS 1.2 Certificate has no type byte (body starts with certificate_list_len).
+        // We don't verify certs, so treat the raw bytes as a valid Certificate.
+        let msg = if self.state == State::ExpectCertificate {
+            HandshakeMessage::Certificate(Vec::new())
+        } else {
+            codec::decode_handshake(msg_bytes)?
+        };
 
         match (&self.state, msg) {
             // ── Certificate ────────────────────────────────────────

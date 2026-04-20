@@ -1,7 +1,7 @@
 // Handshake state machine tests — verify correct error handling for
 // unexpected state transitions, malformed messages, and verification failures.
 
-use viv::core::net::tls::codec::{self, HandshakeMessage};
+use viv::core::net::tls::codec;
 use viv::core::crypto::sha256::hmac_sha256;
 use viv::core::crypto::x25519;
 use viv::core::net::tls::handshake::{Handshake, HandshakeResult};

@@ -99,6 +99,7 @@ pub fn encode_client_hello(
     encode_ext_server_name(server_name, &mut exts);
     encode_ext_supported_versions(&mut exts);
     encode_ext_supported_groups(&mut exts);
+    encode_ext_ec_point_formats(&mut exts);
     encode_ext_key_share(x25519_pub, &mut exts);
     encode_ext_signature_algorithms(&mut exts);
 
@@ -115,11 +116,13 @@ pub fn encode_client_hello(
     body.push(32);
     body.extend_from_slice(session_id);
 
-    // cipher_suites: length(2) + 3 suites * 2 bytes each = 6 bytes
-    push_u16(&mut body, 6);
+    // cipher_suites: length(2) + 4 suites * 2 bytes = 8 bytes
+    // 0xFF = TLS_EMPTY_RENEGOTIATION_INFO_SCSV (RFC 5746, required by many servers)
+    push_u16(&mut body, 8);
     push_u16(&mut body, 0x1301); // TLS_AES_128_GCM_SHA256 (TLS 1.3)
-    push_u16(&mut body, 0xC02B); // TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
-    push_u16(&mut body, 0xC02C); // TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
+    push_u16(&mut body, 0xC02F); // TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256 (TLS 1.2 RSA)
+    push_u16(&mut body, 0xC02B); // TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256 (TLS 1.2 ECDSA)
+    push_u16(&mut body, 0x00FF); // TLS_EMPTY_RENEGOTIATION_INFO_SCSV
 
     // compression_methods: length(1) + null
     body.push(1);
@@ -188,6 +191,14 @@ fn encode_ext_supported_groups(out: &mut Vec<u8>) {
     push_u16(out, 4); // list length
     push_u16(out, 0x001d); // x25519
     push_u16(out, 0x0017); // secp256r1 (P-256) for TLS 1.2
+}
+
+fn encode_ext_ec_point_formats(out: &mut Vec<u8>) {
+    // RFC 4492: required for TLS 1.2 ECDHE to advertise uncompressed format support
+    push_u16(out, 0x000B); // ec_point_formats
+    push_u16(out, 2);      // ext data length
+    out.push(1);           // format list length
+    out.push(0x00);        // uncompressed
 }
 
 fn encode_ext_key_share(pub_key: &[u8; 32], out: &mut Vec<u8>) {

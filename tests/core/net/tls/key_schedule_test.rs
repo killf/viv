@@ -59,7 +59,7 @@ fn hkdf_expand_label_derived_from_early_secret() {
     let empty_hash = Sha256::hash(b"");
 
     let mut out = [0u8; 32];
-    hkdf_expand_label(&EARLY_SECRET, b"derived", &empty_hash, &mut out);
+    let _ = hkdf_expand_label(&EARLY_SECRET, b"derived", &empty_hash, &mut out);
     assert_eq!(
         out, DERIVED_1,
         "Derive-Secret(early_secret, \"derived\", \"\") mismatch"
