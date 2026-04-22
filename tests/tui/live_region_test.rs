@@ -137,3 +137,20 @@ fn frame_commits_then_paints_and_returns_cursor() {
     assert!(cur.row < 10);
     assert!(region.last_live_rows() > 0);
 }
+
+#[test]
+fn drop_trailing_live_markdown_removes_only_trailing_live() {
+    let mut region = LiveRegion::new(TermSize { cols: 40, rows: 10 });
+    let nodes = vec![MarkdownNode::Paragraph {
+        spans: vec![InlineSpan::Text("a".into())],
+    }];
+    region.push_live_block(LiveBlock::Markdown {
+        nodes: nodes.clone(), state: BlockState::Committing,
+    });
+    region.push_live_block(LiveBlock::Markdown {
+        nodes, state: BlockState::Live,
+    });
+    region.drop_trailing_live_markdown();
+    assert_eq!(region.block_count(), 1);
+    assert_eq!(region.state_at(0), Some(BlockState::Committing));
+}

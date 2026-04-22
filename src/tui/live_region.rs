@@ -77,6 +77,14 @@ impl LiveRegion {
         }
     }
 
+    /// Remove the trailing block only if it is a `Markdown { state: Live }`.
+    /// Used when TextChunk/Done supersedes the previous in-flight view.
+    pub fn drop_trailing_live_markdown(&mut self) {
+        if let Some(LiveBlock::Markdown { state: BlockState::Live, .. }) = self.blocks.last() {
+            self.blocks.pop();
+        }
+    }
+
     pub fn state_at(&self, i: usize) -> Option<BlockState> {
         match self.blocks.get(i)? {
             LiveBlock::Markdown { state, .. } => Some(*state),

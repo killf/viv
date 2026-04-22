@@ -388,6 +388,38 @@ impl MarkdownParseBuffer {
         self.drain_complete_lines()
     }
 
+    /// Best-effort view of the currently buffered but un-closed bytes, rendered
+    /// as a vector of [`MarkdownNode`]. Does NOT mutate internal state.
+    ///
+    /// Returns an empty vector when there is nothing buffered. When inside an
+    /// open code fence, the accumulated code lines plus the current partial
+    /// line (if any) are emitted as a [`MarkdownNode::CodeBlock`]. Otherwise,
+    /// the buffered text is wrapped in a single [`MarkdownNode::Paragraph`].
+    pub fn peek_pending(&self) -> Vec<MarkdownNode> {
+        if self.in_code_block {
+            let mut code = self.code_lines.join("\n");
+            if !self.buffer.is_empty() {
+                if !code.is_empty() {
+                    code.push('\n');
+                }
+                code.push_str(&self.buffer);
+            }
+            if code.is_empty() {
+                return Vec::new();
+            }
+            return vec![MarkdownNode::CodeBlock {
+                language: self.code_language.clone(),
+                code,
+            }];
+        }
+        if self.buffer.is_empty() {
+            return Vec::new();
+        }
+        vec![MarkdownNode::Paragraph {
+            spans: vec![InlineSpan::Text(self.buffer.clone())],
+        }]
+    }
+
     /// Flush any remaining buffered content and return blocks.
     pub fn flush(&mut self) -> Vec<ContentBlock> {
         // If there's no trailing newline, add one so the remainder is processed.

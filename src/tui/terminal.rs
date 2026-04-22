@@ -367,14 +367,25 @@ impl TerminalUI {
             AgentMessage::TextChunk(s) => {
                 let new_blocks = self.parse_buffer.push(&s);
                 for block in new_blocks {
-                    let h = self.block_height(&block);
-                    self.blocks.push(block);
-                    self.conversation_state.append_item_height(h);
+                    if let crate::tui::content::ContentBlock::Markdown { nodes } = block {
+                        self.live_region.push_live_block(
+                            crate::tui::live_region::LiveBlock::Markdown {
+                                nodes,
+                                state: crate::tui::live_region::BlockState::Committing,
+                            },
+                        );
+                    }
                 }
-                // If no new blocks were emitted but content is growing in the
-                // parse buffer, update the last markdown block's height if it
-                // was recently appended and the parse buffer produced an update.
-                self.conversation_state.auto_scroll();
+                let pending = self.parse_buffer.peek_pending();
+                self.live_region.drop_trailing_live_markdown();
+                if !pending.is_empty() {
+                    self.live_region.push_live_block(
+                        crate::tui::live_region::LiveBlock::Markdown {
+                            nodes: pending,
+                            state: crate::tui::live_region::BlockState::Live,
+                        },
+                    );
+                }
             }
 
             AgentMessage::Status(s) => {
@@ -474,20 +485,18 @@ impl TerminalUI {
                 // Flush remaining parse buffer
                 let remaining = self.parse_buffer.flush();
                 for block in remaining {
-                    let h = self.block_height(&block);
-                    self.blocks.push(block);
-                    self.conversation_state.append_item_height(h);
+                    if let crate::tui::content::ContentBlock::Markdown { nodes } = block {
+                        self.live_region.push_live_block(
+                            crate::tui::live_region::LiveBlock::Markdown {
+                                nodes,
+                                state: crate::tui::live_region::BlockState::Committing,
+                            },
+                        );
+                    }
                 }
+                self.live_region.drop_trailing_live_markdown();
                 self.busy = false;
                 self.spinner_start = None;
-
-                // Empty line separator
-                let nodes = vec![MarkdownNode::Paragraph {
-                    spans: vec![crate::tui::content::InlineSpan::Text(String::new())],
-                }];
-                self.blocks.push(ContentBlock::Markdown { nodes });
-                self.conversation_state.append_item_height(1);
-                self.conversation_state.auto_scroll();
             }
 
             AgentMessage::Evolved => {
