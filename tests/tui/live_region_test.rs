@@ -54,3 +54,31 @@ fn commit_text_with_zero_live_rows_skips_cursor_up() {
     assert!(!out.contains("\x1b[0A"));
     assert!(out.contains("hi\n"));
 }
+
+#[test]
+fn commit_pending_writes_markdown_then_removes_block() {
+    let mut region = LiveRegion::new(TermSize { cols: 40, rows: 10 });
+    let nodes = vec![MarkdownNode::Paragraph {
+        spans: vec![InlineSpan::Text("hello".into())],
+    }];
+    region.push_live_block(LiveBlock::Markdown { nodes, state: BlockState::Committing });
+    let mut backend = TestBackend::new(40, 10);
+    region.commit_pending(&mut backend).unwrap();
+
+    assert_eq!(region.block_count(), 0);
+    let out = String::from_utf8(backend.output.clone()).unwrap();
+    assert!(out.contains("hello"), "got {:?}", out);
+    assert!(out.ends_with("\n"));
+}
+
+#[test]
+fn commit_pending_leaves_live_blocks_untouched() {
+    let mut region = LiveRegion::new(TermSize { cols: 40, rows: 10 });
+    let nodes = vec![MarkdownNode::Paragraph {
+        spans: vec![InlineSpan::Text("staying".into())],
+    }];
+    region.push_live_block(LiveBlock::Markdown { nodes, state: BlockState::Live });
+    let mut backend = TestBackend::new(40, 10);
+    region.commit_pending(&mut backend).unwrap();
+    assert_eq!(region.block_count(), 1);
+}
