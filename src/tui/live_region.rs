@@ -219,7 +219,7 @@ impl LiveRegion {
         match &self.blocks[i] {
             LiveBlock::Markdown { nodes, .. } => MarkdownBlockWidget::height(nodes, width),
             LiveBlock::ToolCall { .. } => 1,
-            LiveBlock::PermissionPrompt { .. } => 1,
+            LiveBlock::PermissionPrompt { .. } => crate::tui::permission::PermissionWidget::height(),
         }
     }
 
@@ -234,9 +234,9 @@ impl LiveRegion {
                 let w = ToolCallWidget::new(name, &summary, input);
                 w.render(area, buf, tc_state);
             }
-            LiveBlock::PermissionPrompt { tool, input, .. } => {
-                let text = format!("  \u{25c6} {}({})", tool, input);
-                buf.set_str(area.x, area.y, &text, None, false);
+            LiveBlock::PermissionPrompt { tool, input, menu } => {
+                let widget = crate::tui::permission::PermissionWidget::new(tool, input);
+                widget.render(area, buf, menu);
             }
         }
     }

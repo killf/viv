@@ -171,3 +171,26 @@ fn finish_last_running_tool_marks_committing_with_output() {
     region.finish_last_running_tool(Some("drwx----".into()), None);
     assert_eq!(region.state_at(0), Some(BlockState::Committing));
 }
+
+#[test]
+fn paint_renders_permission_menu_multiple_rows() {
+    use viv::tui::permission::PermissionState;
+    let mut region = LiveRegion::new(TermSize { cols: 60, rows: 20 });
+    region.push_live_block(LiveBlock::PermissionPrompt {
+        tool: "Bash".into(),
+        input: "rm -rf /".into(),
+        menu: PermissionState::new(),
+    });
+    let ctx = StatusContext {
+        cwd: "~/p".into(), branch: None, model: "m".into(),
+        input_tokens: 0, output_tokens: 0,
+        spinner_frame: None, spinner_verb: String::new(),
+    };
+    let mut backend = TestBackend::new(60, 20);
+    region.paint(&mut backend, "", 0, InputMode::Chat, &ctx).unwrap();
+    // Menu widget is multi-row; live region should occupy more rows than the
+    // input+status baseline (3 input + 1 status + 1 blank = 5).
+    assert!(region.last_live_rows() > 5,
+        "expected live region to include multi-row permission menu, got {} rows",
+        region.last_live_rows());
+}
