@@ -79,12 +79,12 @@ impl InputParser {
         let button = self.buf[3].saturating_sub(32);
         let col = self.buf[4].saturating_sub(33);
         let row = self.buf[5].saturating_sub(33);
-        self.buf.drain(..6);
         let event = match button {
             0 => MouseEvent::LeftPress { x: u16::from(col), y: u16::from(row) },
             3 => MouseEvent::LeftRelease { x: u16::from(col), y: u16::from(row) },
-            _ => return None, // unknown button, consume and skip
+            _ => return None, // unrecognized — don't drain, let URXVT check handle it
         };
+        self.buf.drain(..6);
         Some(InputEvent::Mouse(event))
     }
 

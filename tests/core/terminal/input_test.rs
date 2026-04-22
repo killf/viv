@@ -155,16 +155,16 @@ fn test_sgr_mouse_left_release() {
 
 #[test]
 fn test_sgr_mouse_wheel_up() {
-    // ESC [ < 64 ; 0 ; 0 M  — wheel up
+    // ESC [ < 64 ; 0 ; 0 M  — wheel up: consumed, no event
     let bytes: &[u8] = b"\x1b[<64;0;0M";
-    assert_eq!(parse_single(bytes), Some(InputEvent::Mouse(MouseEvent::WheelUp)));
+    assert_eq!(parse_single(bytes), None);
 }
 
 #[test]
 fn test_sgr_mouse_wheel_down() {
-    // ESC [ < 65 ; 0 ; 0 M  — wheel down
+    // ESC [ < 65 ; 0 ; 0 M  — wheel down: consumed, no event
     let bytes: &[u8] = b"\x1b[<65;0;0M";
-    assert_eq!(parse_single(bytes), Some(InputEvent::Mouse(MouseEvent::WheelDown)));
+    assert_eq!(parse_single(bytes), None);
 }
 
 #[test]
@@ -206,18 +206,16 @@ fn test_mouse_1000_left_release() {
 
 #[test]
 fn test_mouse_1000_wheel_up() {
-    // button=64 (wheel up), col=40, row=10
-    // 64+32=96='`', col+33=73='I', row+33=43='+'
+    // button=64 (wheel up): consumed, no event
     let bytes = [0x1b, b'[', b'M', 96u8, 73u8, 43u8];
-    assert_eq!(parse_single(&bytes), Some(InputEvent::Mouse(MouseEvent::WheelUp)));
+    assert_eq!(parse_single(&bytes), None);
 }
 
 #[test]
 fn test_mouse_1000_wheel_down() {
-    // button=65 (wheel down), col=40, row=10
-    // 65+32=97='a', col+33=73='I', row+33=43='+'
+    // button=65 (wheel down): consumed, no event
     let bytes = [0x1b, b'[', b'M', 97u8, 73u8, 43u8];
-    assert_eq!(parse_single(&bytes), Some(InputEvent::Mouse(MouseEvent::WheelDown)));
+    assert_eq!(parse_single(&bytes), None);
 }
 
 #[test]
