@@ -1,3 +1,4 @@
+pub mod ansi_serialize;
 pub mod block;
 pub mod code_block;
 pub mod content;
@@ -7,6 +8,7 @@ pub mod header;
 pub mod input;
 pub mod lang_profiles;
 pub mod layout;
+pub mod live_region;
 pub mod markdown;
 pub mod message_style;
 pub mod paragraph;

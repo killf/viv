@@ -1,3 +1,4 @@
+mod ansi_serialize_test;
 mod block_test;
 mod code_block_test;
 mod content_test;
@@ -8,6 +9,7 @@ mod input_mode_test;
 mod input_test;
 mod lang_profiles_test;
 mod layout_test;
+mod live_region_test;
 mod markdown_test;
 mod message_style_test;
 mod paragraph_test;
