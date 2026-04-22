@@ -83,8 +83,10 @@ dirty = true
 ## Commit 状态机
 
 ```rust
-enum BlockState { Live, Committing, Committed }
+enum BlockState { Live, Committing }
 ```
+
+`Committing` 仅存在于"本帧待写入 scrollback"的一瞬；写完后 block 直接从 `live_blocks` 移除，不保留 `Committed` 态。
 
 | Block 类型 | Live → Committing 触发点 |
 |---|---|
@@ -145,8 +147,8 @@ enum BlockState { Live, Committing, Committed }
 1. `enable_raw_mode()`
 2. DECSCUSR steady bar cursor (`\x1b[6 q`)
 3. 不调用 `enter_alt_screen`
-4. 静态渲染 welcome widget 一次到 stdout（带 model=None 占位，待 Ready 后……不，Welcome 打印发生在 Ready 到达后才有 model；所以 welcome 推迟到 `AgentMessage::Ready` 时首帧打印）
-5. `last_live_rows = 0`
+4. `last_live_rows = 0`
+5. 首次收到 `AgentMessage::Ready { model }` 时，把 `WelcomeWidget` 静态渲染一次写入 stdout（进 scrollback），之后不再重绘
 
 **退出（`cleanup`）：**
 1. `cursor_up(last_live_rows)` + `\x1b[0J`
@@ -162,7 +164,7 @@ enum BlockState { Live, Committing, Committed }
 - **集成测试** `tests/tui/inline_flow.rs`：mock `Backend`（写入 `Vec<u8>`），跑 scripted `AgentMessage` 序列（Ready → TextChunk ×N → ToolStart → ToolEnd → Done），断言最终 stdout 字节流。
 - **快照** `tests/tui/snapshots/`：把典型对话的 stdout 字节序列落快照，后续重构回归对比。
 
-不加 e2e（记忆：`feedback_test_timeout.md`——10s 超时）。
+不做 e2e（真实终端输出难以稳定断言；字节流快照已覆盖回归需求）。
 
 ## 非目标
 
