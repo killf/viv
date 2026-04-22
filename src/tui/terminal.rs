@@ -53,6 +53,7 @@ pub struct TerminalUI {
     msg_rx: Receiver<AgentMessage>,
     backend: CrossBackend,
     renderer: Renderer,
+    live_region: crate::tui::live_region::LiveRegion,
     editor: LineEditor,
     cwd: String,
     branch: Option<String>,
@@ -125,7 +126,6 @@ impl TerminalUI {
         msg_rx: Receiver<AgentMessage>,
     ) -> crate::Result<Self> {
         let mut backend = CrossBackend::new()?;
-        backend.enter_alt_screen()?;
         backend.enable_raw_mode()?;
         // Switch to a steady (non-blinking) bar cursor via DECSCUSR. Blinking
         // cursors interact badly with streaming redraws — even when we avoid
@@ -136,6 +136,7 @@ impl TerminalUI {
 
         let size = backend.size()?;
         let renderer = Renderer::new(size);
+        let live_region = crate::tui::live_region::LiveRegion::new(size);
 
         let (cwd, branch) = Self::read_cwd_branch();
 
@@ -169,6 +170,7 @@ impl TerminalUI {
             msg_rx,
             backend,
             renderer,
+            live_region,
             editor: LineEditor::new(),
             cwd,
             branch,
@@ -807,7 +809,6 @@ impl TerminalUI {
         // Restore the terminal's default cursor style (DECSCUSR reset).
         self.backend.write(b"\x1b[0 q")?;
         self.backend.disable_raw_mode()?;
-        self.backend.leave_alt_screen()?;
         self.backend.write(b"Bye!\n")?;
         self.backend.flush()?;
         Ok(())
