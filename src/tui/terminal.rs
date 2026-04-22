@@ -792,6 +792,8 @@ impl TerminalUI {
             model: self.model_name.clone(),
             input_tokens: self.input_tokens,
             output_tokens: self.output_tokens,
+            spinner_frame: None,
+            spinner_verb: String::new(),
         };
         status.render(chunks[2], &mut buf);
     }

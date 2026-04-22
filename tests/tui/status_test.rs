@@ -11,6 +11,8 @@ fn renders_model_name() {
         model: "claude-sonnet-4-6".to_string(),
         input_tokens: 0,
         output_tokens: 0,
+        spinner_frame: None,
+        spinner_verb: String::new(),
     };
     let mut buf = Buffer::empty(Rect::new(0, 0, 60, 1));
     w.render(Rect::new(0, 0, 60, 1), &mut buf);
@@ -29,6 +31,8 @@ fn renders_token_counts() {
         model: "m".to_string(),
         input_tokens: 1000,
         output_tokens: 250,
+        spinner_frame: None,
+        spinner_verb: String::new(),
     };
     let mut buf = Buffer::empty(Rect::new(0, 0, 60, 1));
     w.render(Rect::new(0, 0, 60, 1), &mut buf);
@@ -45,6 +49,8 @@ fn cost_calculation_sonnet_pricing() {
         model: "m".to_string(),
         input_tokens: 1_000_000,
         output_tokens: 1_000_000,
+        spinner_frame: None,
+        spinner_verb: String::new(),
     };
     // Sonnet: $3/M input + $15/M output = $18 total
     let cost = w.estimate_cost();
@@ -63,6 +69,8 @@ fn zero_tokens_shows_zero_cost() {
         model: "m".to_string(),
         input_tokens: 0,
         output_tokens: 0,
+        spinner_frame: None,
+        spinner_verb: String::new(),
     };
     assert_eq!(w.estimate_cost(), 0.0);
 }
@@ -75,6 +83,8 @@ fn text_is_dim() {
         model: "m".to_string(),
         input_tokens: 0,
         output_tokens: 0,
+        spinner_frame: None,
+        spinner_verb: String::new(),
     };
     let mut buf = Buffer::empty(Rect::new(0, 0, 40, 1));
     w.render(Rect::new(0, 0, 40, 1), &mut buf);

@@ -2,6 +2,8 @@ use viv::tui::live_region::{BlockState, LiveBlock, LiveRegion};
 use viv::tui::content::{InlineSpan, MarkdownNode};
 use viv::core::terminal::size::TermSize;
 use viv::core::terminal::backend::TestBackend;
+use viv::tui::input::InputMode;
+use viv::tui::status::StatusContext;
 
 #[test]
 fn new_region_has_no_blocks_and_zero_last_live_rows() {
@@ -81,4 +83,35 @@ fn commit_pending_leaves_live_blocks_untouched() {
     let mut backend = TestBackend::new(40, 10);
     region.commit_pending(&mut backend).unwrap();
     assert_eq!(region.block_count(), 1);
+}
+
+#[test]
+fn paint_returns_cursor_inside_input_and_updates_last_live_rows() {
+    let mut region = LiveRegion::new(TermSize { cols: 40, rows: 10 });
+    let ctx = StatusContext {
+        cwd: "~/p".into(), branch: None, model: "m".into(),
+        input_tokens: 0, output_tokens: 0,
+        spinner_frame: None, spinner_verb: String::new(),
+    };
+    let mut backend = TestBackend::new(40, 10);
+    let cur = region.paint(&mut backend, "", 0, InputMode::Chat, &ctx).unwrap();
+    assert!(region.last_live_rows() >= 4);
+    assert!(cur.row < 10);
+}
+
+#[test]
+fn paint_includes_in_flight_markdown_block() {
+    let mut region = LiveRegion::new(TermSize { cols: 40, rows: 10 });
+    let nodes = vec![MarkdownNode::Paragraph {
+        spans: vec![InlineSpan::Text("streaming…".into())],
+    }];
+    region.push_live_block(LiveBlock::Markdown { nodes, state: BlockState::Live });
+    let ctx = StatusContext {
+        cwd: "~/p".into(), branch: None, model: "m".into(),
+        input_tokens: 0, output_tokens: 0,
+        spinner_frame: None, spinner_verb: String::new(),
+    };
+    let mut backend = TestBackend::new(40, 10);
+    region.paint(&mut backend, "", 0, InputMode::Chat, &ctx).unwrap();
+    assert!(region.last_live_rows() >= 5);
 }

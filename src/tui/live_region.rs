@@ -1,10 +1,14 @@
 use crate::core::terminal::backend::Backend;
 use crate::core::terminal::buffer::{Buffer, Rect};
 use crate::core::terminal::size::TermSize;
+use crate::core::terminal::style::theme;
 use crate::tui::ansi_serialize::buffer_rows_to_ansi;
+use crate::tui::block::{Block, BorderSides, BorderStyle};
 use crate::tui::content::MarkdownNode;
+use crate::tui::input::{InputMode, InputWidget};
 use crate::tui::markdown::MarkdownBlockWidget;
 use crate::tui::permission::PermissionState;
+use crate::tui::status::{StatusContext, StatusWidget};
 use crate::tui::tool_call::{ToolCallState, ToolCallWidget, extract_input_summary};
 use crate::tui::widget::{StatefulWidget, Widget};
 
@@ -164,8 +168,75 @@ impl LiveRegion {
             }
             LiveBlock::PermissionPrompt { tool, input, .. } => {
                 let text = format!("  \u{25c6} {}({})", tool, input);
-                buf.set_str(0, 0, &text, None, false);
+                buf.set_str(area.x, area.y, &text, None, false);
             }
         }
     }
+
+    pub fn paint(
+        &mut self,
+        backend: &mut dyn Backend,
+        editor_content: &str,
+        cursor_offset: usize,
+        mode: InputMode,
+        status: &StatusContext,
+    ) -> crate::Result<CursorPos> {
+        let width = self.size.cols;
+        let screen_h = self.size.rows;
+
+        let live_block_rows: u16 = (0..self.blocks.len())
+            .map(|i| self.block_height(i, width))
+            .sum();
+
+        let editor_lines = editor_content.split('\n').count() as u16;
+        let input_h = (editor_lines + 2).clamp(3, 8);
+        let blank_row: u16 = if live_block_rows > 0 { 1 } else { 0 };
+        let status_h: u16 = 1;
+
+        let live_rows = (live_block_rows + blank_row + input_h + status_h).min(screen_h);
+        let top_y = screen_h.saturating_sub(live_rows);
+
+        let area = Rect::new(0, top_y, width, live_rows);
+        let mut buf = Buffer::empty(area);
+
+        let mut y = top_y;
+        for i in 0..self.blocks.len() {
+            let h = self.block_height(i, width);
+            let block_area = Rect::new(0, y, width, h);
+            self.render_block_into(i, block_area, &mut buf);
+            y = y.saturating_add(h);
+        }
+        y = y.saturating_add(blank_row);
+
+        let input_area = Rect::new(0, y, width, input_h);
+        let input_block = Block::new()
+            .border(BorderStyle::Rounded)
+            .borders(BorderSides::HORIZONTAL)
+            .border_fg(theme::DIM);
+        let input_inner = input_block.inner(input_area);
+        input_block.render(input_area, &mut buf);
+        let input_widget = InputWidget::new(editor_content, cursor_offset, mode.prompt())
+            .prompt_fg(theme::CLAUDE);
+        input_widget.render(input_inner, &mut buf);
+        let (cur_x, cur_y) = input_widget.cursor_position(input_inner);
+        y = y.saturating_add(input_h);
+
+        let status_area = Rect::new(0, y, width, status_h);
+        let status_widget = StatusWidget::from_context(status);
+        status_widget.render(status_area, &mut buf);
+
+        let bytes = buffer_rows_to_ansi(&buf, top_y..top_y + live_rows);
+        backend.write(format!("\x1b[{};1H", top_y + 1).as_bytes())?;
+        backend.write(&bytes)?;
+        backend.flush()?;
+
+        self.last_live_rows = live_rows;
+        Ok(CursorPos { row: cur_y, col: cur_x })
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct CursorPos {
+    pub row: u16,
+    pub col: u16,
 }
