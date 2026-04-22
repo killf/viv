@@ -1,7 +1,6 @@
 use crate::core::terminal::backend::Backend;
 use crate::core::terminal::buffer::{Buffer, Rect};
 use crate::core::terminal::size::TermSize;
-use crate::tui::text_map::TextMap;
 use std::cell::{RefCell, RefMut};
 
 /// Double-buffered renderer: widgets paint into `current`, then `flush` diffs
@@ -13,8 +12,6 @@ pub struct Renderer {
     last_cursor: Option<(u16, u16)>,
     /// Current selection region for highlighting (inverted fg/bg colors).
     pub(crate) selection: Option<Rect>,
-    /// Maps screen coordinates to text sources for Ctrl+C copy.
-    text_map: RefCell<TextMap>,
 }
 
 impl Renderer {
@@ -27,7 +24,6 @@ impl Renderer {
             size,
             last_cursor: None,
             selection: None,
-            text_map: RefCell::new(TextMap::new()),
         }
     }
 
@@ -39,7 +35,6 @@ impl Renderer {
         self.size = size;
         self.last_cursor = None;
         self.selection = None;
-        self.text_map.borrow_mut().clear();
     }
 
     /// Set the selection region for highlighting.
@@ -56,17 +51,6 @@ impl Renderer {
     /// Takes `&self` (not `&mut self`) because Buffer is wrapped in RefCell for interior mutability.
     pub fn buffer_mut(&self) -> RefMut<'_, Buffer> {
         self.current.borrow_mut()
-    }
-
-    /// Returns a reference to the text map (for text extraction / Ctrl+C copy).
-    pub fn text_map(&self) -> std::cell::Ref<'_, TextMap> {
-        self.text_map.borrow()
-    }
-
-    /// Returns a mutable reference to the text map for building mappings during render.
-    /// Takes `&self` (not `&mut self`) because TextMap is wrapped in RefCell for interior mutability.
-    pub fn text_map_mut(&self) -> RefMut<'_, TextMap> {
-        self.text_map.borrow_mut()
     }
 
     /// Returns a Rect covering the full terminal area.
