@@ -3,38 +3,12 @@ use std::sync::mpsc::Receiver;
 use crate::agent::protocol::{AgentEvent, AgentMessage, PermissionResponse};
 use crate::core::runtime::channel::NotifySender;
 use crate::core::terminal::backend::{Backend, CrossBackend};
-use crate::core::terminal::buffer::{Buffer, Rect};
 use crate::core::terminal::events::{Event, EventLoop};
-use crate::core::terminal::input::{KeyEvent, MouseEvent};
-use crate::core::terminal::style::theme;
-use crate::tui::block::{Block, BorderSides, BorderStyle};
-use crate::tui::code_block::CodeBlockWidget;
-use crate::tui::content::{ContentBlock, MarkdownNode, MarkdownParseBuffer};
-use crate::tui::conversation::ConversationState;
-use crate::tui::focus::FocusManager;
-use crate::tui::input::{InputMode, InputWidget};
-use crate::tui::layout::{Constraint, Direction, Layout};
-use crate::tui::markdown::MarkdownBlockWidget;
-use crate::tui::permission::{PermissionState, PermissionWidget};
+use crate::core::terminal::input::KeyEvent;
+use crate::tui::content::MarkdownParseBuffer;
+use crate::tui::input::InputMode;
 use crate::tui::renderer::Renderer;
-use crate::tui::selection::SelectionState;
-use crate::tui::spinner::{random_verb, Spinner};
-use crate::tui::status::StatusWidget;
-use crate::tui::text_map::{CellSource, TextMap};
-use crate::tui::tool_call::{extract_input_summary, ToolCallState, ToolCallWidget, ToolStatus};
-use crate::tui::welcome::WelcomeWidget;
-use crate::tui::widget::{StatefulWidget, Widget};
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Welcome animation state
-// ─────────────────────────────────────────────────────────────────────────────
-
-/// Tracks the start time of the welcome screen fade-in animation.
-struct WelcomeAnimState {
-    start: std::time::Instant,
-    /// Total rows (logo + info), used to compute the animation end time.
-    total_rows: u16,
-}
+use crate::tui::spinner::{Spinner, random_verb};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // UiAction
@@ -65,12 +39,7 @@ pub struct TerminalUI {
     spinner_start: Option<std::time::Instant>,
     spinner_verb: String,
 
-    // ── Widget-based conversation model ─────────────────────────────────
-    blocks: Vec<ContentBlock>,
     parse_buffer: MarkdownParseBuffer,
-    conversation_state: ConversationState,
-    tool_states: Vec<ToolCallState>,
-    focus: FocusManager,
     tool_seq: usize,
 
     /// Permission prompt: (tool_name, input_summary). The menu state lives on
@@ -81,10 +50,6 @@ pub struct TerminalUI {
     /// "evolving memories" spinner instead of a silent freeze.
     quitting: bool,
     quitting_start: Option<std::time::Instant>,
-    /// Welcome screen fade-in animation state. None means animation is complete.
-    welcome_anim: Option<WelcomeAnimState>,
-    /// Mouse drag-to-select state.
-    selection_state: SelectionState,
 }
 
 impl TerminalUI {
@@ -140,25 +105,6 @@ impl TerminalUI {
 
         let (cwd, branch) = Self::read_cwd_branch();
 
-        let mut blocks = Vec::new();
-        let mut conversation_state = ConversationState::new();
-
-        // Push welcome screen as first content block
-        blocks.push(ContentBlock::Welcome {
-            model: None,
-            cwd: cwd.clone(),
-            branch: branch.clone(),
-        });
-        conversation_state.append_item_height(5); // WelcomeWidget::HEIGHT
-
-        // Empty line separator
-        blocks.push(ContentBlock::Markdown {
-            nodes: vec![MarkdownNode::Paragraph {
-                spans: vec![crate::tui::content::InlineSpan::Text(String::new())],
-            }],
-        });
-        conversation_state.append_item_height(1);
-
         let seed = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_millis() as u64)
@@ -181,20 +127,11 @@ impl TerminalUI {
             spinner: Spinner::new(),
             spinner_start: None,
             spinner_verb,
-            blocks,
             parse_buffer: MarkdownParseBuffer::new(),
-            conversation_state,
-            tool_states: Vec::new(),
-            focus: FocusManager::new(),
             tool_seq: 0,
             pending_permission: None,
             quitting: false,
             quitting_start: None,
-            welcome_anim: Some(WelcomeAnimState {
-                start: std::time::Instant::now(),
-                total_rows: WelcomeWidget::TOTAL_ROWS,
-            }),
-            selection_state: SelectionState::new(),
         })
     }
 
@@ -238,41 +175,7 @@ impl TerminalUI {
             }
 
             if dirty {
-                // Compute the cursor position before painting.
-                let area = self.renderer.area();
-                let is_permission_pending = self.pending_permission.is_some();
-                let input_height = if is_permission_pending {
-                    PermissionWidget::height()
-                } else {
-                    (self.editor.line_count() as u16 + 2).clamp(3, 8)
-                };
-                let chunks = main_layout(input_height).split(area);
-                let input_block_area = chunks[1];
-
-                let cursor = if is_permission_pending {
-                    // No cursor in permission mode
-                    None
-                } else {
-                    let input_block = Block::new()
-                        .border(BorderStyle::Rounded)
-                        .borders(BorderSides::HORIZONTAL)
-                        .border_fg(theme::DIM);
-                    let input_inner = input_block.inner(input_block_area);
-                    let editor_content = self.editor.content();
-                    let input_widget = InputWidget::new(
-                        &editor_content,
-                        self.editor.cursor_offset(),
-                        self.editor.mode.prompt(),
-                    )
-                    .prompt_fg(theme::CLAUDE);
-                    Some(input_widget.cursor_position(input_inner))
-                };
-
-                self.render_frame();
-                self.renderer
-                    .set_selection(self.selection_state.region().map(|r| r.as_rect()));
-                self.renderer.flush(&mut self.backend, cursor)?;
-
+                self.render_frame()?;
                 dirty = false;
             }
 
@@ -302,43 +205,12 @@ impl TerminalUI {
                         }
                     }
                     Event::Resize(new_size) => {
-                        self.selection_state.clear(); // coordinates invalid after resize
                         self.renderer.resize(new_size);
-                        // Recalculate all block heights (width changed -> word wrap changes)
-                        let width = new_size.cols;
-                        for (i, block) in self.blocks.iter().enumerate() {
-                            let h = block_height_with_width(block, width);
-                            self.conversation_state.set_item_height(i, h);
-                        }
-                        self.conversation_state.auto_scroll();
+                        self.live_region.resize(new_size);
                         dirty = true;
                     }
                     Event::Tick => {}
-                    Event::Mouse(MouseEvent::LeftPress { x, y }) => {
-                        // Only handle clicks in the conversation area (between header and status bar)
-                        let header_height: u16 = 3;
-                        let status_height: u16 = 1;
-                        let area = self.renderer.area();
-                        let conv_top = header_height;
-                        let conv_bottom = area.height.saturating_sub(status_height);
-
-                        if y >= conv_top && y <= conv_bottom {
-                            self.selection_state.start_drag(x, y);
-                            dirty = true;
-                        }
-                    }
-                    Event::Mouse(MouseEvent::LeftDrag { x, y }) => {
-                        if self.selection_state.is_dragging() {
-                            self.selection_state.update_drag(x, y);
-                            dirty = true;
-                        }
-                    }
-                    Event::Mouse(MouseEvent::LeftRelease { x, y }) => {
-                        if self.selection_state.is_dragging() {
-                            self.selection_state.end_drag(x, y);
-                            dirty = true;
-                        }
-                    }
+                    Event::Mouse(_) => {}
                 }
             }
         }
@@ -348,10 +220,15 @@ impl TerminalUI {
         match msg {
             AgentMessage::Ready { model } => {
                 self.model_name = model.clone();
-                // Update the Welcome block's model field
-                if let Some(ContentBlock::Welcome { model: m, .. }) = self.blocks.first_mut() {
-                    *m = Some(model);
-                }
+                let welcome_widget = crate::tui::welcome::WelcomeWidget::new(
+                    Some(&model),
+                    &self.cwd,
+                    self.branch.as_deref(),
+                );
+                let width = self.renderer.area().width;
+                let welcome_text = welcome_widget.as_scrollback_string(width);
+                self.backend.write(welcome_text.as_bytes())?;
+                self.backend.flush()?;
             }
 
             AgentMessage::Thinking => {
@@ -465,21 +342,6 @@ impl TerminalUI {
     }
 
     fn handle_key(&mut self, key: KeyEvent) -> crate::Result<Option<UiAction>> {
-        // ── Global scroll: Ctrl+K / Ctrl+J ───────────────────────────────────
-        match key {
-            KeyEvent::CtrlChar('k') => {
-                self.conversation_state.scroll_up(3);
-                self.selection_state.clear();
-                return Ok(None);
-            }
-            KeyEvent::CtrlChar('j') => {
-                self.conversation_state.scroll_down(3);
-                self.selection_state.clear();
-                return Ok(None);
-            }
-            _ => {}
-        }
-
         // ── Mode 1: Permission pending ──────────────────────────────────────
         if self.pending_permission.is_some() {
             match key {
@@ -554,14 +416,9 @@ impl TerminalUI {
         // ── Mode 3: Busy -- Ctrl+C interrupts the agent; every other key
         // falls through to the editor so the user can type (and even queue
         // a submission) while the AI is still streaming its response.
-        if key == KeyEvent::CtrlC {
-            if self.selection_state.has_selection() {
-                return Ok(None);
-            }
-            if self.busy {
-                let _ = self.event_tx.send(AgentEvent::Interrupt);
-                return Ok(None);
-            }
+        if key == KeyEvent::CtrlC && self.busy {
+            let _ = self.event_tx.send(AgentEvent::Interrupt);
+            return Ok(None);
         }
 
         // ── Mode 4: Normal editing (busy or idle) ───────────────────────────
@@ -596,177 +453,44 @@ impl TerminalUI {
         Ok(None)
     }
 
-    fn render_frame(&mut self) {
-        let area = self.renderer.area();
-        let is_permission_pending = self.pending_permission.is_some();
-        let input_height = if is_permission_pending {
-            PermissionWidget::height()
-        } else {
-            (self.editor.line_count() as u16 + 2).clamp(3, 8)
-        };
-        let chunks = main_layout(input_height).split(area);
-        // chunks: [0]=conversation, [1]=input, [2]=status
-
-        // Conversation area -- update viewport height before rendering
-        let conv_area = chunks[0];
-        self.conversation_state.viewport_height = conv_area.height;
-
-        // Collect rendering instructions into a temporary list to avoid
-        // holding &mut self.renderer at the same time as &mut self.tool_states.
-        let visible = self.conversation_state.visible_items();
-        let show_spinner = self.busy && self.spinner_start.is_some();
-        let spinner_frame = if show_spinner || self.quitting {
+    fn render_frame(&mut self) -> crate::Result<()> {
+        let spinner_frame = if (self.busy && self.spinner_start.is_some()) || self.quitting {
             let elapsed = self
                 .spinner_start
                 .or(self.quitting_start)
                 .map(|s| s.elapsed().as_millis() as u64)
                 .unwrap_or(0);
-            Some(self.spinner.frame_at(elapsed))
+            self.spinner.frame_at(elapsed).chars().next()
         } else {
             None
         };
-        let spinner_verb = self.spinner_verb.clone();
-
-        let mut buf = self.renderer.buffer_mut();
-
-        // Conversation area rendering
-        // (header removed — cwd/branch shown in status bar at bottom)
-
-        // Render the quitting spinner if in quitting mode
-        if self.quitting {
-            if let Some(frame) = &spinner_frame {
-                let y = conv_area.y + conv_area.height.saturating_sub(1);
-                buf.set_str(
-                    conv_area.x,
-                    y,
-                    &format!("{} ", frame),
-                    Some(theme::CLAUDE),
-                    false,
-                );
-                buf.set_str(
-                    conv_area.x + 2,
-                    y,
-                    "\u{8fdb}\u{5316}\u{8bb0}\u{5fc6}\u{4e2d}\u{2026} (Ctrl+C \u{5f3a}\u{5236}\u{9000}\u{51fa})",
-                    Some(theme::DIM),
-                    false,
-                );
-            }
-        } else {
-            // Advance welcome animation; mark complete when last row finishes fading in.
-            // Last row finishes at: (LOGO_ROWS + INFO_ROWS - 1) * ROW_DELAY + FADE_DURATION
-            // = (5 + 5 - 1) * 80 + 200 = 920 ms.
-            if let Some(ref anim) = self.welcome_anim {
-                let elapsed = anim.start.elapsed().as_millis() as u64;
-                let row_delay = WelcomeWidget::ROW_DELAY_MS;
-                let fade_duration = WelcomeWidget::FADE_DURATION_MS;
-                let last_row_finish_ms = u64::from(anim.total_rows - 1) * row_delay + fade_duration;
-                if elapsed > last_row_finish_ms {
-                    self.welcome_anim = None;
-                }
-            }
-
-            let mut tool_visual_idx: usize = 0;
-
-            for vi in &visible {
-                if vi.index >= self.blocks.len() {
-                    break;
-                }
-                let block_area = Rect::new(
-                    conv_area.x,
-                    conv_area.y + vi.viewport_y,
-                    conv_area.width.saturating_sub(1), // 1 col for scrollbar
-                    vi.visible_rows,
-                );
-                // Acquire text_map for this block, drop after the call
-                let mut text_map = self.renderer.text_map_mut();
-                render_block(
-                    &self.blocks[vi.index],
-                    vi.index,
-                    block_area,
-                    &mut buf,
-                    &mut text_map,
-                    &mut tool_visual_idx,
-                    &self.focus,
-                    &mut self.tool_states,
-                    &mut self.welcome_anim,
-                );
-            }
-
-            // Render spinner at the bottom of the conversation area when busy
-            if show_spinner && let Some(frame) = &spinner_frame {
-                let y = conv_area.y + conv_area.height.saturating_sub(1);
-                buf.set_str(
-                    conv_area.x,
-                    y,
-                    &format!("{} ", frame),
-                    Some(theme::CLAUDE),
-                    false,
-                );
-                buf.set_str(
-                    conv_area.x + 2,
-                    y,
-                    &format!("{}\u{2026}", spinner_verb),
-                    Some(theme::DIM),
-                    false,
-                );
-            }
-
-            // Scrollbar
-            self.conversation_state
-                .render_scrollbar(conv_area, &mut buf);
-        }
-
-        // Input area: either the permission menu or the normal text editor
-        if self.pending_permission.is_some() {
-            // Permission menu: full-height box with centered options
-            // Menu state now lives on the LiveBlock in live_region, but this
-            // legacy render path is going away in Task 10 — use a local state.
-            let mut state = self
-                .live_region
-                .permission_menu()
-                .cloned()
-                .unwrap_or_else(PermissionState::new);
-            let perm_widget = PermissionWidget::new("", "");
-            perm_widget.render(chunks[1], &mut buf, &mut state);
-        } else {
-            // Normal input box: top + bottom rounded borders only, dim gray
-            let input_block = Block::new()
-                .border(BorderStyle::Rounded)
-                .borders(BorderSides::HORIZONTAL)
-                .border_fg(theme::DIM);
-            let input_inner = input_block.inner(chunks[1]);
-            input_block.render(chunks[1], &mut buf);
-
-            // Input widget with mode-specific prompt (Claude orange)
-            let editor_content = self.editor.content();
-            let input_widget = InputWidget::new(
-                &editor_content,
-                self.editor.cursor_offset(),
-                self.editor.mode.prompt(),
-            )
-            .prompt_fg(theme::CLAUDE);
-            input_widget.render(input_inner, &mut buf);
-        }
-
-        // Status bar
-        let status = StatusWidget {
+        let ctx = crate::tui::status::StatusContext {
             cwd: self.cwd.clone(),
             branch: self.branch.clone(),
             model: self.model_name.clone(),
             input_tokens: self.input_tokens,
             output_tokens: self.output_tokens,
-            spinner_frame: None,
-            spinner_verb: String::new(),
+            spinner_frame,
+            spinner_verb: self.spinner_verb.clone(),
         };
-        status.render(chunks[2], &mut buf);
-    }
-
-    fn block_height(&self, block: &ContentBlock) -> u16 {
-        let width = self.renderer.area().width;
-        block_height_with_width(block, width)
+        let editor = self.editor.content();
+        let offset = self.editor.cursor_offset();
+        let mode = self.editor.mode;
+        let cur = self
+            .live_region
+            .frame(&mut self.backend, &editor, offset, mode, &ctx)?;
+        self.backend.move_cursor(cur.row, cur.col)?;
+        self.backend.flush()?;
+        Ok(())
     }
 
     fn cleanup(&mut self) -> crate::Result<()> {
+        // Clear the pinned live region so "Bye!" lands cleanly in scrollback.
+        let last = self.live_region.last_live_rows();
+        if last > 0 {
+            let seq = format!("\x1b[{}A\x1b[0J", last);
+            self.backend.write(seq.as_bytes())?;
+        }
         // Restore the terminal's default cursor style (DECSCUSR reset).
         self.backend.write(b"\x1b[0 q")?;
         self.backend.disable_raw_mode()?;
@@ -781,144 +505,6 @@ impl TerminalUI {
     fn enter_quitting_mode(&mut self) {
         self.quitting = true;
         self.quitting_start = Some(std::time::Instant::now());
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Layout helpers
-// ─────────────────────────────────────────────────────────────────────────────
-
-/// Build the main vertical layout: header (1) + conversation (Fill) + input (dynamic) + status (1).
-///
-/// `input_height` = min(editor.line_count() + 2, 8), accounting for top+bottom borders.
-fn main_layout(input_height: u16) -> Layout {
-    Layout::new(Direction::Vertical).constraints(vec![
-        Constraint::Fill,
-        Constraint::Fixed(input_height),
-        Constraint::Fixed(1),
-    ])
-}
-
-/// Compute a block's height given an explicit width.
-fn block_height_with_width(block: &ContentBlock, width: u16) -> u16 {
-    match block {
-        ContentBlock::UserMessage { text } => {
-            use crate::tui::paragraph::{wrap_line, Line, Span};
-            let line = Line::from_spans(vec![Span::raw(text.clone())]);
-            let effective_width = width.saturating_sub(2) as usize; // "> " prefix
-            wrap_line(&line, effective_width.max(1)).len() as u16
-        }
-        ContentBlock::Markdown { nodes } => MarkdownBlockWidget::height(nodes, width),
-        ContentBlock::CodeBlock { code, .. } => CodeBlockWidget::height(code, width),
-        ContentBlock::ToolCall { .. } => 1, // folded by default
-        ContentBlock::Welcome { .. } => 5,
-    }
-}
-
-/// Render a single content block into the buffer.
-fn render_block(
-    block: &ContentBlock,
-    block_idx: usize,
-    area: Rect,
-    buf: &mut Buffer,
-    text_map: &mut TextMap,
-    tool_idx: &mut usize,
-    focus: &FocusManager,
-    tool_states: &mut [ToolCallState],
-    welcome_anim: &mut Option<WelcomeAnimState>,
-) {
-    if area.is_empty() {
-        return;
-    }
-    match block {
-        ContentBlock::UserMessage { text } => {
-            use crate::tui::paragraph::{wrap_line, Line, Span};
-            // Render "> " prefix on first row
-            buf.set_str(area.x, area.y, "> ", Some(theme::CLAUDE), false);
-
-            // Wrap the user text within available width after prefix
-            let effective_width = area.width.saturating_sub(2) as usize;
-            let line = Line::from_spans(vec![Span::raw(text.clone())]);
-            let rows = wrap_line(&line, effective_width.max(1));
-
-            for (row_idx, row) in rows.iter().enumerate() {
-                let y = area.y + row_idx as u16;
-                if y >= area.y + area.height {
-                    break;
-                }
-                let start_x = area.x + 2;
-                let mut x = start_x;
-                let mut global_byte_offset = 0usize;
-                for sc in row {
-                    if sc.width == 0 {
-                        continue;
-                    }
-                    if x + sc.width > area.x + area.width {
-                        break;
-                    }
-                    let cell = buf.get_mut(x, y);
-                    cell.ch = sc.ch;
-                    cell.fg = Some(theme::TEXT);
-                    cell.bold = false;
-                    if sc.width == 2 && x + 1 < area.x + area.width {
-                        let cell2 = buf.get_mut(x + 1, y);
-                        cell2.ch = '\0';
-                        cell2.fg = Some(theme::TEXT);
-                    }
-                    // Build TextMap: map this screen cell to its text source
-                    text_map.set_source(
-                        x,
-                        y,
-                        CellSource {
-                            block: block_idx,
-                            span: 0,
-                            byte_offset: global_byte_offset,
-                            width: sc.width,
-                        },
-                    );
-                    global_byte_offset += sc.ch.len_utf8();
-                    x += sc.width;
-                }
-            }
-        }
-        ContentBlock::Markdown { nodes } => {
-            let widget = MarkdownBlockWidget::new(nodes);
-            widget.render(area, buf);
-        }
-        ContentBlock::CodeBlock { language, code } => {
-            let widget = CodeBlockWidget::new(code, language.as_deref());
-            widget.render(area, buf);
-        }
-        ContentBlock::ToolCall { name, input, .. } => {
-            let current_tool_idx = *tool_idx;
-            let summary = extract_input_summary(name, input);
-            let focused = focus.is_focused(current_tool_idx);
-            let widget = ToolCallWidget::new(name, &summary, input).focused(focused);
-            if let Some(state) = tool_states.get_mut(current_tool_idx) {
-                widget.render(area, buf, state);
-            }
-            *tool_idx += 1;
-        }
-        ContentBlock::Welcome { model, cwd, branch } => {
-            let widget = WelcomeWidget::new(model.as_deref(), cwd.as_str(), branch.as_deref());
-            // Compute per-row alpha values from the animation state.
-            // alpha for info row n = clamp((elapsed - n * ROW_DELAY) / FADE_DURATION, 0.0, 1.0)
-            let info_alphas: [f64; WelcomeWidget::INFO_ROWS] = {
-                let elapsed_ms = welcome_anim
-                    .as_ref()
-                    .map(|a| a.start.elapsed().as_millis() as u64)
-                    .unwrap_or(u64::MAX);
-                let row_delay = WelcomeWidget::ROW_DELAY_MS as f64;
-                let fade_duration = WelcomeWidget::FADE_DURATION_MS as f64;
-                let mut alphas = [0.0; WelcomeWidget::INFO_ROWS];
-                for n in 0..WelcomeWidget::INFO_ROWS {
-                    let raw = (elapsed_ms as f64 - (n as f64) * row_delay) / fade_duration;
-                    alphas[n] = raw.clamp(0.0, 1.0);
-                }
-                alphas
-            };
-            widget.render_with_alpha(area, buf, &info_alphas);
-        }
     }
 }
 
