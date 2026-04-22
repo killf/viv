@@ -233,6 +233,18 @@ impl LiveRegion {
         self.last_live_rows = live_rows;
         Ok(CursorPos { row: cur_y, col: cur_x })
     }
+
+    pub fn frame(
+        &mut self,
+        backend: &mut dyn Backend,
+        editor_content: &str,
+        cursor_offset: usize,
+        mode: InputMode,
+        status: &StatusContext,
+    ) -> crate::Result<CursorPos> {
+        self.commit_pending(backend)?;
+        self.paint(backend, editor_content, cursor_offset, mode, status)
+    }
 }
 
 #[derive(Debug, Clone, Copy)]

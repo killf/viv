@@ -115,3 +115,25 @@ fn paint_includes_in_flight_markdown_block() {
     region.paint(&mut backend, "", 0, InputMode::Chat, &ctx).unwrap();
     assert!(region.last_live_rows() >= 5);
 }
+
+#[test]
+fn frame_commits_then_paints_and_returns_cursor() {
+    let mut region = LiveRegion::new(TermSize { cols: 40, rows: 10 });
+    let nodes = vec![MarkdownNode::Paragraph {
+        spans: vec![InlineSpan::Text("done".into())],
+    }];
+    region.push_live_block(LiveBlock::Markdown { nodes, state: BlockState::Committing });
+    let ctx = StatusContext {
+        cwd: "~/p".into(), branch: None, model: "m".into(),
+        input_tokens: 0, output_tokens: 0,
+        spinner_frame: None, spinner_verb: String::new(),
+    };
+    let mut backend = TestBackend::new(40, 10);
+    let cur = region.frame(&mut backend, "", 0, InputMode::Chat, &ctx).unwrap();
+
+    assert_eq!(region.block_count(), 0);
+    let out = String::from_utf8(backend.output.clone()).unwrap();
+    assert!(out.contains("done"));
+    assert!(cur.row < 10);
+    assert!(region.last_live_rows() > 0);
+}
