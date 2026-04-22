@@ -1,6 +1,7 @@
 use viv::tui::live_region::{BlockState, LiveBlock, LiveRegion};
 use viv::tui::content::{InlineSpan, MarkdownNode};
 use viv::core::terminal::size::TermSize;
+use viv::core::terminal::backend::TestBackend;
 
 #[test]
 fn new_region_has_no_blocks_and_zero_last_live_rows() {
@@ -28,4 +29,28 @@ fn mark_last_markdown_committing_transitions_state() {
     region.push_live_block(LiveBlock::Markdown { nodes, state: BlockState::Live });
     region.mark_last_markdown_committing();
     assert_eq!(region.state_at(0), Some(BlockState::Committing));
+}
+
+#[test]
+fn commit_text_clears_live_region_then_writes_line() {
+    let mut region = LiveRegion::new(TermSize { cols: 40, rows: 10 });
+    let mut backend = TestBackend::new(40, 10);
+    region.set_last_live_rows_for_test(3);
+    region.commit_text(&mut backend, "> hello world").unwrap();
+
+    let out = String::from_utf8(backend.output.clone()).unwrap();
+    assert!(out.starts_with("\x1b[3A\x1b[0J"));
+    assert!(out.contains("> hello world"));
+    assert!(out.ends_with("\n"));
+    assert_eq!(region.last_live_rows(), 0);
+}
+
+#[test]
+fn commit_text_with_zero_live_rows_skips_cursor_up() {
+    let mut region = LiveRegion::new(TermSize { cols: 40, rows: 10 });
+    let mut backend = TestBackend::new(40, 10);
+    region.commit_text(&mut backend, "hi").unwrap();
+    let out = String::from_utf8(backend.output.clone()).unwrap();
+    assert!(!out.contains("\x1b[0A"));
+    assert!(out.contains("hi\n"));
 }

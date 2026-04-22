@@ -1,3 +1,4 @@
+use crate::core::terminal::backend::Backend;
 use crate::core::terminal::size::TermSize;
 use crate::tui::content::MarkdownNode;
 use crate::tui::permission::PermissionState;
@@ -74,5 +75,30 @@ impl LiveRegion {
             LiveBlock::ToolCall { state, .. } => Some(*state),
             LiveBlock::PermissionPrompt { .. } => Some(BlockState::Live),
         }
+    }
+
+    pub fn set_last_live_rows_for_test(&mut self, n: u16) {
+        self.last_live_rows = n;
+    }
+
+    pub fn commit_text(
+        &mut self,
+        backend: &mut dyn Backend,
+        line: &str,
+    ) -> crate::Result<()> {
+        self.clear_live_region(backend)?;
+        backend.write(line.as_bytes())?;
+        backend.write(b"\n")?;
+        backend.flush()?;
+        Ok(())
+    }
+
+    fn clear_live_region(&mut self, backend: &mut dyn Backend) -> crate::Result<()> {
+        if self.last_live_rows > 0 {
+            let seq = format!("\x1b[{}A\x1b[0J", self.last_live_rows);
+            backend.write(seq.as_bytes())?;
+            self.last_live_rows = 0;
+        }
+        Ok(())
     }
 }
