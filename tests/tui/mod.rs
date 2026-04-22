@@ -5,6 +5,7 @@ mod content_test;
 mod conversation_test;
 mod focus_test;
 mod header_test;
+mod inline_flow_test;
 mod input_mode_test;
 mod input_test;
 mod lang_profiles_test;
