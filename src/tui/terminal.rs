@@ -73,9 +73,9 @@ pub struct TerminalUI {
     focus: FocusManager,
     tool_seq: usize,
 
-    /// Permission state: (block_idx, tool_name, input_summary, menu_state).
-    /// When Some, the permission options menu is shown in the input area.
-    pending_permission: Option<(usize, String, String, PermissionState)>,
+    /// Permission prompt: (tool_name, input_summary). The menu state lives on
+    /// the corresponding `LiveBlock::PermissionPrompt` inside `live_region`.
+    pending_permission: Option<(String, String)>,
     /// Set to true after Ctrl+D sends AgentEvent::Quit. While true, we keep the
     /// UI running and wait for AgentMessage::Evolved so the user sees the
     /// "evolving memories" spinner instead of a silent freeze.
@@ -208,7 +208,7 @@ impl TerminalUI {
                 match self.msg_rx.try_recv() {
                     Ok(msg) => {
                         let is_evolved = matches!(msg, AgentMessage::Evolved);
-                        self.handle_agent_message(msg);
+                        self.handle_agent_message(msg)?;
                         dirty = true;
                         if is_evolved {
                             // Agent finished the pre-shutdown evolve step --
@@ -292,7 +292,7 @@ impl TerminalUI {
                             }
                             continue;
                         }
-                        if let Some(action) = self.handle_key(key) {
+                        if let Some(action) = self.handle_key(key)? {
                             match action {
                                 UiAction::Quit => {
                                     let _ = self.event_tx.send(AgentEvent::Quit);
@@ -344,7 +344,7 @@ impl TerminalUI {
         }
     }
 
-    fn handle_agent_message(&mut self, msg: AgentMessage) {
+    fn handle_agent_message(&mut self, msg: AgentMessage) -> crate::Result<()> {
         match msg {
             AgentMessage::Ready { model } => {
                 self.model_name = model.clone();
@@ -389,91 +389,42 @@ impl TerminalUI {
             }
 
             AgentMessage::Status(s) => {
-                // Render status as a dim markdown paragraph
-                let nodes = vec![MarkdownNode::Paragraph {
-                    spans: vec![crate::tui::content::InlineSpan::Text(s)],
-                }];
-                self.blocks.push(ContentBlock::Markdown { nodes });
-                self.conversation_state.append_item_height(1);
-                self.conversation_state.auto_scroll();
+                self.live_region.commit_text(&mut self.backend, &s)?;
             }
 
             AgentMessage::ToolStart { name, input } => {
-                let _id = self.tool_seq;
+                let id = self.tool_seq;
                 self.tool_seq += 1;
-                self.blocks.push(ContentBlock::ToolCall {
-                    id: _id,
-                    name,
-                    input,
-                    output: None,
-                    error: None,
-                });
-                self.tool_states.push(ToolCallState::new_running());
-                self.conversation_state.append_item_height(1); // folded = 1 line
-                self.conversation_state.auto_scroll();
+                self.live_region.push_live_block(
+                    crate::tui::live_region::LiveBlock::ToolCall {
+                        id,
+                        name,
+                        input,
+                        output: None,
+                        error: None,
+                        tc_state: crate::tui::tool_call::ToolCallState::new_running(),
+                        state: crate::tui::live_region::BlockState::Live,
+                    },
+                );
             }
 
             AgentMessage::ToolEnd { name: _, output } => {
-                // Find the most recent Running tool call (reverse search)
-                if let Some(idx) = self
-                    .tool_states
-                    .iter()
-                    .rposition(|s| matches!(s.status, ToolStatus::Running))
-                {
-                    let summary = format!("{} chars", output.len());
-                    self.tool_states[idx] = ToolCallState::new_success(summary);
-                    // Update the ContentBlock's output field
-                    let mut tc_idx = 0;
-                    for block in &mut self.blocks {
-                        if let ContentBlock::ToolCall { output: o, .. } = block {
-                            if tc_idx == idx {
-                                *o = Some(output);
-                                break;
-                            }
-                            tc_idx += 1;
-                        }
-                    }
-                }
+                self.live_region.finish_last_running_tool(Some(output), None);
             }
 
             AgentMessage::ToolError { name: _, error } => {
-                // Find the most recent Running tool call (reverse search)
-                if let Some(idx) = self
-                    .tool_states
-                    .iter()
-                    .rposition(|s| matches!(s.status, ToolStatus::Running))
-                {
-                    let msg = if error.len() > 60 {
-                        format!("{}...", &error[..60])
-                    } else {
-                        error.clone()
-                    };
-                    self.tool_states[idx] = ToolCallState::new_error(msg);
-                    // Update the ContentBlock's error field
-                    let mut tc_idx = 0;
-                    for block in &mut self.blocks {
-                        if let ContentBlock::ToolCall { error: e, .. } = block {
-                            if tc_idx == idx {
-                                *e = Some(error);
-                                break;
-                            }
-                            tc_idx += 1;
-                        }
-                    }
-                }
+                self.live_region.finish_last_running_tool(None, Some(error));
             }
 
             AgentMessage::PermissionRequest { tool, input } => {
-                // Store the permission prompt as a Markdown block in conversation
-                let prompt_text = format!("  \u{25c6} {}({})", tool, input);
-                let nodes = vec![MarkdownNode::Paragraph {
-                    spans: vec![crate::tui::content::InlineSpan::Text(prompt_text)],
-                }];
-                self.blocks.push(ContentBlock::Markdown { nodes });
-                let idx = self.blocks.len() - 1;
-                self.conversation_state.append_item_height(1);
-                self.pending_permission = Some((idx, tool, input, PermissionState::new()));
-                self.conversation_state.auto_scroll();
+                self.pending_permission = Some((tool.clone(), input.clone()));
+                self.live_region.push_live_block(
+                    crate::tui::live_region::LiveBlock::PermissionPrompt {
+                        tool,
+                        input,
+                        menu: crate::tui::permission::PermissionState::new(),
+                    },
+                );
             }
 
             AgentMessage::Tokens { input, output } => {
@@ -505,57 +456,62 @@ impl TerminalUI {
 
             AgentMessage::Error(e) => {
                 let msg = format!("\u{25cf} error: {}", e);
-                let nodes = vec![MarkdownNode::Paragraph {
-                    spans: vec![crate::tui::content::InlineSpan::Text(msg)],
-                }];
-                self.blocks.push(ContentBlock::Markdown { nodes });
-                self.conversation_state.append_item_height(1);
+                self.live_region.commit_text(&mut self.backend, &msg)?;
                 self.busy = false;
                 self.spinner_start = None;
-                self.conversation_state.auto_scroll();
             }
         }
+        Ok(())
     }
 
-    fn handle_key(&mut self, key: KeyEvent) -> Option<UiAction> {
+    fn handle_key(&mut self, key: KeyEvent) -> crate::Result<Option<UiAction>> {
         // ── Global scroll: Ctrl+K / Ctrl+J ───────────────────────────────────
         match key {
             KeyEvent::CtrlChar('k') => {
                 self.conversation_state.scroll_up(3);
                 self.selection_state.clear();
-                return None;
+                return Ok(None);
             }
             KeyEvent::CtrlChar('j') => {
                 self.conversation_state.scroll_down(3);
                 self.selection_state.clear();
-                return None;
+                return Ok(None);
             }
             _ => {}
         }
 
         // ── Mode 1: Permission pending ──────────────────────────────────────
-        if let Some((idx, tool, input, state)) = self.pending_permission.take() {
+        if self.pending_permission.is_some() {
             match key {
                 KeyEvent::Up => {
-                    // Put state back with updated selection
-                    self.pending_permission = Some((idx, tool, input, {
-                        let mut s = state;
-                        s.move_up();
-                        s
-                    }));
-                    return None;
+                    if let Some(menu) = self.live_region.permission_menu_mut() {
+                        menu.move_up();
+                    }
+                    return Ok(None);
                 }
                 KeyEvent::Down => {
-                    self.pending_permission = Some((idx, tool, input, {
-                        let mut s = state;
-                        s.move_down();
-                        s
-                    }));
-                    return None;
+                    if let Some(menu) = self.live_region.permission_menu_mut() {
+                        menu.move_down();
+                    }
+                    return Ok(None);
                 }
                 KeyEvent::Enter => {
-                    // Commit the selected option
-                    let selected = state.selected_option();
+                    // Capture the selected option from the live region's menu
+                    let selected_opt = self
+                        .live_region
+                        .permission_menu()
+                        .map(|m| m.selected_option());
+                    let selected = match selected_opt {
+                        Some(s) => s,
+                        None => {
+                            self.pending_permission = None;
+                            return Ok(None);
+                        }
+                    };
+                    let (tool, input) = match self.pending_permission.take() {
+                        Some(t) => t,
+                        None => return Ok(None),
+                    };
                     let response = match selected {
                         crate::tui::permission::PermissionOption::Deny => PermissionResponse::Deny,
                         crate::tui::permission::PermissionOption::Allow => {
@@ -565,7 +521,6 @@ impl TerminalUI {
                             PermissionResponse::AlwaysAllow
                         }
                     };
-                    // Replace the permission block with the result
                     let result_text = match selected {
                         crate::tui::permission::PermissionOption::Deny => {
                             format!(
@@ -584,19 +539,14 @@ impl TerminalUI {
                             )
                         }
                     };
-                    let nodes = vec![MarkdownNode::Paragraph {
-                        spans: vec![crate::tui::content::InlineSpan::Text(result_text)],
-                    }];
-                    if idx < self.blocks.len() {
-                        self.blocks[idx] = ContentBlock::Markdown { nodes };
-                    }
+                    self.live_region.drop_permission_prompt();
+                    self.live_region.commit_text(&mut self.backend, &result_text)?;
                     let _ = self.event_tx.send(AgentEvent::PermissionResponse(response));
-                    return None;
+                    return Ok(None);
                 }
                 _ => {
                     // All other keys are swallowed while permission is pending
-                    self.pending_permission = Some((idx, tool, input, state));
-                    return None;
+                    return Ok(None);
                 }
             }
         }
@@ -606,11 +556,11 @@ impl TerminalUI {
         // a submission) while the AI is still streaming its response.
         if key == KeyEvent::CtrlC {
             if self.selection_state.has_selection() {
-                return None;
+                return Ok(None);
             }
             if self.busy {
                 let _ = self.event_tx.send(AgentEvent::Interrupt);
-                return None;
+                return Ok(None);
             }
         }
 
@@ -623,13 +573,8 @@ impl TerminalUI {
                     // Slash/colon commands are not added to the conversation history
                     let is_command = mode != InputMode::Chat;
                     if !is_command {
-                        self.blocks
-                            .push(ContentBlock::UserMessage { text: line.clone() });
-                        if let Some(msg_block) = self.blocks.last() {
-                            let h = self.block_height(msg_block);
-                            self.conversation_state.append_item_height(h);
-                            self.conversation_state.auto_scroll();
-                        }
+                        let text = format!("> {}", line);
+                        self.live_region.commit_text(&mut self.backend, &text)?;
                         self.editor.push_history(line.clone());
                     }
                     let event = match mode {
@@ -641,14 +586,14 @@ impl TerminalUI {
                 }
             }
             EditAction::Exit => {
-                return Some(UiAction::Quit);
+                return Ok(Some(UiAction::Quit));
             }
             EditAction::Interrupt => {
                 self.editor.clear();
             }
             EditAction::Continue => {}
         }
-        None
+        Ok(None)
     }
 
     fn render_frame(&mut self) {
@@ -772,10 +717,17 @@ impl TerminalUI {
         }
 
         // Input area: either the permission menu or the normal text editor
-        if let Some((_, _, _, ref mut state)) = self.pending_permission {
+        if self.pending_permission.is_some() {
             // Permission menu: full-height box with centered options
+            // Menu state now lives on the LiveBlock in live_region, but this
+            // legacy render path is going away in Task 10 — use a local state.
+            let mut state = self
+                .live_region
+                .permission_menu()
+                .cloned()
+                .unwrap_or_else(PermissionState::new);
             let perm_widget = PermissionWidget::new("", "");
-            perm_widget.render(chunks[1], &mut buf, state);
+            perm_widget.render(chunks[1], &mut buf, &mut state);
         } else {
             // Normal input box: top + bottom rounded borders only, dim gray
             let input_block = Block::new()

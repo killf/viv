@@ -85,6 +85,66 @@ impl LiveRegion {
         }
     }
 
+    /// Locate the most recent `ToolCall` whose `tc_state.status` is `Running`
+    /// and transition it to Committing with the provided output or error.
+    pub fn finish_last_running_tool(
+        &mut self,
+        output: Option<String>,
+        error: Option<String>,
+    ) {
+        for b in self.blocks.iter_mut().rev() {
+            if let LiveBlock::ToolCall {
+                state, tc_state, output: o, error: e, ..
+            } = b
+            {
+                if matches!(tc_state.status, crate::tui::tool_call::ToolStatus::Running) {
+                    if let Some(err) = &error {
+                        let msg = if err.len() > 60 {
+                            format!("{}...", &err[..60])
+                        } else {
+                            err.clone()
+                        };
+                        *tc_state = crate::tui::tool_call::ToolCallState::new_error(msg);
+                        *e = error;
+                    } else if let Some(out) = output {
+                        let summary = format!("{} chars", out.len());
+                        *tc_state = crate::tui::tool_call::ToolCallState::new_success(summary);
+                        *o = Some(out);
+                    }
+                    *state = BlockState::Committing;
+                    return;
+                }
+            }
+        }
+    }
+
+    /// Remove any `PermissionPrompt` blocks currently in the live region.
+    pub fn drop_permission_prompt(&mut self) {
+        self.blocks.retain(|b| !matches!(b, LiveBlock::PermissionPrompt { .. }));
+    }
+
+    /// Return a mutable reference to the first live `PermissionPrompt`'s menu,
+    /// if any.
+    pub fn permission_menu_mut(&mut self) -> Option<&mut PermissionState> {
+        for b in self.blocks.iter_mut() {
+            if let LiveBlock::PermissionPrompt { menu, .. } = b {
+                return Some(menu);
+            }
+        }
+        None
+    }
+
+    /// Return an immutable reference to the first live `PermissionPrompt`'s
+    /// menu, if any.
+    pub fn permission_menu(&self) -> Option<&PermissionState> {
+        for b in &self.blocks {
+            if let LiveBlock::PermissionPrompt { menu, .. } = b {
+                return Some(menu);
+            }
+        }
+        None
+    }
+
     pub fn state_at(&self, i: usize) -> Option<BlockState> {
         match self.blocks.get(i)? {
             LiveBlock::Markdown { state, .. } => Some(*state),

@@ -154,3 +154,20 @@ fn drop_trailing_live_markdown_removes_only_trailing_live() {
     assert_eq!(region.block_count(), 1);
     assert_eq!(region.state_at(0), Some(BlockState::Committing));
 }
+
+#[test]
+fn finish_last_running_tool_marks_committing_with_output() {
+    use viv::tui::tool_call::ToolCallState;
+    let mut region = LiveRegion::new(TermSize { cols: 40, rows: 10 });
+    region.push_live_block(LiveBlock::ToolCall {
+        id: 0,
+        name: "Bash".into(),
+        input: "ls".into(),
+        output: None,
+        error: None,
+        tc_state: ToolCallState::new_running(),
+        state: BlockState::Live,
+    });
+    region.finish_last_running_tool(Some("drwx----".into()), None);
+    assert_eq!(region.state_at(0), Some(BlockState::Committing));
+}
