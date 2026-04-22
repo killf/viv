@@ -54,7 +54,6 @@ pub struct LinuxBackend {
     stdout: std::io::Stdout,
     raw_mode: Option<RawMode>,
     in_alt_screen: bool,
-    mouse_enabled: bool,
 }
 
 #[cfg(unix)]
@@ -64,7 +63,6 @@ impl LinuxBackend {
             stdout: std::io::stdout(),
             raw_mode: None,
             in_alt_screen: false,
-            mouse_enabled: false,
         }
     }
 }
@@ -83,13 +81,6 @@ impl Drop for LinuxBackend {
         // user's scrollback is preserved even on panic / early return.
         if self.in_alt_screen {
             let _ = self.stdout.write_all(LEAVE_ALT_SCREEN);
-            let _ = self.stdout.flush();
-        }
-        // Disable mouse mode if enabled
-        if self.mouse_enabled {
-            let _ = self.stdout.write_all(DISABLE_MOUSE_1000);
-            let _ = self.stdout.write_all(DISABLE_SGR_MOUSE);
-            let _ = self.stdout.write_all(DISABLE_URXVT_MOUSE);
             let _ = self.stdout.flush();
         }
         // Dropping raw_mode restores the original terminal settings via RawMode::drop.
@@ -144,28 +135,14 @@ impl Backend for LinuxBackend {
     fn enter_alt_screen(&mut self) -> crate::Result<()> {
         if !self.in_alt_screen {
             self.stdout.write_all(ENTER_ALT_SCREEN)?;
-            // Enable all three mouse modes for maximum compatibility:
-            // 1000: basic tracking (also enables URXVT format ESC [ M B X Y)
-            // 1006: SGR mode (better coordinate encoding)
-            // 1015: URXVT mode (fallback)
-            self.stdout.write_all(ENABLE_MOUSE_1000)?;
-            self.stdout.write_all(ENABLE_SGR_MOUSE)?;
-            self.stdout.write_all(ENABLE_URXVT_MOUSE)?;
             self.stdout.flush()?;
             self.in_alt_screen = true;
-            self.mouse_enabled = true;
         }
         Ok(())
     }
 
     fn leave_alt_screen(&mut self) -> crate::Result<()> {
         if self.in_alt_screen {
-            if self.mouse_enabled {
-                self.stdout.write_all(DISABLE_MOUSE_1000)?;
-                self.stdout.write_all(DISABLE_SGR_MOUSE)?;
-                self.stdout.write_all(DISABLE_URXVT_MOUSE)?;
-                self.mouse_enabled = false;
-            }
             self.stdout.write_all(LEAVE_ALT_SCREEN)?;
             self.stdout.flush()?;
             self.in_alt_screen = false;
@@ -180,7 +157,6 @@ pub struct CrossBackend {
     terminal: PlatformTerminal,
     stdout: std::io::Stdout,
     in_alt_screen: bool,
-    mouse_enabled: bool,
 }
 
 impl CrossBackend {
@@ -189,19 +165,12 @@ impl CrossBackend {
             terminal: PlatformTerminal::new()?,
             stdout: std::io::stdout(),
             in_alt_screen: false,
-            mouse_enabled: false,
         })
     }
 }
 
 impl Drop for CrossBackend {
     fn drop(&mut self) {
-        if self.mouse_enabled {
-            let _ = self.stdout.write_all(DISABLE_MOUSE_1000);
-            let _ = self.stdout.write_all(DISABLE_SGR_MOUSE);
-            let _ = self.stdout.write_all(DISABLE_URXVT_MOUSE);
-            let _ = self.stdout.flush();
-        }
         if self.in_alt_screen {
             let _ = self.stdout.write_all(LEAVE_ALT_SCREEN);
             let _ = self.stdout.flush();
@@ -253,28 +222,14 @@ impl Backend for CrossBackend {
     fn enter_alt_screen(&mut self) -> crate::Result<()> {
         if !self.in_alt_screen {
             self.stdout.write_all(ENTER_ALT_SCREEN)?;
-            // Enable all three mouse modes for maximum compatibility:
-            // 1000: basic tracking (also enables URXVT format ESC [ M B X Y)
-            // 1006: SGR mode (better coordinate encoding)
-            // 1015: URXVT mode (fallback)
-            self.stdout.write_all(ENABLE_MOUSE_1000)?;
-            self.stdout.write_all(ENABLE_SGR_MOUSE)?;
-            self.stdout.write_all(ENABLE_URXVT_MOUSE)?;
             self.stdout.flush()?;
             self.in_alt_screen = true;
-            self.mouse_enabled = true;
         }
         Ok(())
     }
 
     fn leave_alt_screen(&mut self) -> crate::Result<()> {
         if self.in_alt_screen {
-            if self.mouse_enabled {
-                self.stdout.write_all(DISABLE_MOUSE_1000)?;
-                self.stdout.write_all(DISABLE_SGR_MOUSE)?;
-                self.stdout.write_all(DISABLE_URXVT_MOUSE)?;
-                self.mouse_enabled = false;
-            }
             self.stdout.write_all(LEAVE_ALT_SCREEN)?;
             self.stdout.flush()?;
             self.in_alt_screen = false;
