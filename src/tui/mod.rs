@@ -1,5 +1,4 @@
 pub mod block;
-pub mod clipboard;
 pub mod code_block;
 pub mod content;
 pub mod conversation;

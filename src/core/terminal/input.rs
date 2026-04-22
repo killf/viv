@@ -23,8 +23,6 @@ pub enum KeyEvent {
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum MouseEvent {
-    WheelUp,
-    WheelDown,
     LeftPress { x: u16, y: u16 },
     LeftRelease { x: u16, y: u16 },
     LeftDrag { x: u16, y: u16 },
@@ -85,8 +83,6 @@ impl InputParser {
         let event = match button {
             0 => MouseEvent::LeftPress { x: u16::from(col), y: u16::from(row) },
             3 => MouseEvent::LeftRelease { x: u16::from(col), y: u16::from(row) },
-            32 | 64 => MouseEvent::WheelUp,
-            1 | 65 => MouseEvent::WheelDown,
             _ => return None, // unknown button, consume and skip
         };
         Some(InputEvent::Mouse(event))
@@ -176,6 +172,22 @@ impl InputParser {
                                 self.buf.drain(..4);
                                 return Some(InputEvent::Key(KeyEvent::Delete));
                             }
+                            // URXVT 1015: ESC [ 3... ; X ; Y M  (LeftRelease N=3, or drag N=32)
+                            if let Some(rel_pos) = self.buf[2..].iter().position(|&b| b == b'M') {
+                                let seq: Vec<u8> = self.buf.drain(..2 + rel_pos + 1).collect();
+                                let params = &seq[2..seq.len() - 1];
+                                let parts: Vec<&[u8]> = params.split(|&b| b == b';').collect();
+                                if parts.len() == 3 {
+                                    let n = Self::parse_u8(parts[0]);
+                                    let x = u16::from(Self::parse_u8(parts[1]).unwrap_or(0));
+                                    let y = u16::from(Self::parse_u8(parts[2]).unwrap_or(0));
+                                    return match n {
+                                        Some(3) => Some(InputEvent::Mouse(MouseEvent::LeftRelease { x, y })),
+                                        _ => None,
+                                    };
+                                }
+                                return None;
+                            }
                             // Unknown sequence — consume what we have
                             let consumed: Vec<u8> =
                                 self.buf.drain(..self.buf.len().min(4)).collect();
@@ -186,16 +198,9 @@ impl InputParser {
                             if let Some(evt) = self.parse_mouse_1000() {
                                 return Some(evt);
                             }
-                            // Try URXVT mouse mode (1015 / 1000): ESC [ M b x y
-                            // b = button + 32 (64=wheel up, 65=wheel down), x = col + 33, y = row + 33
                             if self.buf.get(2) == Some(&b'M') && self.buf.len() >= 6 {
-                                let btn = self.buf[3].saturating_sub(32);
                                 self.buf.drain(..6);
-                                match btn {
-                                    64 => return Some(InputEvent::Mouse(MouseEvent::WheelUp)),
-                                    65 => return Some(InputEvent::Mouse(MouseEvent::WheelDown)),
-                                    _ => {} // other mouse events: consume and skip
-                                }
+                                return None;
                             }
                             // Try SGR mouse: ESC [ < N ; X ; Y M (press) or m (release)
                             if self.buf.get(2) == Some(&b'<')
@@ -227,19 +232,31 @@ impl InputParser {
                                                 let y = u16::from(y.unwrap_or(0));
                                                 return Some(InputEvent::Mouse(MouseEvent::LeftRelease { x, y }));
                                             }
-                                            (Some(64), _) => {
-                                                self.buf.drain(..3 + pos + 1);
-                                                return Some(InputEvent::Mouse(MouseEvent::WheelUp));
-                                            }
-                                            (Some(65), _) => {
-                                                self.buf.drain(..3 + pos + 1);
-                                                return Some(InputEvent::Mouse(MouseEvent::WheelDown));
-                                            }
                                             _ => {
                                                 self.buf.drain(..3 + pos + 1);
+                                                return None;
                                             }
                                         }
                                     }
+                                }
+                            }
+                            // URXVT 1015: ESC [ N ; X ; Y M  (N starts with digit 0-9)
+                            if matches!(self.buf.get(2), Some(b'0'..=b'9')) {
+                                if let Some(rel_pos) = self.buf[2..].iter().position(|&b| b == b'M') {
+                                    let seq: Vec<u8> = self.buf.drain(..2 + rel_pos + 1).collect();
+                                    let params = &seq[2..seq.len() - 1];
+                                    let parts: Vec<&[u8]> = params.split(|&b| b == b';').collect();
+                                    if parts.len() == 3 {
+                                        let n = Self::parse_u8(parts[0]);
+                                        let x = u16::from(Self::parse_u8(parts[1]).unwrap_or(0));
+                                        let y = u16::from(Self::parse_u8(parts[2]).unwrap_or(0));
+                                        return match n {
+                                            Some(0) => Some(InputEvent::Mouse(MouseEvent::LeftPress { x, y })),
+                                            Some(3) => Some(InputEvent::Mouse(MouseEvent::LeftRelease { x, y })),
+                                            _ => None,
+                                        };
+                                    }
+                                    return None;
                                 }
                             }
                             // Unknown CSI sequence — consume ESC [ and the byte
