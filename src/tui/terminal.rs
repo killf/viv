@@ -7,7 +7,6 @@ use crate::core::terminal::buffer::{Buffer, Rect};
 use crate::core::terminal::events::{Event, EventLoop};
 use crate::core::terminal::input::{KeyEvent, MouseEvent};
 use crate::core::terminal::style::theme;
-use crate::tui::selection::SelectionState;
 use crate::tui::block::{Block, BorderSides, BorderStyle};
 use crate::tui::code_block::CodeBlockWidget;
 use crate::tui::content::{ContentBlock, MarkdownNode, MarkdownParseBuffer};
@@ -18,12 +17,13 @@ use crate::tui::layout::{Constraint, Direction, Layout};
 use crate::tui::markdown::MarkdownBlockWidget;
 use crate::tui::permission::{PermissionState, PermissionWidget};
 use crate::tui::renderer::Renderer;
-use crate::tui::spinner::{Spinner, random_verb};
+use crate::tui::selection::SelectionState;
+use crate::tui::spinner::{random_verb, Spinner};
 use crate::tui::status::StatusWidget;
-use crate::tui::tool_call::{ToolCallState, ToolCallWidget, ToolStatus, extract_input_summary};
+use crate::tui::text_map::{CellSource, TextMap};
+use crate::tui::tool_call::{extract_input_summary, ToolCallState, ToolCallWidget, ToolStatus};
 use crate::tui::welcome::WelcomeWidget;
 use crate::tui::widget::{StatefulWidget, Widget};
-use crate::tui::text_map::{CellSource, TextMap};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Welcome animation state
@@ -98,13 +98,11 @@ impl TerminalUI {
         } else {
             raw_cwd
         };
-        let branch = std::fs::read_to_string(".git/HEAD")
-            .ok()
-            .and_then(|s| {
-                s.trim()
-                    .strip_prefix("ref: refs/heads/")
-                    .map(|b| b.to_string())
-            });
+        let branch = std::fs::read_to_string(".git/HEAD").ok().and_then(|s| {
+            s.trim()
+                .strip_prefix("ref: refs/heads/")
+                .map(|b| b.to_string())
+        });
         // Truncate cwd to 30 chars if needed
         let cwd = if cwd.chars().count() > 30 {
             let tail: String = cwd
@@ -259,14 +257,18 @@ impl TerminalUI {
                         .border_fg(theme::DIM);
                     let input_inner = input_block.inner(input_block_area);
                     let editor_content = self.editor.content();
-                    let input_widget =
-                        InputWidget::new(&editor_content, self.editor.cursor_offset(), self.editor.mode.prompt())
-                            .prompt_fg(theme::CLAUDE);
+                    let input_widget = InputWidget::new(
+                        &editor_content,
+                        self.editor.cursor_offset(),
+                        self.editor.mode.prompt(),
+                    )
+                    .prompt_fg(theme::CLAUDE);
                     Some(input_widget.cursor_position(input_inner))
                 };
 
                 self.render_frame();
-                self.renderer.set_selection(self.selection_state.region().map(|r| r.as_rect()));
+                self.renderer
+                    .set_selection(self.selection_state.region().map(|r| r.as_rect()));
                 self.renderer.flush(&mut self.backend, cursor)?;
 
                 dirty = false;
@@ -545,7 +547,9 @@ impl TerminalUI {
                     let selected = state.selected_option();
                     let response = match selected {
                         crate::tui::permission::PermissionOption::Deny => PermissionResponse::Deny,
-                        crate::tui::permission::PermissionOption::Allow => PermissionResponse::Allow,
+                        crate::tui::permission::PermissionOption::Allow => {
+                            PermissionResponse::Allow
+                        }
                         crate::tui::permission::PermissionOption::AlwaysAllow => {
                             PermissionResponse::AlwaysAllow
                         }
@@ -553,10 +557,20 @@ impl TerminalUI {
                     // Replace the permission block with the result
                     let result_text = match selected {
                         crate::tui::permission::PermissionOption::Deny => {
-                            format!("  \u{2717} {}  {} ({})", selected.short_label(), tool, input)
+                            format!(
+                                "  \u{2717} {}  {} ({})",
+                                selected.short_label(),
+                                tool,
+                                input
+                            )
                         }
                         _ => {
-                            format!("  \u{2713} {}  {} ({})", selected.short_label(), tool, input)
+                            format!(
+                                "  \u{2713} {}  {} ({})",
+                                selected.short_label(),
+                                tool,
+                                input
+                            )
                         }
                     };
                     let nodes = vec![MarkdownNode::Paragraph {
@@ -689,8 +703,7 @@ impl TerminalUI {
                 let elapsed = anim.start.elapsed().as_millis() as u64;
                 let row_delay = WelcomeWidget::ROW_DELAY_MS;
                 let fade_duration = WelcomeWidget::FADE_DURATION_MS;
-                let last_row_finish_ms =
-                    u64::from(anim.total_rows - 1) * row_delay + fade_duration;
+                let last_row_finish_ms = u64::from(anim.total_rows - 1) * row_delay + fade_duration;
                 if elapsed > last_row_finish_ms {
                     self.welcome_anim = None;
                 }
@@ -743,7 +756,8 @@ impl TerminalUI {
             }
 
             // Scrollbar
-            self.conversation_state.render_scrollbar(conv_area, &mut buf);
+            self.conversation_state
+                .render_scrollbar(conv_area, &mut buf);
         }
 
         // Input area: either the permission menu or the normal text editor
@@ -762,9 +776,12 @@ impl TerminalUI {
 
             // Input widget with mode-specific prompt (Claude orange)
             let editor_content = self.editor.content();
-            let input_widget =
-                InputWidget::new(&editor_content, self.editor.cursor_offset(), self.editor.mode.prompt())
-                    .prompt_fg(theme::CLAUDE);
+            let input_widget = InputWidget::new(
+                &editor_content,
+                self.editor.cursor_offset(),
+                self.editor.mode.prompt(),
+            )
+            .prompt_fg(theme::CLAUDE);
             input_widget.render(input_inner, &mut buf);
         }
 
@@ -782,32 +799,6 @@ impl TerminalUI {
     fn block_height(&self, block: &ContentBlock) -> u16 {
         let width = self.renderer.area().width;
         block_height_with_width(block, width)
-    }
-
-    /// Recalculate the height of the block corresponding to tool call at `tool_idx`.
-    fn recalculate_tool_block_height(&mut self, tool_idx: usize) {
-        // Find the block index for the Nth ToolCall
-        let mut tc_count = 0;
-        for (block_idx, block) in self.blocks.iter().enumerate() {
-            if let ContentBlock::ToolCall { input, .. } = block {
-                if tc_count == tool_idx {
-                    let h = if let Some(state) = self.tool_states.get(tool_idx) {
-                        if state.folded {
-                            1
-                        } else {
-                            // header row + input block (lines + 2 borders)
-                            let content_lines = input.split('\n').count() as u16;
-                            1 + content_lines + 2
-                        }
-                    } else {
-                        1
-                    };
-                    self.conversation_state.set_item_height(block_idx, h);
-                    return;
-                }
-                tc_count += 1;
-            }
-        }
     }
 
     fn cleanup(&mut self) -> crate::Result<()> {
@@ -848,7 +839,7 @@ fn main_layout(input_height: u16) -> Layout {
 fn block_height_with_width(block: &ContentBlock, width: u16) -> u16 {
     match block {
         ContentBlock::UserMessage { text } => {
-            use crate::tui::paragraph::{Line, Span, wrap_line};
+            use crate::tui::paragraph::{wrap_line, Line, Span};
             let line = Line::from_spans(vec![Span::raw(text.clone())]);
             let effective_width = width.saturating_sub(2) as usize; // "> " prefix
             wrap_line(&line, effective_width.max(1)).len() as u16
@@ -877,7 +868,7 @@ fn render_block(
     }
     match block {
         ContentBlock::UserMessage { text } => {
-            use crate::tui::paragraph::{Line, Span, wrap_line};
+            use crate::tui::paragraph::{wrap_line, Line, Span};
             // Render "> " prefix on first row
             buf.set_str(area.x, area.y, "> ", Some(theme::CLAUDE), false);
 
