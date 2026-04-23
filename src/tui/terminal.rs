@@ -1,14 +1,12 @@
 use std::sync::mpsc::Receiver;
 
-use crate::agent::protocol::{AgentEvent, AgentMessage, PermissionResponse};
+use crate::agent::protocol::{AgentEvent, AgentMessage};
 use crate::core::runtime::channel::NotifySender;
 use crate::core::terminal::backend::{Backend, CrossBackend};
 use crate::core::terminal::events::{Event, EventLoop};
 use crate::core::terminal::input::KeyEvent;
-use crate::tui::content::MarkdownParseBuffer;
 use crate::tui::input::InputMode;
-use crate::tui::renderer::Renderer;
-use crate::tui::spinner::{Spinner, random_verb};
+use crate::tui::session::{KeyOutcome, TuiSession};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // UiAction
@@ -26,30 +24,7 @@ pub struct TerminalUI {
     event_tx: NotifySender<AgentEvent>,
     msg_rx: Receiver<AgentMessage>,
     backend: CrossBackend,
-    renderer: Renderer,
-    live_region: crate::tui::live_region::LiveRegion,
-    editor: LineEditor,
-    cwd: String,
-    branch: Option<String>,
-    model_name: String,
-    input_tokens: u64,
-    output_tokens: u64,
-    busy: bool,
-    spinner: Spinner,
-    spinner_start: Option<std::time::Instant>,
-    spinner_verb: String,
-
-    parse_buffer: MarkdownParseBuffer,
-    tool_seq: usize,
-
-    /// Permission prompt: (tool_name, input_summary). The menu state lives on
-    /// the corresponding `LiveBlock::PermissionPrompt` inside `live_region`.
-    pending_permission: Option<(String, String)>,
-    /// Set to true after Ctrl+D sends AgentEvent::Quit. While true, we keep the
-    /// UI running and wait for AgentMessage::Evolved so the user sees the
-    /// "evolving memories" spinner instead of a silent freeze.
-    quitting: bool,
-    quitting_start: Option<std::time::Instant>,
+    session: TuiSession,
 }
 
 impl TerminalUI {
@@ -92,46 +67,18 @@ impl TerminalUI {
     ) -> crate::Result<Self> {
         let mut backend = CrossBackend::new()?;
         backend.enable_raw_mode()?;
-        // Switch to a steady (non-blinking) bar cursor via DECSCUSR. Blinking
-        // cursors interact badly with streaming redraws — even when we avoid
-        // toggling visibility, some terminals re-trigger the blink phase on
-        // cursor moves. A steady caret sidesteps the whole class of issues.
         backend.write(b"\x1b[6 q")?;
         backend.flush()?;
 
         let size = backend.size()?;
-        let renderer = Renderer::new(size);
-        let live_region = crate::tui::live_region::LiveRegion::new(size);
-
         let (cwd, branch) = Self::read_cwd_branch();
-
-        let seed = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_millis() as u64)
-            .unwrap_or(0);
-        let spinner_verb = random_verb(seed).to_string();
+        let session = TuiSession::new(size, cwd, branch);
 
         Ok(TerminalUI {
             event_tx,
             msg_rx,
             backend,
-            renderer,
-            live_region,
-            editor: LineEditor::new(),
-            cwd,
-            branch,
-            model_name: String::new(),
-            input_tokens: 0,
-            output_tokens: 0,
-            busy: false,
-            spinner: Spinner::new(),
-            spinner_start: None,
-            spinner_verb,
-            parse_buffer: MarkdownParseBuffer::new(),
-            tool_seq: 0,
-            pending_permission: None,
-            quitting: false,
-            quitting_start: None,
+            session,
         })
     }
 
@@ -163,14 +110,8 @@ impl TerminalUI {
                 }
             }
 
-            // Animate spinner while busy
-            if self.busy && self.spinner_start.is_some() {
-                dirty = true;
-            }
-
-            // Animate the shutdown spinner while waiting for the agent to
-            // finish `evolve()` after Ctrl+D.
-            if self.quitting && self.quitting_start.is_some() {
+            // Animate spinner while busy or quitting
+            if self.session.is_busy() || self.session.is_quitting() {
                 dirty = true;
             }
 
@@ -185,7 +126,7 @@ impl TerminalUI {
                 match event {
                     Event::Key(key) => {
                         dirty = true;
-                        if self.quitting {
+                        if self.session.is_quitting() {
                             // Shutdown in progress -- only Ctrl+C force-exits;
                             // every other key is swallowed so the user can't
                             // fire off new input while the agent is evolving.
@@ -198,15 +139,13 @@ impl TerminalUI {
                         if let Some(action) = self.handle_key(key)? {
                             match action {
                                 UiAction::Quit => {
-                                    let _ = self.event_tx.send(AgentEvent::Quit);
-                                    self.enter_quitting_mode();
+                                    // handle_key already sent AgentEvent::Quit and entered quitting mode.
                                 }
                             }
                         }
                     }
                     Event::Resize(new_size) => {
-                        self.renderer.resize(new_size);
-                        self.live_region.resize(new_size);
+                        self.session.resize(new_size);
                         dirty = true;
                     }
                     // Tick keeps the loop alive; Mouse events are impossible since we
@@ -218,276 +157,33 @@ impl TerminalUI {
     }
 
     fn handle_agent_message(&mut self, msg: AgentMessage) -> crate::Result<()> {
-        match msg {
-            AgentMessage::Ready { model } => {
-                self.model_name = model.clone();
-                let welcome_widget = crate::tui::welcome::WelcomeWidget::new(
-                    Some(&model),
-                    &self.cwd,
-                    self.branch.as_deref(),
-                );
-                let width = self.renderer.area().width;
-                let welcome_text = welcome_widget.as_scrollback_string(width);
-                self.backend.write(welcome_text.as_bytes())?;
-                self.backend.flush()?;
-            }
-
-            AgentMessage::Thinking => {
-                let seed = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map(|d| d.as_millis() as u64)
-                    .unwrap_or(0);
-                self.spinner_verb = random_verb(seed).to_string();
-                self.spinner_start = Some(std::time::Instant::now());
-                self.busy = true;
-            }
-
-            AgentMessage::TextChunk(s) => {
-                let new_blocks = self.parse_buffer.push(&s);
-                for block in new_blocks {
-                    if let crate::tui::content::ContentBlock::Markdown { nodes } = block {
-                        self.live_region.push_live_block(
-                            crate::tui::live_region::LiveBlock::Markdown {
-                                nodes,
-                                state: crate::tui::live_region::BlockState::Committing,
-                            },
-                        );
-                    }
-                }
-                let pending = self.parse_buffer.peek_pending();
-                self.live_region.drop_trailing_live_markdown();
-                if !pending.is_empty() {
-                    self.live_region.push_live_block(
-                        crate::tui::live_region::LiveBlock::Markdown {
-                            nodes: pending,
-                            state: crate::tui::live_region::BlockState::Live,
-                        },
-                    );
-                }
-            }
-
-            AgentMessage::Status(s) => {
-                self.live_region.commit_text(&mut self.backend, &s)?;
-            }
-
-            AgentMessage::ToolStart { name, input } => {
-                let id = self.tool_seq;
-                self.tool_seq += 1;
-                self.live_region.push_live_block(
-                    crate::tui::live_region::LiveBlock::ToolCall {
-                        id,
-                        name,
-                        input,
-                        output: None,
-                        error: None,
-                        tc_state: crate::tui::tool_call::ToolCallState::new_running(),
-                        state: crate::tui::live_region::BlockState::Live,
-                    },
-                );
-            }
-
-            AgentMessage::ToolEnd { name: _, output } => {
-                self.live_region.finish_last_running_tool(Some(output), None);
-            }
-
-            AgentMessage::ToolError { name: _, error } => {
-                self.live_region.finish_last_running_tool(None, Some(error));
-            }
-
-            AgentMessage::PermissionRequest { tool, input } => {
-                self.pending_permission = Some((tool.clone(), input.clone()));
-                self.live_region.push_live_block(
-                    crate::tui::live_region::LiveBlock::PermissionPrompt {
-                        tool,
-                        input,
-                        menu: crate::tui::permission::PermissionState::new(),
-                    },
-                );
-            }
-
-            AgentMessage::Tokens { input, output } => {
-                self.input_tokens = input;
-                self.output_tokens = output;
-            }
-
-            AgentMessage::Done => {
-                // Flush remaining parse buffer
-                let remaining = self.parse_buffer.flush();
-                for block in remaining {
-                    if let crate::tui::content::ContentBlock::Markdown { nodes } = block {
-                        self.live_region.push_live_block(
-                            crate::tui::live_region::LiveBlock::Markdown {
-                                nodes,
-                                state: crate::tui::live_region::BlockState::Committing,
-                            },
-                        );
-                    }
-                }
-                self.live_region.drop_trailing_live_markdown();
-                self.busy = false;
-                self.spinner_start = None;
-            }
-
-            AgentMessage::Evolved => {
-                // No-op -- UI exits via Quit
-            }
-
-            AgentMessage::Error(e) => {
-                let msg = format!("\u{25cf} error: {}", e);
-                self.live_region.commit_text(&mut self.backend, &msg)?;
-                self.busy = false;
-                self.spinner_start = None;
-            }
-        }
-        Ok(())
-    }
-
-    fn handle_key(&mut self, key: KeyEvent) -> crate::Result<Option<UiAction>> {
-        // ── Mode 1: Permission pending ──────────────────────────────────────
-        if self.pending_permission.is_some() {
-            match key {
-                KeyEvent::Up => {
-                    if let Some(menu) = self.live_region.permission_menu_mut() {
-                        menu.move_up();
-                    }
-                    return Ok(None);
-                }
-                KeyEvent::Down => {
-                    if let Some(menu) = self.live_region.permission_menu_mut() {
-                        menu.move_down();
-                    }
-                    return Ok(None);
-                }
-                KeyEvent::Enter => {
-                    // Capture the selected option from the live region's menu
-                    let selected_opt = self
-                        .live_region
-                        .permission_menu()
-                        .map(|m| m.selected_option());
-                    let selected = match selected_opt {
-                        Some(s) => s,
-                        None => {
-                            self.pending_permission = None;
-                            return Ok(None);
-                        }
-                    };
-                    let (tool, input) = match self.pending_permission.take() {
-                        Some(t) => t,
-                        None => return Ok(None),
-                    };
-                    let response = match selected {
-                        crate::tui::permission::PermissionOption::Deny => PermissionResponse::Deny,
-                        crate::tui::permission::PermissionOption::Allow => {
-                            PermissionResponse::Allow
-                        }
-                        crate::tui::permission::PermissionOption::AlwaysAllow => {
-                            PermissionResponse::AlwaysAllow
-                        }
-                    };
-                    let result_text = match selected {
-                        crate::tui::permission::PermissionOption::Deny => {
-                            format!(
-                                "  \u{2717} {}  {} ({})",
-                                selected.short_label(),
-                                tool,
-                                input
-                            )
-                        }
-                        _ => {
-                            format!(
-                                "  \u{2713} {}  {} ({})",
-                                selected.short_label(),
-                                tool,
-                                input
-                            )
-                        }
-                    };
-                    self.live_region.drop_permission_prompt();
-                    self.live_region.commit_text(&mut self.backend, &result_text)?;
-                    let _ = self.event_tx.send(AgentEvent::PermissionResponse(response));
-                    return Ok(None);
-                }
-                _ => {
-                    // All other keys are swallowed while permission is pending
-                    return Ok(None);
-                }
-            }
-        }
-
-        // ── Mode 3: Busy -- Ctrl+C interrupts the agent; every other key
-        // falls through to the editor so the user can type (and even queue
-        // a submission) while the AI is still streaming its response.
-        if key == KeyEvent::CtrlC && self.busy {
-            let _ = self.event_tx.send(AgentEvent::Interrupt);
-            return Ok(None);
-        }
-
-        // ── Mode 4: Normal editing (busy or idle) ───────────────────────────
-        let mode = self.editor.mode;
-        let action = self.editor.handle_key(key);
-        match action {
-            EditAction::Submit(line) => {
-                if !line.trim().is_empty() {
-                    // Slash/colon commands are not added to the conversation history
-                    let is_command = mode != InputMode::Chat;
-                    if !is_command {
-                        let text = format!("> {}", line);
-                        self.live_region.commit_text(&mut self.backend, &text)?;
-                        self.editor.push_history(line.clone());
-                    }
-                    let event = match mode {
-                        InputMode::SlashCommand => AgentEvent::SlashCommand(line),
-                        InputMode::ColonCommand => AgentEvent::ColonCommand(line),
-                        InputMode::Chat | InputMode::HistorySearch => AgentEvent::Input(line),
-                    };
-                    let _ = self.event_tx.send(event);
-                }
-            }
-            EditAction::Exit => {
-                return Ok(Some(UiAction::Quit));
-            }
-            EditAction::Interrupt => {
-                self.editor.clear();
-            }
-            EditAction::Continue => {}
-        }
-        Ok(None)
+        self.session.handle_message(msg, &mut self.backend)
     }
 
     fn render_frame(&mut self) -> crate::Result<()> {
-        let spinner_frame = if (self.busy && self.spinner_start.is_some()) || self.quitting {
-            let elapsed = self
-                .spinner_start
-                .or(self.quitting_start)
-                .map(|s| s.elapsed().as_millis() as u64)
-                .unwrap_or(0);
-            self.spinner.frame_at(elapsed).chars().next()
-        } else {
-            None
-        };
-        let ctx = crate::tui::status::StatusContext {
-            cwd: self.cwd.clone(),
-            branch: self.branch.clone(),
-            model: self.model_name.clone(),
-            input_tokens: self.input_tokens,
-            output_tokens: self.output_tokens,
-            spinner_frame,
-            spinner_verb: self.spinner_verb.clone(),
-        };
-        let editor = self.editor.content();
-        let offset = self.editor.cursor_offset();
-        let mode = self.editor.mode;
-        let cur = self
-            .live_region
-            .frame(&mut self.backend, &editor, offset, mode, &ctx)?;
+        let cur = self.session.render_frame(&mut self.backend)?;
         self.backend.move_cursor(cur.row, cur.col)?;
         self.backend.flush()?;
         Ok(())
     }
 
+    fn handle_key(&mut self, key: KeyEvent) -> crate::Result<Option<UiAction>> {
+        match self.session.handle_key(key, &mut self.backend)? {
+            KeyOutcome::None => Ok(None),
+            KeyOutcome::Event(AgentEvent::Quit) => {
+                let _ = self.event_tx.send(AgentEvent::Quit);
+                Ok(Some(UiAction::Quit))
+            }
+            KeyOutcome::Event(e) => {
+                let _ = self.event_tx.send(e);
+                Ok(None)
+            }
+        }
+    }
+
     fn cleanup(&mut self) -> crate::Result<()> {
         // Clear the pinned live region so "Bye!" lands cleanly in scrollback.
-        let last = self.live_region.last_live_rows();
+        let last = self.session.last_live_rows();
         if last > 0 {
             let seq = format!("\x1b[{}A\x1b[0J", last);
             self.backend.write(seq.as_bytes())?;
@@ -498,14 +194,6 @@ impl TerminalUI {
         self.backend.write(b"Bye!\r\n")?;
         self.backend.flush()?;
         Ok(())
-    }
-
-    /// Enter shutdown state after Ctrl+D: record the spinner start and keep
-    /// the UI alive so the run loop keeps pumping the message channel until
-    /// the agent signals `Evolved`.
-    fn enter_quitting_mode(&mut self) {
-        self.quitting = true;
-        self.quitting_start = Some(std::time::Instant::now());
     }
 }
 

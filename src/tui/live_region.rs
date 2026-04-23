@@ -58,6 +58,10 @@ impl LiveRegion {
         self.blocks.len()
     }
 
+    pub fn width(&self) -> u16 {
+        self.size.cols
+    }
+
     pub fn last_live_rows(&self) -> u16 {
         self.last_live_rows
     }
