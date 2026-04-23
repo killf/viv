@@ -155,6 +155,86 @@ impl Screen {
         self.width
     }
 
+    /// Returns all lines as trimmed strings (ignoring trailing whitespace).
+    pub fn all_lines(&self) -> Vec<String> {
+        self.grid.iter()
+            .map(|row| {
+                let text: String = row.iter().map(|c| c.ch).collect();
+                text.trim_end().to_string()
+            })
+            .collect()
+    }
+
+    /// Returns the screen content as a single string, lines joined by newlines.
+    /// Trailing whitespace on each line is trimmed.
+    pub fn as_string(&self) -> String {
+        self.all_lines().join("\n")
+    }
+
+    /// Asserts that a specific cell has the expected character.
+    pub fn assert_cell(&self, row: usize, col: usize, expected: char) {
+        let actual = self.char_at(row, col);
+        assert_eq!(
+            actual,
+            Some(expected),
+            "Cell at ({}, {}) should be '{}', got {:?}",
+            row, col, expected, actual
+        );
+    }
+
+    /// Asserts that a line matches the expected content (ignoring trailing spaces).
+    pub fn assert_line(&self, row: usize, expected: &str) {
+        let actual = self.line_text(row);
+        let actual_trimmed = actual.as_ref().map(|s| s.trim_end().to_string());
+        assert_eq!(
+            actual_trimmed.as_deref(),
+            Some(expected),
+            "Line {} should be:\n  {:?}\nbut got:\n  {:?}",
+            row, expected, actual_trimmed
+        );
+    }
+
+    /// Asserts that the screen matches the expected layout exactly.
+    /// Each string in `expected` is one row, trimmed of trailing spaces.
+    pub fn assert_screen(&self, expected: &[&str]) {
+        let actual_lines = self.all_lines();
+        assert_eq!(
+            actual_lines.len(),
+            expected.len(),
+            "Screen height mismatch: expected {} rows, got {}",
+            expected.len(),
+            actual_lines.len()
+        );
+        for (i, exp) in expected.iter().enumerate() {
+            assert_eq!(
+                actual_lines.get(i).map(|s| s.as_str()),
+                Some(exp.trim_end()),
+                "Line {} mismatch:\n  expected: {:?}\n  actual:   {:?}",
+                i,
+                exp.trim_end(),
+                actual_lines.get(i)
+            );
+        }
+    }
+
+    /// Returns the style at a given cell.
+    pub fn style_at(&self, row: usize, col: usize) -> Option<&CellStyle> {
+        self.cell(row, col).map(|c| &c.style)
+    }
+
+    /// Asserts that a range of cells has the expected characters.
+    pub fn assert_line_range(&self, row: usize, start_col: usize, end_col: usize, expected: &str) {
+        let actual: String = (start_col..end_col)
+            .filter_map(|col| self.char_at(row, col))
+            .collect();
+        assert_eq!(
+            actual.as_str(),
+            expected,
+            "Line {} cols {}..{} should be {:?}, got {:?}",
+            row, start_col, end_col, expected, actual
+        );
+    }
+
     /// Moves the cursor to the given position (1-indexed, as per ANSI CUP).
     fn move_cursor_to(&mut self, row: usize, col: usize) {
         // ANSI CUP uses 1-based indexing

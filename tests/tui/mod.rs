@@ -1,3 +1,4 @@
+mod e2e_screen_test;
 mod ansi_serialize_test;
 mod block_test;
 mod code_block_test;
