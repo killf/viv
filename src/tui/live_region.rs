@@ -267,6 +267,7 @@ impl LiveRegion {
         let area = Rect::new(0, top_y, width, live_rows);
         let mut buf = Buffer::empty(area);
 
+        // Render live blocks starting at top_y.
         let mut y = top_y;
         for i in 0..self.blocks.len() {
             let h = self.block_height(i, width);
@@ -274,8 +275,11 @@ impl LiveRegion {
             self.render_block_into(i, block_area, &mut buf);
             y = y.saturating_add(h);
         }
+
+        // Blank separator line (only when there are live blocks).
         y = y.saturating_add(blank_row);
 
+        // Input box: Block border + InputWidget inside.
         let input_area = Rect::new(0, y, width, input_h);
         let input_block = Block::new()
             .border(BorderStyle::Rounded)
@@ -289,6 +293,7 @@ impl LiveRegion {
         let (cur_x, cur_y) = input_widget.cursor_position(input_inner);
         y = y.saturating_add(input_h);
 
+        // Status bar.
         let status_area = Rect::new(0, y, width, status_h);
         let status_widget = StatusWidget::from_context(status);
         status_widget.render(status_area, &mut buf);

@@ -109,10 +109,11 @@ impl<'a> WelcomeWidget<'a> {
     /// Render the welcome widget into an ANSI-encoded string suitable for
     /// writing directly to scrollback. All info rows are fully visible.
     pub fn as_scrollback_string(&self, width: u16) -> String {
-        let area = Rect::new(0, 0, width, Self::HEIGHT);
+        let height = Self::TOTAL_ROWS;
+        let area = Rect::new(0, 0, width, height);
         let mut buf = Buffer::empty(area);
         self.render(area, &mut buf);
-        let bytes = crate::tui::ansi_serialize::buffer_rows_to_ansi(&buf, 0..Self::HEIGHT);
+        let bytes = crate::tui::ansi_serialize::buffer_rows_to_ansi(&buf, 0..height);
         String::from_utf8(bytes).unwrap_or_default()
     }
 }
