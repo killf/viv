@@ -74,6 +74,10 @@ pub struct Screen {
     width: usize,
     height: usize,
     cursor: (usize, usize),
+    /// Pending-wrap flag (xterm Last Column Flag): set when a character is
+    /// written at the rightmost column; cleared on the next character write
+    /// (which first wraps to the next row) or on any cursor-positioning op.
+    pending_wrap: bool,
 }
 
 impl Screen {
@@ -86,6 +90,7 @@ impl Screen {
             width,
             height,
             cursor: (0, 0),
+            pending_wrap: false,
         }
     }
 
@@ -263,6 +268,22 @@ impl Screen {
         );
     }
 
+    /// Asserts that a specific cell has the expected truecolor foreground.
+    /// Use this for checking RGB colors emitted via SGR 38;2;r;g;b.
+    pub fn assert_cell_fg_rgb(&self, row: usize, col: usize, r: u8, g: u8, b: u8) {
+        let style = self.style_at(row, col);
+        let actual = style.and_then(|s| match &s.fg {
+            Some(Color::Rgb(rr, gg, bb)) => Some((*rr, *gg, *bb)),
+            _ => None,
+        });
+        assert_eq!(
+            actual,
+            Some((r, g, b)),
+            "Cell ({}, {}) foreground should be RGB({}, {}, {}), got {:?}",
+            row, col, r, g, b, actual
+        );
+    }
+
     /// Moves the cursor to the given position (1-indexed, as per ANSI CUP).
     fn move_cursor_to(&mut self, row: usize, col: usize) {
         // ANSI CUP uses 1-based indexing
@@ -270,6 +291,7 @@ impl Screen {
         let col = col.saturating_sub(1);
         self.cursor.0 = row.min(self.height.saturating_sub(1));
         self.cursor.1 = col.min(self.width.saturating_sub(1));
+        self.pending_wrap = false;
     }
 
     /// Moves the cursor by the given delta (positive = down/right).
@@ -278,30 +300,42 @@ impl Screen {
         let new_row = (r as isize + d_row).clamp(0, self.height as isize - 1) as usize;
         let new_col = (c as isize + d_col).clamp(0, self.width as isize - 1) as usize;
         self.cursor = (new_row, new_col);
+        self.pending_wrap = false;
     }
 
     /// Writes a character at the current cursor position and advances the cursor.
     fn write_char(&mut self, ch: char, style: CellStyle) {
-        let (row, col) = self.cursor;
-        if row < self.height && col < self.width {
-            // Handle tabs
-            if ch == '\t' {
-                // Advance to next tab stop (every 8 columns)
-                let next_col = (col / 8 + 1) * 8;
-                self.cursor.1 = next_col.min(self.width - 1);
-            } else {
-                self.grid[row][col] = Cell { ch, style };
-                // Auto-wrap: move to next cell, scrolling if necessary
-                self.cursor.1 += 1;
-                if self.cursor.1 >= self.width {
-                    self.cursor.1 = 0;
-                    self.cursor.0 += 1;
-                    if self.cursor.0 >= self.height {
-                        self.scroll(1);
-                        self.cursor.0 = self.height - 1;
-                    }
-                }
+        // First: if we're pending-wrap, consume the flag by advancing to the
+        // start of the next row (scrolling if needed) before writing.
+        if self.pending_wrap {
+            self.cursor.1 = 0;
+            self.cursor.0 += 1;
+            if self.cursor.0 >= self.height {
+                self.scroll(1);
+                self.cursor.0 = self.height - 1;
             }
+            self.pending_wrap = false;
+        }
+
+        let (row, col) = self.cursor;
+        if row >= self.height || col >= self.width {
+            return;
+        }
+
+        if ch == '\t' {
+            // Advance to next tab stop (every 8 columns). Tab clears pending_wrap
+            // via the earlier branch; no wrap handling beyond the clamp.
+            let next_col = (col / 8 + 1) * 8;
+            self.cursor.1 = next_col.min(self.width - 1);
+            return;
+        }
+
+        self.grid[row][col] = Cell { ch, style };
+        if col + 1 >= self.width {
+            // Rightmost column: set pending-wrap, don't advance cursor.
+            self.pending_wrap = true;
+        } else {
+            self.cursor.1 += 1;
         }
     }
 
@@ -437,12 +471,12 @@ impl<'a> ParamParser<'a> {
         value
     }
 
-    /// Parses a list of parameters separated by ':'.
+    /// Parses a list of parameters separated by ':' or ';'.
     fn parse_param_list(&mut self) -> Vec<usize> {
         let mut params = Vec::new();
         loop {
             params.push(self.parse_param());
-            if self.peek() == Some(b':') {
+            if self.peek() == Some(b':') || self.peek() == Some(b';') {
                 self.next();
             } else {
                 break;
@@ -523,9 +557,11 @@ impl AnsiParser {
                 if b == 0x0D {
                     // Carriage return
                     self.screen.cursor.1 = 0;
+                    self.screen.pending_wrap = false;
                 }
                 if b == 0x0A {
                     // Line feed
+                    self.screen.pending_wrap = false;
                     let (row, _) = self.screen.cursor;
                     if row + 1 >= self.screen.height() {
                         self.screen.scroll(1);
@@ -1006,6 +1042,7 @@ impl TerminalSimulator {
             width: self.parser.screen.width,
             height: self.parser.screen.height,
             cursor: self.parser.screen.cursor,
+            pending_wrap: self.parser.screen.pending_wrap,
         }
     }
 
@@ -1260,5 +1297,34 @@ mod tests {
         assert!(!style.bold);
         assert!(!style.italic);
         assert!(!style.underline);
+    }
+
+    #[test]
+    fn test_deferred_wrap_cr_lf_no_extra_scroll() {
+        // Write 80 'a's then \r\n + 'b'.
+        // Deferred-wrap: 80th 'a' at (0, 79) with pending_wrap; \r clears pending,
+        // \n moves to (1, 0), 'b' at (1, 0).
+        // Naive auto-wrap would put 'b' at (2, 0).
+        let input = format!("{}\r\nb", "a".repeat(80));
+        let screen = parse_str(&input, 80, 24);
+        assert_eq!(screen.char_at(0, 79), Some('a'));
+        assert_eq!(screen.char_at(1, 0), Some('b'));
+    }
+
+    #[test]
+    fn test_deferred_wrap_no_scroll_at_bottom_right() {
+        // Move cursor to (24, 1) [ANSI 1-indexed => (23, 0) 0-indexed], write 80 'a's.
+        // With deferred-wrap, no scroll should occur; all 80 'a's stay on row 23.
+        let input = format!("\x1b[24;1H{}", "a".repeat(80));
+        let screen = parse_str(&input, 80, 24);
+        assert_eq!(screen.char_at(23, 0), Some('a'));
+        assert_eq!(screen.char_at(23, 79), Some('a'));
+    }
+
+    #[test]
+    fn test_assert_cell_fg_rgb_matches_truecolor() {
+        // SGR 38;2;r;g;b sets a truecolor fg.
+        let screen = parse_str("\x1b[38;2;215;119;87mA", 80, 24);
+        screen.assert_cell_fg_rgb(0, 0, 215, 119, 87);
     }
 }
