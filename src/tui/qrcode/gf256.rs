@@ -1,5 +1,4 @@
 /// GF(256) finite field arithmetic with primitive polynomial x^8 + x^4 + x^3 + x^2 + 1 (0x11D).
-
 const fn build_tables() -> ([u8; 256], [u8; 256]) {
     let mut exp = [0u8; 256];
     let mut log = [0u8; 256];

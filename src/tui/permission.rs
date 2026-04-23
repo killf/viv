@@ -146,7 +146,7 @@ impl<'a> PermissionWidget<'a> {
         // Compute display width of icon + space + label
         let icon_w = crate::core::terminal::buffer::char_width(icon.chars().next().unwrap());
         let space_w = 1u16;
-        let label_w: u16 = label.chars().map(|c| crate::core::terminal::buffer::char_width(c)).sum();
+        let label_w: u16 = label.chars().map(crate::core::terminal::buffer::char_width).sum();
 
         let total_w = icon_w + space_w + label_w;
         let indent = if max_width > total_w { (max_width - total_w) / 2 } else { 0 };

@@ -224,7 +224,7 @@ impl<'a> Widget for MarkdownBlockWidget<'a> {
                             if prefix_x >= max_x {
                                 break;
                             }
-                            let w = char_width(ch) as u16;
+                            let w = char_width(ch);
                             let end_x = (prefix_x + w).min(max_x);
                             for cx in prefix_x..end_x {
                                 let cell = buf.get_mut(cx, row);
@@ -270,7 +270,7 @@ impl<'a> Widget for MarkdownBlockWidget<'a> {
                             if cur_x >= max_x {
                                 break;
                             }
-                            let w = char_width(ch) as u16;
+                            let w = char_width(ch);
                             let end_x = (cur_x + w).min(max_x);
                             for cx in cur_x..end_x {
                                 let cell = buf.get_mut(cx, y);

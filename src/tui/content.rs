@@ -238,7 +238,7 @@ pub fn parse_markdown(text: &str) -> Vec<MarkdownNode> {
     while let Some(line) = lines.next() {
         // ── code fence open ───────────────────────────────────────────────────
         if line.starts_with("```") {
-            let lang_hint = line[3..].trim();
+            let lang_hint = line.strip_prefix("```").unwrap().trim();
             let language = if lang_hint.is_empty() {
                 None
             } else {
@@ -371,6 +371,12 @@ pub struct MarkdownParseBuffer {
     code_lines: Vec<String>,
 }
 
+impl Default for MarkdownParseBuffer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MarkdownParseBuffer {
     pub fn new() -> Self {
         MarkdownParseBuffer {
@@ -482,7 +488,7 @@ impl MarkdownParseBuffer {
                 }
                 // Enter code block mode.
                 self.in_code_block = true;
-                let lang_hint = line[3..].trim();
+                let lang_hint = line.strip_prefix("```").unwrap().trim();
                 self.code_language = if lang_hint.is_empty() {
                     None
                 } else {

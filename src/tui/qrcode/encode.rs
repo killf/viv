@@ -60,7 +60,7 @@ impl BitStream {
     }
 
     /// Consume the stream and return the underlying bytes.
-    fn to_bytes(self) -> Vec<u8> {
+    fn into_bytes(self) -> Vec<u8> {
         self.bytes
     }
 }
@@ -114,7 +114,7 @@ pub fn encode_data(text: &str) -> Result<(Vec<u8>, u8)> {
     }
 
     // Pad to total_data codewords with alternating 0xEC / 0x11
-    let mut data = bs.to_bytes();
+    let mut data = bs.into_bytes();
     let mut pad_byte = 0xEC_u8;
     while data.len() < total_data {
         data.push(pad_byte);
@@ -159,22 +159,21 @@ pub fn encode_and_interleave(text: &str) -> Result<EncodedData> {
         .collect();
 
     // Interleave data codewords column-wise
-    let total_blocks = g1_blocks + g2_blocks;
     let max_data_len = if g2_blocks > 0 { g2_data } else { g1_data };
     let mut interleaved: Vec<u8> = Vec::new();
 
     for col in 0..max_data_len {
-        for blk in 0..total_blocks {
-            if col < data_blocks[blk].len() {
-                interleaved.push(data_blocks[blk][col]);
+        for blk in &data_blocks {
+            if col < blk.len() {
+                interleaved.push(blk[col]);
             }
         }
     }
 
     // Interleave ECC codewords column-wise
     for col in 0..ecc_per_block {
-        for blk in 0..total_blocks {
-            interleaved.push(ecc_blocks[blk][col]);
+        for blk in &ecc_blocks {
+            interleaved.push(blk[col]);
         }
     }
 

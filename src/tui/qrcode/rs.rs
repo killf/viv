@@ -10,17 +10,16 @@ pub fn generator_poly(ecc_count: usize) -> Vec<u8> {
     // Start with poly = [1] representing the constant polynomial 1
     let mut poly = vec![1u8];
 
-    for i in 0..ecc_count {
+    for alpha_i in EXP_TABLE.iter().take(ecc_count) {
         // Multiply poly by (x + α^i)
         // new_poly has one more term than poly
-        let alpha_i = EXP_TABLE[i];
         let mut new_poly = vec![0u8; poly.len() + 1];
 
         for j in 0..poly.len() {
             // poly[j] * x  contributes to new_poly[j]
             new_poly[j] ^= poly[j];
             // poly[j] * α^i contributes to new_poly[j+1]
-            new_poly[j + 1] ^= mul(poly[j], alpha_i);
+            new_poly[j + 1] ^= mul(poly[j], *alpha_i);
         }
 
         poly = new_poly;

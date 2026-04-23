@@ -31,7 +31,7 @@ impl QrCodeWidget {
             Ok(matrix) => {
                 let quiet = 4u16;
                 let size = matrix.size() as u16 + quiet * 2;
-                (size + 1) / 2
+                (size + 1).div_ceil(2)
             }
             Err(_) => 0,
         }
@@ -50,7 +50,7 @@ impl Widget for QrCodeWidget {
 
         let quiet: usize = 4;
         let size = matrix.size() + quiet * 2;
-        let rows_needed = (size + 1) / 2;
+        let rows_needed = (size + 1).div_ceil(2);
         let cols_needed = size;
 
         let area_w = area.width as usize;

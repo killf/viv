@@ -68,11 +68,11 @@ impl LiveRegion {
 
     pub fn mark_last_markdown_committing(&mut self) {
         for b in self.blocks.iter_mut().rev() {
-            if let LiveBlock::Markdown { state, .. } = b {
-                if *state == BlockState::Live {
-                    *state = BlockState::Committing;
-                    return;
-                }
+            if let LiveBlock::Markdown { state, .. } = b
+                && *state == BlockState::Live
+            {
+                *state = BlockState::Committing;
+                return;
             }
         }
     }
@@ -96,24 +96,23 @@ impl LiveRegion {
             if let LiveBlock::ToolCall {
                 state, tc_state, output: o, error: e, ..
             } = b
+            && matches!(tc_state.status, crate::tui::tool_call::ToolStatus::Running)
             {
-                if matches!(tc_state.status, crate::tui::tool_call::ToolStatus::Running) {
-                    if let Some(err) = &error {
-                        let msg = if err.len() > 60 {
-                            format!("{}...", &err[..60])
-                        } else {
-                            err.clone()
-                        };
-                        *tc_state = crate::tui::tool_call::ToolCallState::new_error(msg);
-                        *e = error;
-                    } else if let Some(out) = output {
-                        let summary = format!("{} chars", out.len());
-                        *tc_state = crate::tui::tool_call::ToolCallState::new_success(summary);
-                        *o = Some(out);
-                    }
-                    *state = BlockState::Committing;
-                    return;
+                if let Some(err) = &error {
+                    let msg = if err.len() > 60 {
+                        format!("{}...", &err[..60])
+                    } else {
+                        err.clone()
+                    };
+                    *tc_state = crate::tui::tool_call::ToolCallState::new_error(msg);
+                    *e = error;
+                } else if let Some(out) = output {
+                    let summary = format!("{} chars", out.len());
+                    *tc_state = crate::tui::tool_call::ToolCallState::new_success(summary);
+                    *o = Some(out);
                 }
+                *state = BlockState::Committing;
+                return;
             }
         }
     }

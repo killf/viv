@@ -132,19 +132,19 @@ impl<'a> ToolCallWidget<'a> {
         let y = area.y;
 
         // Apply breathing background for Running state
-        if matches!(state.status, ToolStatus::Running) {
-            if let Some(start) = state.running_start {
-                let t = Self::breath_alpha(start);
-                // dark: (15,15,25) -> light: (35,30,50) interpolated by t
-                let bg = Color::Rgb(
-                    Self::lerp_channel(15, 35, t),
-                    Self::lerp_channel(15, 30, t),
-                    Self::lerp_channel(25, 50, t),
-                );
-                for x in area.x..(area.x + area.width) {
-                    let cell = buf.get_mut(x, y);
-                    cell.bg = Some(bg);
-                }
+        if matches!(state.status, ToolStatus::Running)
+            && let Some(start) = state.running_start
+        {
+            let t = Self::breath_alpha(start);
+            // dark: (15,15,25) -> light: (35,30,50) interpolated by t
+            let bg = Color::Rgb(
+                Self::lerp_channel(15, 35, t),
+                Self::lerp_channel(15, 30, t),
+                Self::lerp_channel(25, 50, t),
+            );
+            for x in area.x..(area.x + area.width) {
+                let cell = buf.get_mut(x, y);
+                cell.bg = Some(bg);
             }
         }
 
@@ -303,14 +303,12 @@ fn truncate_str(s: &str, max_chars: usize) -> &str {
     if max_chars == 0 {
         return "";
     }
-    let mut char_count = 0;
     let mut byte_end = s.len();
-    for (byte_idx, _) in s.char_indices() {
+    for (char_count, (byte_idx, _)) in s.char_indices().enumerate() {
         if char_count >= max_chars {
             byte_end = byte_idx;
             break;
         }
-        char_count += 1;
     }
     &s[..byte_end]
 }
@@ -347,7 +345,7 @@ pub fn extract_input_summary(tool_name: &str, input_json: &str) -> String {
 }
 
 /// Extract the value of `"key": "value"` from a JSON string without a full parser.
-fn extract_string_field<'a>(json: &'a str, key: &str) -> Option<String> {
+fn extract_string_field(json: &str, key: &str) -> Option<String> {
     // Search for `"key":` (with optional whitespace before the value)
     let needle = format!("\"{}\"", key);
     let key_pos = json.find(&needle)?;

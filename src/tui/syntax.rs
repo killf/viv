@@ -62,31 +62,32 @@ pub fn tokenize(line: &str, language: Option<&str>) -> Vec<Token> {
         }
 
         // Attribute prefix
-        if let Some(attr_ch) = profile.attribute_prefix {
-            if chars[i] == attr_ch {
-                if attr_ch == '#' {
-                    if let Some(tok) = try_rust_attribute(&chars, i) {
-                        i += tok.text.chars().count();
-                        tokens.push(tok);
-                        continue;
-                    }
-                } else if attr_ch == '@' {
-                    if let Some(tok) = try_at_attribute(&chars, i) {
-                        i += tok.text.chars().count();
-                        tokens.push(tok);
-                        continue;
-                    }
+        if let Some(attr_ch) = profile.attribute_prefix
+            && chars[i] == attr_ch
+        {
+            if attr_ch == '#' {
+                if let Some(tok) = try_rust_attribute(&chars, i) {
+                    i += tok.text.chars().count();
+                    tokens.push(tok);
+                    continue;
                 }
-            }
-        }
-
-        // Lifetime (Rust: 'a, 'b, etc.)
-        if profile.lifetime_prefix && chars[i] == '\'' {
-            if let Some(tok) = try_lifetime(&chars, i) {
+            } else if attr_ch == '@'
+                && let Some(tok) = try_at_attribute(&chars, i)
+            {
                 i += tok.text.chars().count();
                 tokens.push(tok);
                 continue;
             }
+        }
+
+        // Lifetime (Rust: 'a, 'b, etc.)
+        if profile.lifetime_prefix
+            && chars[i] == '\''
+            && let Some(tok) = try_lifetime(&chars, i)
+        {
+            i += tok.text.chars().count();
+            tokens.push(tok);
+            continue;
         }
 
         // Strings
@@ -388,10 +389,10 @@ fn consume_identifier(chars: &[char], i: usize, profile: &LangProfile) -> Token 
         .iter()
         .position(|c| !c.is_whitespace())
         .map(|k| j + k);
-    if let Some(next) = next_non_space {
-        if chars[next] == '(' {
-            return Token::new(TokenKind::Function, word);
-        }
+    if let Some(next) = next_non_space
+        && chars[next] == '('
+    {
+        return Token::new(TokenKind::Function, word);
     }
 
     // Keyword check
@@ -400,12 +401,11 @@ fn consume_identifier(chars: &[char], i: usize, profile: &LangProfile) -> Token 
     }
 
     // Type (starts with uppercase)
-    if profile.type_starts_upper {
-        if let Some(first) = word.chars().next() {
-            if first.is_uppercase() {
-                return Token::new(TokenKind::Type, word);
-            }
-        }
+    if profile.type_starts_upper
+        && let Some(first) = word.chars().next()
+        && first.is_uppercase()
+    {
+        return Token::new(TokenKind::Type, word);
     }
 
     Token::new(TokenKind::Plain, word)
