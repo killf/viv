@@ -6,5 +6,6 @@ pub mod output;
 #[cfg(unix)]
 pub mod raw_mode;
 pub mod screen;
+pub mod simulator;
 pub mod size;
 pub mod style;
