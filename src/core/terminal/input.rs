@@ -13,6 +13,8 @@ pub enum KeyEvent {
     End,
     CtrlC,
     CtrlD,
+    CtrlL,
+    CtrlR,
     CtrlChar(char), // Ctrl+A through Ctrl+Z
     Escape,
     ShiftEnter,
@@ -109,11 +111,21 @@ impl InputParser {
                 Some(InputEvent::Key(KeyEvent::CtrlD))
             }
             // Ctrl+A (1) through Ctrl+C (3), Ctrl+E through Ctrl+Z (5-26)
-            // Skip 13 (Ctrl+M = Enter) — handled separately
-            1..=3 | 5..=12 | 14..=26 => {
+            // Skip 12 (Ctrl+L) and 13 (Enter) and 18 (Ctrl+R) — handled separately
+            1..=3 | 5..=11 | 14..=17 | 19..=26 => {
                 let ch = (first - 1 + b'a') as char;
                 self.buf.drain(..1);
                 Some(InputEvent::Key(KeyEvent::CtrlChar(ch)))
+            }
+            12 => {
+                // Ctrl+L: clear screen
+                self.buf.drain(..1);
+                Some(InputEvent::Key(KeyEvent::CtrlL))
+            }
+            18 => {
+                // Ctrl+R: reverse search
+                self.buf.drain(..1);
+                Some(InputEvent::Key(KeyEvent::CtrlR))
             }
             13 => {
                 self.buf.drain(..1);

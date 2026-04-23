@@ -438,7 +438,7 @@ impl TerminalUI {
                     let event = match mode {
                         InputMode::SlashCommand => AgentEvent::SlashCommand(line),
                         InputMode::ColonCommand => AgentEvent::ColonCommand(line),
-                        InputMode::Chat => AgentEvent::Input(line),
+                        InputMode::Chat | InputMode::HistorySearch => AgentEvent::Input(line),
                     };
                     let _ = self.event_tx.send(event);
                 }
@@ -526,9 +526,13 @@ pub struct LineEditor {
     pub row: usize,
     pub col: usize,
     pub mode: InputMode,
-    history: Vec<String>,       // 所有已发送的用户消息
-    history_idx: Option<usize>, // None=当前输入, Some(n)=浏览第 n 条（0=最新）
-    original: String,           // 切换历史时保存当前输入
+    history: Vec<String>,           // 所有已发送的用户消息
+    history_idx: Option<usize>,     // None=当前输入, Some(n)=浏览第 n 条（0=最新）
+    original: String,              // 切换历史时保存当前输入
+
+    // 历史搜索状态
+    search_query: String,           // 当前搜索字符串
+    search_result: Option<String>,  // 搜索结果预览
 }
 
 impl LineEditor {
@@ -541,6 +545,8 @@ impl LineEditor {
             history: Vec::new(),
             history_idx: None,
             original: String::new(),
+            search_query: String::new(),
+            search_result: None,
         }
     }
 
@@ -589,6 +595,11 @@ impl LineEditor {
     }
 
     pub fn handle_key(&mut self, key: KeyEvent) -> EditAction {
+        // 处理历史搜索模式
+        if self.mode == InputMode::HistorySearch {
+            return self.handle_key_in_search_mode(key);
+        }
+
         match key {
             KeyEvent::Char(ch) => {
                 self.exit_history();
@@ -602,6 +613,14 @@ impl LineEditor {
                 }
                 self.lines[self.row].insert(self.col, ch);
                 self.col += ch.len_utf8();
+                EditAction::Continue
+            }
+            KeyEvent::CtrlR => {
+                // 进入历史搜索模式
+                self.original = self.content();
+                self.mode = InputMode::HistorySearch;
+                self.search_query.clear();
+                self.search_result = None;
                 EditAction::Continue
             }
             KeyEvent::ShiftEnter => {
@@ -738,8 +757,126 @@ impl LineEditor {
                     EditAction::Continue
                 }
             }
+            KeyEvent::CtrlL => {
+                // Clear screen: clear the input and redraw
+                self.clear();
+                EditAction::Continue
+            }
             _ => EditAction::Continue,
         }
+    }
+
+    /// Handle key events in history search mode (Ctrl+R).
+    fn handle_key_in_search_mode(&mut self, key: KeyEvent) -> EditAction {
+        match key {
+            KeyEvent::Char(ch) => {
+                self.search_query.push(ch);
+                self.do_history_search();
+                EditAction::Continue
+            }
+            KeyEvent::Backspace => {
+                if !self.search_query.is_empty() {
+                    self.search_query.pop();
+                    self.do_history_search();
+                } else {
+                    self.exit_history_search();
+                }
+                EditAction::Continue
+            }
+            KeyEvent::Escape => {
+                self.exit_history_search();
+                EditAction::Continue
+            }
+            KeyEvent::CtrlC => {
+                self.exit_history_search();
+                EditAction::Interrupt
+            }
+            KeyEvent::Up => {
+                if let Some(idx) = self.history_idx {
+                    if idx + 1 < self.history.len() {
+                        self.history_idx = Some(idx + 1);
+                        self.apply_history_match();
+                    }
+                } else if !self.history.is_empty() {
+                    self.history_idx = Some(0);
+                    self.apply_history_match();
+                }
+                EditAction::Continue
+            }
+            KeyEvent::Down => {
+                if let Some(idx) = self.history_idx {
+                    if idx > 0 {
+                        self.history_idx = Some(idx - 1);
+                        self.apply_history_match();
+                    }
+                }
+                EditAction::Continue
+            }
+            KeyEvent::Enter => {
+                if let Some(ref result) = self.search_result {
+                    self.lines = result.lines().map(String::from).collect();
+                    if self.lines.is_empty() {
+                        self.lines.push(String::new());
+                    }
+                    self.row = 0;
+                    self.col = self.lines[0].len();
+                }
+                self.mode = InputMode::Chat;
+                self.search_query.clear();
+                self.search_result = None;
+                let content = self.content();
+                self.clear();
+                EditAction::Submit(content)
+            }
+            KeyEvent::CtrlR => {
+                if let Some(idx) = self.history_idx {
+                    if idx + 1 < self.history.len() {
+                        self.history_idx = Some(idx + 1);
+                        self.apply_history_match();
+                    }
+                }
+                EditAction::Continue
+            }
+            _ => EditAction::Continue,
+        }
+    }
+
+    fn do_history_search(&mut self) {
+        if self.search_query.is_empty() {
+            self.search_result = None;
+            self.history_idx = None;
+            return;
+        }
+        for (i, entry) in self.history.iter().enumerate().rev() {
+            if entry.contains(&self.search_query) {
+                self.search_result = Some(entry.clone());
+                self.history_idx = Some(self.history.len() - 1 - i);
+                return;
+            }
+        }
+        self.search_result = None;
+        self.history_idx = None;
+    }
+
+    fn apply_history_match(&mut self) {
+        if let Some(ref result) = self.search_result {
+            self.lines = result.lines().map(String::from).collect();
+            if self.lines.is_empty() {
+                self.lines.push(String::new());
+            }
+            self.row = 0;
+            self.col = self.lines[0].len();
+        }
+    }
+
+    fn exit_history_search(&mut self) {
+        self.mode = InputMode::Chat;
+        self.lines = vec![self.original.clone()];
+        self.row = 0;
+        self.col = self.lines[0].len();
+        self.search_query.clear();
+        self.search_result = None;
+        self.history_idx = None;
     }
 
     fn prev_char_boundary(&self) -> usize {

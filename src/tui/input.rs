@@ -8,6 +8,7 @@ pub enum InputMode {
     Chat,
     SlashCommand,
     ColonCommand,
+    HistorySearch,
 }
 
 impl InputMode {
@@ -17,6 +18,7 @@ impl InputMode {
             InputMode::Chat => "\u{276F} ",
             InputMode::SlashCommand => "/ ",
             InputMode::ColonCommand => ": ",
+            InputMode::HistorySearch => "(reverse-i-search)`': ",
         }
     }
 }
