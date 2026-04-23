@@ -309,7 +309,18 @@ impl LiveRegion {
         if bytes.ends_with(b"\r\n") {
             bytes.truncate(bytes.len() - 2);
         }
-        backend.write(format!("\x1b[{};1H", top_y + 1).as_bytes())?;
+        // When the live region has shrunk vertically (e.g. user deleted a
+        // newline so the input box is shorter), rows between the old top and
+        // the new top would keep showing stale content. Prepend one erase-
+        // line sequence per shrunk row to wipe them.
+        let shrunk_rows = self.last_live_rows.saturating_sub(live_rows);
+        let start_y = top_y.saturating_sub(shrunk_rows);
+        let mut prefix: Vec<u8> = Vec::new();
+        prefix.extend_from_slice(format!("\x1b[{};1H", start_y + 1).as_bytes());
+        for _ in 0..shrunk_rows {
+            prefix.extend_from_slice(b"\x1b[2K\r\n");
+        }
+        backend.write(&prefix)?;
         backend.write(&bytes)?;
         backend.flush()?;
 

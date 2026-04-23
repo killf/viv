@@ -6,7 +6,9 @@ fn serializes_plain_ascii_row_then_newline() {
     let mut buf = Buffer::empty(Rect::new(0, 0, 5, 1));
     buf.set_str(0, 0, "hello", None, false);
     let out = buffer_rows_to_ansi(&buf, 0..1);
-    assert!(out.ends_with(b"\x1b[0m\r\n"));
+    // Row ends with reset SGR + erase-to-EOL + CRLF so the caller can redraw
+    // in place without leaving stale characters past the trimmed tail.
+    assert!(out.ends_with(b"\x1b[0m\x1b[K\r\n"));
     assert!(out.windows(5).any(|w| w == b"hello"));
 }
 

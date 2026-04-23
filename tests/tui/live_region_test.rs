@@ -194,3 +194,61 @@ fn paint_renders_permission_menu_multiple_rows() {
         "expected live region to include multi-row permission menu, got {} rows",
         region.last_live_rows());
 }
+
+#[test]
+fn paint_erases_stale_chars_when_input_shrinks() {
+    // Regression: after the user deletes characters from the input, the new
+    // (shorter) row must erase the tail of the previous frame so stale chars
+    // don't linger on screen. `buffer_rows_to_ansi` trims trailing blanks, so
+    // `paint` must append an explicit erase-in-line sequence (`\x1b[K` or
+    // `\x1b[2K`) on each row, or pad rows to full width.
+    let mut region = LiveRegion::new(TermSize { cols: 40, rows: 10 });
+    let ctx = StatusContext {
+        cwd: "~/p".into(), branch: None, model: "m".into(),
+        input_tokens: 0, output_tokens: 0,
+        spinner_frame: None, spinner_verb: String::new(),
+    };
+    let mut backend = TestBackend::new(40, 10);
+
+    region.paint(&mut backend, "hello world", 11, InputMode::Chat, &ctx).unwrap();
+    backend.output.clear();
+    region.paint(&mut backend, "", 0, InputMode::Chat, &ctx).unwrap();
+
+    let out = String::from_utf8(backend.output.clone()).unwrap();
+    assert!(
+        out.contains("\x1b[K") || out.contains("\x1b[0K") || out.contains("\x1b[2K"),
+        "paint must emit erase-in-line when content shrinks; got {:?}",
+        out
+    );
+}
+
+#[test]
+fn paint_clears_rows_above_new_top_when_live_region_shrinks() {
+    // Regression: when vertical size of the live region shrinks (e.g. user
+    // deletes a newline so the input box gets shorter), the old rows above
+    // the new top_y must be cleared so they don't keep showing stale content.
+    let mut region = LiveRegion::new(TermSize { cols: 40, rows: 20 });
+    let ctx = StatusContext {
+        cwd: "~/p".into(), branch: None, model: "m".into(),
+        input_tokens: 0, output_tokens: 0,
+        spinner_frame: None, spinner_verb: String::new(),
+    };
+    let mut backend = TestBackend::new(40, 20);
+
+    // 5 logical lines → input_h = 7, live_rows = 8.
+    region.paint(&mut backend, "a\nb\nc\nd\ne", 9, InputMode::Chat, &ctx).unwrap();
+    let tall_rows = region.last_live_rows();
+    backend.output.clear();
+
+    // 1 logical line → input_h = 3, live_rows = 4. Frame shrinks vertically.
+    region.paint(&mut backend, "a", 1, InputMode::Chat, &ctx).unwrap();
+    let short_rows = region.last_live_rows();
+    assert!(tall_rows > short_rows, "setup: tall {tall_rows} should exceed short {short_rows}");
+
+    let out = String::from_utf8(backend.output.clone()).unwrap();
+    assert!(
+        out.contains("\x1b[K") || out.contains("\x1b[0K") || out.contains("\x1b[2K") || out.contains("\x1b[0J"),
+        "paint must erase the old live region when it shrinks; got {:?}",
+        out
+    );
+}

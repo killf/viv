@@ -1,7 +1,9 @@
 //! Serialize a `Buffer` row range into an ANSI byte stream suitable for
-//! scrollback commits. Each row emits SGR transitions, character bytes, and
-//! terminates with `ESC[0m\r\n`. Trailing blank cells are trimmed so short
-//! lines don't pad out to the buffer width.
+//! scrollback commits. Each row emits SGR transitions, character bytes, an
+//! erase-to-end-of-line (`ESC[K`), and terminates with `ESC[0m\r\n`. Trailing
+//! blank cells are trimmed so short lines don't pad out to the buffer width;
+//! the `ESC[K` then wipes any stale characters that may linger past the
+//! trimmed tail when these bytes overwrite a previous frame in place.
 //!
 //! The `\r` matters: we write these bytes to a terminal that's in raw mode
 //! (OPOST disabled), so a bare `\n` moves the cursor down without returning
@@ -55,7 +57,7 @@ pub fn buffer_rows_to_ansi(buf: &Buffer, rows: Range<u16>) -> Vec<u8> {
             let s = cell.ch.encode_utf8(&mut buf4);
             out.extend_from_slice(s.as_bytes());
         }
-        out.extend_from_slice(b"\x1b[0m\r\n");
+        out.extend_from_slice(b"\x1b[0m\x1b[K\r\n");
     }
     out
 }
