@@ -43,7 +43,7 @@ fn commit_text_clears_live_region_then_writes_line() {
     let out = String::from_utf8(backend.output.clone()).unwrap();
     assert!(out.starts_with("\x1b[3A\x1b[0J"));
     assert!(out.contains("> hello world"));
-    assert!(out.ends_with("\n"));
+    assert!(out.ends_with("\r\n"));
     assert_eq!(region.last_live_rows(), 0);
 }
 
@@ -54,7 +54,7 @@ fn commit_text_with_zero_live_rows_skips_cursor_up() {
     region.commit_text(&mut backend, "hi").unwrap();
     let out = String::from_utf8(backend.output.clone()).unwrap();
     assert!(!out.contains("\x1b[0A"));
-    assert!(out.contains("hi\n"));
+    assert!(out.contains("hi\r\n"));
 }
 
 #[test]
@@ -70,7 +70,7 @@ fn commit_pending_writes_markdown_then_removes_block() {
     assert_eq!(region.block_count(), 0);
     let out = String::from_utf8(backend.output.clone()).unwrap();
     assert!(out.contains("hello"), "got {:?}", out);
-    assert!(out.ends_with("\n"));
+    assert!(out.ends_with("\r\n"));
 }
 
 #[test]

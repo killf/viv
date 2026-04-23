@@ -164,7 +164,9 @@ impl LiveRegion {
     ) -> crate::Result<()> {
         self.clear_live_region(backend)?;
         backend.write(line.as_bytes())?;
-        backend.write(b"\n")?;
+        // Raw mode has OPOST off, so a bare \n does not move the cursor back
+        // to column 0. Write \r\n explicitly to avoid a staircase effect.
+        backend.write(b"\r\n")?;
         backend.flush()?;
         Ok(())
     }
@@ -298,7 +300,15 @@ impl LiveRegion {
         let status_widget = StatusWidget::from_context(status);
         status_widget.render(status_area, &mut buf);
 
-        let bytes = buffer_rows_to_ansi(&buf, top_y..top_y + live_rows);
+        let mut bytes = buffer_rows_to_ansi(&buf, top_y..top_y + live_rows);
+        // paint redraws a bottom-pinned region via absolute cursor positioning.
+        // The final \r\n (emitted by buffer_rows_to_ansi for each row) would
+        // advance past the last row — at the bottom of the screen that means
+        // a scroll. Every keystroke would then push the frame up by one row,
+        // producing endless reprinting. Trim it so the last row stays put.
+        if bytes.ends_with(b"\r\n") {
+            bytes.truncate(bytes.len() - 2);
+        }
         backend.write(format!("\x1b[{};1H", top_y + 1).as_bytes())?;
         backend.write(&bytes)?;
         backend.flush()?;

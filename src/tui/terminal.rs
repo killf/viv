@@ -209,9 +209,9 @@ impl TerminalUI {
                         self.live_region.resize(new_size);
                         dirty = true;
                     }
-                    // Mouse events are impossible: we stopped emitting mouse-tracking
-                    // sequences in sub-task A, so the terminal never sends them.
-                    Event::Tick | Event::Key(_) | Event::Mouse(_) | Event::Resize(_) => {}
+                    // Tick keeps the loop alive; Mouse events are impossible since we
+                    // stopped emitting mouse-tracking sequences.
+                    Event::Tick | Event::Mouse(_) => {}
                 }
             }
         }
@@ -495,7 +495,7 @@ impl TerminalUI {
         // Restore the terminal's default cursor style (DECSCUSR reset).
         self.backend.write(b"\x1b[0 q")?;
         self.backend.disable_raw_mode()?;
-        self.backend.write(b"Bye!\n")?;
+        self.backend.write(b"Bye!\r\n")?;
         self.backend.flush()?;
         Ok(())
     }

@@ -6,7 +6,7 @@ fn serializes_plain_ascii_row_then_newline() {
     let mut buf = Buffer::empty(Rect::new(0, 0, 5, 1));
     buf.set_str(0, 0, "hello", None, false);
     let out = buffer_rows_to_ansi(&buf, 0..1);
-    assert!(out.ends_with(b"\x1b[0m\n"));
+    assert!(out.ends_with(b"\x1b[0m\r\n"));
     assert!(out.windows(5).any(|w| w == b"hello"));
 }
 
@@ -17,7 +17,7 @@ fn collapses_trailing_blanks() {
     let out = buffer_rows_to_ansi(&buf, 0..1);
     let body = std::str::from_utf8(&out).expect("utf8");
     assert!(
-        !body.contains("          \x1b[0m\n"),
+        !body.contains("          \x1b[0m\r\n"),
         "expected trailing blanks trimmed, got {:?}",
         body
     );
@@ -32,4 +32,7 @@ fn emits_one_line_per_row_in_range() {
     let out = buffer_rows_to_ansi(&buf, 0..3);
     let nl_count = out.iter().filter(|&&b| b == b'\n').count();
     assert_eq!(nl_count, 3);
+    // Each \n must be preceded by \r so cursor returns to column 0 under raw mode.
+    let cr_lf_pairs = out.windows(2).filter(|w| w == b"\r\n").count();
+    assert_eq!(cr_lf_pairs, 3);
 }
