@@ -1306,4 +1306,24 @@ mod tests {
         assert_eq!(parser.screen.char_at(5, 10), Some('Y'));
         assert_ne!(parser.screen.char_at(6, 0), Some('Y'));
     }
+
+    #[test]
+    fn test_parse_multibyte_utf8_box_drawing() {
+        // U+2500 BOX DRAWINGS LIGHT HORIZONTAL is a 3-byte sequence: E2 94 80.
+        // Prior to the multi-byte fix in parse_ground, each byte was passed
+        // through char::from_u32 individually, corrupting the glyph.
+        let screen = parse_str("─", 10, 1);
+        assert_eq!(screen.char_at(0, 0), Some('─'));
+    }
+
+    #[test]
+    fn test_el0_preserves_last_cell_when_pending_wrap() {
+        // Writing 80 chars on an 80-wide screen puts the cursor at (0, 79)
+        // with pending_wrap = true. An ESC[K (EL 0) must not erase the
+        // rightmost cell: the cursor is logically past the last column, so
+        // there's nothing to the right to clear.
+        let input = format!("{}\x1b[K", "a".repeat(80));
+        let screen = parse_str(&input, 80, 24);
+        assert_eq!(screen.char_at(0, 79), Some('a'));
+    }
 }
