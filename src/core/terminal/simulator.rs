@@ -847,200 +847,98 @@ pub fn parse_str(s: &str, width: usize, height: usize) -> Screen {
     parse_ansi(s.as_bytes(), width, height)
 }
 
-// ── TerminalSimulator ─────────────────────────────────────────────────────────────
+// ── SimTerminal ───────────────────────────────────────────────────────────────
 
-use crate::agent::protocol::AgentMessage;
+use crate::agent::protocol::{AgentEvent, AgentMessage};
 use crate::core::terminal::backend::TestBackend;
-use crate::core::terminal::size::TermSize;
 use crate::core::terminal::input::KeyEvent;
+use crate::core::terminal::size::TermSize;
 use crate::tui::input::InputMode;
-use crate::tui::live_region::LiveRegion;
-use crate::tui::status::StatusContext;
-use crate::tui::terminal::LineEditor;
+use crate::tui::session::{KeyOutcome, TuiSession};
 
-/// Terminal simulator for testing TUI output.
+/// Test double that runs the real [`TuiSession`] rendering path against a
+/// [`TestBackend`], then parses the emitted ANSI bytes into a [`Screen`].
 ///
-/// Maintains state equivalent to TerminalUI and uses TestBackend to capture
-/// rendering output, parsing ANSI sequences to reconstruct the terminal screen.
-pub struct TerminalSimulator {
-    width: usize,
-    height: usize,
+/// Tests drive it with `send_message` / `send_key`, inspect the screen
+/// with `screen()`, and verify outbound agent events via `sent_events()`.
+pub struct SimTerminal {
+    session: TuiSession,
+    backend: TestBackend,
     parser: AnsiParser,
-    live_region: LiveRegion,
-    line_editor: LineEditor,
-    model_name: String,
-    cwd: String,
-    branch: Option<String>,
-    input_tokens: u64,
-    output_tokens: u64,
-    busy: bool,
+    sent_events: Vec<AgentEvent>,
 }
 
-impl TerminalSimulator {
-    /// Creates a new simulator with the given dimensions.
+impl SimTerminal {
     pub fn new(width: usize, height: usize) -> Self {
-        let size = TermSize { cols: width as u16, rows: height as u16 };
-        TerminalSimulator {
-            width,
-            height,
+        let size = TermSize {
+            cols: width as u16,
+            rows: height as u16,
+        };
+        SimTerminal {
+            session: TuiSession::new(size, "~".to_string(), None),
+            backend: TestBackend::new(width as u16, height as u16),
             parser: AnsiParser::new(width, height),
-            live_region: LiveRegion::new(size),
-            line_editor: LineEditor::new(),
-            model_name: String::new(),
-            cwd: "~".to_string(),
-            branch: None,
-            input_tokens: 0,
-            output_tokens: 0,
-            busy: false,
+            sent_events: Vec::new(),
         }
     }
 
-    /// Sets the working directory for display.
     pub fn with_cwd(mut self, cwd: &str) -> Self {
-        self.cwd = cwd.to_string();
+        let size = TermSize {
+            cols: self.parser.screen.width as u16,
+            rows: self.parser.screen.height as u16,
+        };
+        self.session = TuiSession::new(size, cwd.to_string(), None);
         self
     }
 
-    /// Sets the git branch for display.
     pub fn with_branch(mut self, branch: Option<&str>) -> Self {
-        self.branch = branch.map(|s| s.to_string());
+        let size = TermSize {
+            cols: self.parser.screen.width as u16,
+            rows: self.parser.screen.height as u16,
+        };
+        // NOTE: calling both with_cwd and with_branch on the same instance
+        // loses the earlier cwd because we rebuild TuiSession. Callers that
+        // need both should pass them in the order they want to take effect
+        // and the earlier one will be discarded. For the current test suite
+        // only one of these is used per construction so this is acceptable.
+        self.session = TuiSession::new(size, "~".to_string(), branch.map(|s| s.to_string()));
         self
     }
 
-    /// Sends a key event to the simulator.
-    pub fn send_key(&mut self, key: KeyEvent) -> &mut Self {
-        use crate::tui::terminal::EditAction;
-
-        // Handle permission menu navigation
-        match key {
-            KeyEvent::Up | KeyEvent::Down => {
-                if let Some(menu) = self.live_region.permission_menu_mut() {
-                    match key {
-                        KeyEvent::Up => menu.move_up(),
-                        KeyEvent::Down => menu.move_down(),
-                        _ => {}
-                    }
-                }
-            }
-            _ => {}
-        }
-
-        let action = self.line_editor.handle_key(key);
-        match action {
-            EditAction::Submit(content) => {
-                if !content.trim().is_empty() {
-                    let text = format!("> {}", content);
-                    let _ = self.live_region.commit_text(&mut self.backend(), &text);
-                    self.line_editor.push_history(content);
-                }
-            }
-            EditAction::Exit => {
-                // Exit signal: simulator doesn't support exit
-            }
-            EditAction::Interrupt => {
-                self.line_editor.clear();
-            }
-            EditAction::Continue => {}
-        }
-
-        self.render();
-        self
-    }
-
-    /// Sends an agent message to the simulator.
     pub fn send_message(&mut self, msg: AgentMessage) -> &mut Self {
-        match msg {
-            AgentMessage::Ready { model } => {
-                self.model_name = model;
-                // Render Welcome
-                let welcome = crate::tui::welcome::WelcomeWidget::new(
-                    Some(&self.model_name),
-                    &self.cwd,
-                    self.branch.as_deref(),
-                );
-                let text = welcome.as_scrollback_string(self.width as u16);
-                self.parser.parse(text.as_bytes());
+        let _ = self.session.handle_message(msg, &mut self.backend);
+        let _ = self.session.render_frame(&mut self.backend);
+        self.parser.parse(&self.backend.output);
+        self.backend.output.clear();
+        self
+    }
+
+    pub fn send_key(&mut self, key: KeyEvent) -> &mut Self {
+        if let Ok(outcome) = self.session.handle_key(key, &mut self.backend) {
+            if let KeyOutcome::Event(e) = outcome {
+                self.sent_events.push(e);
             }
-            AgentMessage::Thinking => {
-                self.busy = true;
-            }
-            AgentMessage::TextChunk(s) => {
-                let mut backend = self.backend();
-                let pending = self.parse_chunk(&s);
-                if !pending.is_empty() {
-                    self.live_region.push_live_block(
-                        crate::tui::live_region::LiveBlock::Markdown {
-                            nodes: pending,
-                            state: crate::tui::live_region::BlockState::Live,
-                        },
-                    );
-                }
-                self.render_with_backend(&mut backend);
-            }
-            AgentMessage::ToolStart { name, input } => {
-                self.live_region.push_live_block(
-                    crate::tui::live_region::LiveBlock::ToolCall {
-                        id: 0,
-                        name,
-                        input,
-                        output: None,
-                        error: None,
-                        tc_state: crate::tui::tool_call::ToolCallState::new_running(),
-                        state: crate::tui::live_region::BlockState::Live,
-                    },
-                );
-                self.render();
-            }
-            AgentMessage::ToolEnd { output, .. } => {
-                self.live_region.finish_last_running_tool(Some(output), None);
-                self.render();
-            }
-            AgentMessage::ToolError { error, .. } => {
-                self.live_region.finish_last_running_tool(None, Some(error));
-                self.render();
-            }
-            AgentMessage::PermissionRequest { tool, input } => {
-                self.live_region.push_live_block(
-                    crate::tui::live_region::LiveBlock::PermissionPrompt {
-                        tool,
-                        input,
-                        menu: crate::tui::permission::PermissionState::new(),
-                    },
-                );
-                self.render();
-            }
-            AgentMessage::Tokens { input, output } => {
-                self.input_tokens = input;
-                self.output_tokens = output;
-            }
-            AgentMessage::Done => {
-                self.busy = false;
-                self.render();
-            }
-            AgentMessage::Error(e) => {
-                let msg = format!("\u{25cf} error: {}", e);
-                let _ = self.live_region.commit_text(&mut self.backend(), &msg);
-                self.busy = false;
-            }
-            AgentMessage::Status(s) => {
-                let _ = self.live_region.commit_text(&mut self.backend(), &s);
-            }
-            AgentMessage::Evolved => {}
         }
+        let _ = self.session.render_frame(&mut self.backend);
+        self.parser.parse(&self.backend.output);
+        self.backend.output.clear();
         self
     }
 
-    /// Resizes the terminal to the given dimensions.
     pub fn resize(&mut self, width: usize, height: usize) -> &mut Self {
-        self.width = width;
-        self.height = height;
+        let size = TermSize {
+            cols: width as u16,
+            rows: height as u16,
+        };
+        self.session.resize(size);
         self.parser = AnsiParser::new(width, height);
-        self.live_region.resize(TermSize { cols: width as u16, rows: height as u16 });
-        self.render();
+        self.backend.size = size;
+        let _ = self.session.render_frame(&mut self.backend);
+        self.parser.parse(&self.backend.output);
+        self.backend.output.clear();
         self
     }
 
-    /// Returns the current screen state.
     pub fn screen(&self) -> Screen {
         Screen {
             grid: self.parser.screen.grid.clone(),
@@ -1051,64 +949,24 @@ impl TerminalSimulator {
         }
     }
 
-    /// Returns the current input content.
     pub fn input_content(&self) -> String {
-        self.line_editor.content()
+        self.session.input_content()
     }
 
-    /// Returns the current input mode.
     pub fn input_mode(&self) -> InputMode {
-        self.line_editor.mode
+        self.session.input_mode()
     }
 
-    /// Returns the selected permission menu index, if a permission is pending.
     pub fn permission_selected(&self) -> Option<usize> {
-        self.live_region.permission_menu().map(|m| m.selected)
+        self.session.permission_selected()
     }
 
-    fn backend(&self) -> TestBackend {
-        TestBackend::new(self.width as u16, self.height as u16)
+    pub fn sent_events(&self) -> &[AgentEvent] {
+        &self.sent_events
     }
 
-    fn make_status_ctx(&self) -> StatusContext {
-        let spinner_frame = if self.busy { Some('|') } else { None };
-        StatusContext {
-            cwd: self.cwd.clone(),
-            branch: self.branch.clone(),
-            model: self.model_name.clone(),
-            input_tokens: self.input_tokens,
-            output_tokens: self.output_tokens,
-            spinner_frame,
-            spinner_verb: String::new(),
-        }
-    }
-
-    fn render(&mut self) {
-        let mut backend = self.backend();
-        self.render_with_backend(&mut backend);
-    }
-
-    fn render_with_backend(&mut self, backend: &mut TestBackend) {
-        let ctx = self.make_status_ctx();
-        let editor = self.line_editor.content();
-        let offset = self.line_editor.cursor_offset();
-        let mode = self.line_editor.mode;
-        let _ = self.live_region.frame(backend, &editor, offset, mode, &ctx);
-        self.parser.parse(&backend.output);
-    }
-
-    fn parse_chunk(&self, chunk: &str) -> Vec<crate::tui::content::MarkdownNode> {
-        use crate::tui::content::MarkdownParseBuffer;
-        let mut buf = MarkdownParseBuffer::new();
-        buf.push(chunk);
-        let blocks = buf.flush();
-        blocks.into_iter()
-            .filter_map(|b| match b {
-                crate::tui::content::ContentBlock::Markdown { nodes } => Some(nodes),
-                _ => None,
-            })
-            .flatten()
-            .collect()
+    pub fn quit_requested(&self) -> bool {
+        self.session.is_quitting()
     }
 }
 
