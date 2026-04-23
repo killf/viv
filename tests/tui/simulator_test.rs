@@ -1,22 +1,22 @@
-//! TerminalSimulator integration tests.
+//! SimTerminal integration tests.
 //!
-//! These tests verify the TerminalSimulator can correctly simulate TUI behavior
+//! These tests verify the SimTerminal can correctly simulate TUI behavior
 //! by parsing ANSI output and reconstructing terminal state.
 
-use viv::core::terminal::simulator::TerminalSimulator;
+use viv::core::terminal::simulator::SimTerminal;
 use viv::core::terminal::input::KeyEvent;
 use viv::agent::protocol::AgentMessage;
 
 #[test]
 fn new_simulator_has_correct_dimensions() {
-    let sim = TerminalSimulator::new(80, 24);
+    let sim = SimTerminal::new(80, 24);
     let screen = sim.screen();
     assert_eq!(screen.size(), (80, 24));
 }
 
 #[test]
 fn resize_changes_dimensions() {
-    let mut sim = TerminalSimulator::new(80, 24);
+    let mut sim = SimTerminal::new(80, 24);
     sim.resize(120, 40);
     let screen = sim.screen();
     assert_eq!(screen.size(), (120, 40));
@@ -24,7 +24,7 @@ fn resize_changes_dimensions() {
 
 #[test]
 fn send_ready_message_shows_welcome() {
-    let mut sim = TerminalSimulator::new(80, 24);
+    let mut sim = SimTerminal::new(80, 24);
     sim.send_message(AgentMessage::Ready { model: "claude-3-5-sonnet".into() });
     let screen = sim.screen();
     // WelcomeWidget shows model name in info section
@@ -41,7 +41,7 @@ fn send_ready_message_shows_welcome() {
 
 #[test]
 fn typing_in_editor_appears_on_screen() {
-    let mut sim = TerminalSimulator::new(80, 24);
+    let mut sim = SimTerminal::new(80, 24);
     sim.send_message(AgentMessage::Ready { model: "test".into() });
 
     sim.send_key(KeyEvent::Char('h'));
@@ -59,7 +59,7 @@ fn typing_in_editor_appears_on_screen() {
 
 #[test]
 fn slash_switches_to_slash_mode() {
-    let mut sim = TerminalSimulator::new(80, 24);
+    let mut sim = SimTerminal::new(80, 24);
     sim.send_message(AgentMessage::Ready { model: "test".into() });
     sim.send_key(KeyEvent::Char('/'));
     assert_eq!(sim.input_mode(), viv::tui::input::InputMode::SlashCommand);
@@ -67,7 +67,7 @@ fn slash_switches_to_slash_mode() {
 
 #[test]
 fn colon_switches_to_colon_mode() {
-    let mut sim = TerminalSimulator::new(80, 24);
+    let mut sim = SimTerminal::new(80, 24);
     sim.send_message(AgentMessage::Ready { model: "test".into() });
     sim.send_key(KeyEvent::Char(':'));
     assert_eq!(sim.input_mode(), viv::tui::input::InputMode::ColonCommand);
@@ -75,7 +75,7 @@ fn colon_switches_to_colon_mode() {
 
 #[test]
 fn enter_submits_input() {
-    let mut sim = TerminalSimulator::new(80, 24);
+    let mut sim = SimTerminal::new(80, 24);
     sim.send_message(AgentMessage::Ready { model: "test".into() });
     sim.send_key(KeyEvent::Char('h'));
     sim.send_key(KeyEvent::Char('i'));
@@ -92,7 +92,7 @@ fn enter_submits_input() {
 
 #[test]
 fn permission_request_shows_menu() {
-    let mut sim = TerminalSimulator::new(60, 20);
+    let mut sim = SimTerminal::new(60, 20);
     sim.send_message(AgentMessage::PermissionRequest {
         tool: "Bash".into(),
         input: "rm -rf /".into(),
@@ -114,7 +114,7 @@ fn permission_request_shows_menu() {
 
 #[test]
 fn permission_menu_navigation() {
-    let mut sim = TerminalSimulator::new(60, 20);
+    let mut sim = SimTerminal::new(60, 20);
     sim.send_message(AgentMessage::PermissionRequest {
         tool: "Bash".into(),
         input: "ls".into(),
@@ -138,7 +138,7 @@ fn permission_menu_navigation() {
 
 #[test]
 fn thinking_message_sets_busy() {
-    let mut sim = TerminalSimulator::new(80, 24);
+    let mut sim = SimTerminal::new(80, 24);
     sim.send_message(AgentMessage::Thinking);
     // busy state is reflected in the status bar via spinner
     // We can't easily test the spinner, but we can verify no panic occurs
@@ -151,7 +151,7 @@ fn thinking_message_sets_busy() {
 
 #[test]
 fn tool_call_shows_name() {
-    let mut sim = TerminalSimulator::new(80, 24);
+    let mut sim = SimTerminal::new(80, 24);
     sim.send_message(AgentMessage::ToolStart {
         name: "Bash".into(),
         input: "ls -la".into(),
@@ -163,7 +163,7 @@ fn tool_call_shows_name() {
 
 #[test]
 fn tool_end_updates_state() {
-    let mut sim = TerminalSimulator::new(80, 24);
+    let mut sim = SimTerminal::new(80, 24);
     sim.send_message(AgentMessage::ToolStart {
         name: "Bash".into(),
         input: "ls".into(),
@@ -180,7 +180,7 @@ fn tool_end_updates_state() {
 
 #[test]
 fn done_clears_busy_state() {
-    let mut sim = TerminalSimulator::new(80, 24);
+    let mut sim = SimTerminal::new(80, 24);
     sim.send_message(AgentMessage::Thinking);
     sim.send_message(AgentMessage::Done);
     // No panic and screen is valid
@@ -190,7 +190,7 @@ fn done_clears_busy_state() {
 
 #[test]
 fn with_cwd_sets_display_path() {
-    let sim = TerminalSimulator::new(80, 24).with_cwd("/data/project");
+    let sim = SimTerminal::new(80, 24).with_cwd("/data/project");
     // cwd is stored but only displayed after Ready message
     let _screen = sim.screen();
     // Just verify no panic
@@ -198,7 +198,7 @@ fn with_cwd_sets_display_path() {
 
 #[test]
 fn with_branch_sets_git_branch() {
-    let sim = TerminalSimulator::new(80, 24).with_branch(Some("feature/test"));
+    let sim = SimTerminal::new(80, 24).with_branch(Some("feature/test"));
     // branch is stored but only displayed after Ready message
     let _screen = sim.screen();
     // Just verify no panic
@@ -206,7 +206,7 @@ fn with_branch_sets_git_branch() {
 
 #[test]
 fn backspace_removes_char() {
-    let mut sim = TerminalSimulator::new(80, 24);
+    let mut sim = SimTerminal::new(80, 24);
     sim.send_message(AgentMessage::Ready { model: "test".into() });
 
     sim.send_key(KeyEvent::Char('h'));
@@ -219,7 +219,7 @@ fn backspace_removes_char() {
 
 #[test]
 fn ctrl_c_clears_input() {
-    let mut sim = TerminalSimulator::new(80, 24);
+    let mut sim = SimTerminal::new(80, 24);
     sim.send_message(AgentMessage::Ready { model: "test".into() });
 
     sim.send_key(KeyEvent::Char('h'));
@@ -232,7 +232,7 @@ fn ctrl_c_clears_input() {
 
 #[test]
 fn input_content_after_typing() {
-    let mut sim = TerminalSimulator::new(80, 24);
+    let mut sim = SimTerminal::new(80, 24);
     sim.send_message(AgentMessage::Ready { model: "test".into() });
 
     sim.send_key(KeyEvent::Char('a'));
@@ -244,7 +244,7 @@ fn input_content_after_typing() {
 
 #[test]
 fn shift_enter_inserts_newline() {
-    let mut sim = TerminalSimulator::new(80, 24);
+    let mut sim = SimTerminal::new(80, 24);
     sim.send_message(AgentMessage::Ready { model: "test".into() });
 
     sim.send_key(KeyEvent::Char('a'));
