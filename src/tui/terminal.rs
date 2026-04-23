@@ -209,8 +209,9 @@ impl TerminalUI {
                         self.live_region.resize(new_size);
                         dirty = true;
                     }
-                    Event::Tick => {}
-                    Event::Mouse(_) => {}
+                    // Mouse events are impossible: we stopped emitting mouse-tracking
+                    // sequences in sub-task A, so the terminal never sends them.
+                    Event::Tick | Event::Key(_) | Event::Mouse(_) | Event::Resize(_) => {}
                 }
             }
         }

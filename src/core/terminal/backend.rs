@@ -9,24 +9,6 @@ pub const ENTER_ALT_SCREEN: &[u8] = b"\x1b[?1049h";
 /// ANSI sequence to leave the alternate screen buffer and restore the prior view.
 pub const LEAVE_ALT_SCREEN: &[u8] = b"\x1b[?1049l";
 
-/// ANSI sequence to enable basic mouse mode (1000) — reports button press/release.
-pub const ENABLE_MOUSE_1000: &[u8] = b"\x1b[?1000h";
-
-/// ANSI sequence to enable SGR mouse mode (1006) — reports wheel events.
-pub const ENABLE_SGR_MOUSE: &[u8] = b"\x1b[?1006h";
-
-/// ANSI sequence to enable URXVT mouse mode (1015) — fallback for terminals without SGR.
-pub const ENABLE_URXVT_MOUSE: &[u8] = b"\x1b[?1015h";
-
-/// ANSI sequence to disable basic mouse mode (1000).
-pub const DISABLE_MOUSE_1000: &[u8] = b"\x1b[?1000l";
-
-/// ANSI sequence to disable SGR mouse mode.
-pub const DISABLE_SGR_MOUSE: &[u8] = b"\x1b[?1006l";
-
-/// ANSI sequence to disable URXVT mouse mode.
-pub const DISABLE_URXVT_MOUSE: &[u8] = b"\x1b[?1015l";
-
 pub trait Backend {
     fn size(&self) -> crate::Result<TermSize>;
     fn write(&mut self, buf: &[u8]) -> crate::Result<()>;
