@@ -139,7 +139,9 @@ L5 Skill Memory      skill library (.viv/skills/)
 - https://github.com/openai/codex
 - https://github.com/anthropics/claude-code
 - https://github.com/ultraworkers/claw-code
+- https://github.com/charmbracelet/crush
+- https://github.com/anomalyco/opencode
 - https://github.com/crossterm-rs/crossterm
 - https://github.com/ratatui/ratatui
 - https://github.com/rustls/rustls
-- https://github.com/rust-native-tls/rust-native-tls — reference for native TLS FFI integration
+- https://github.com/rust-native-tls/rust-native-tls
