@@ -235,6 +235,34 @@ impl Screen {
         );
     }
 
+    /// Asserts that the given text appears anywhere on the screen.
+    /// Only checks text content, ignores styles.
+    pub fn assert_text_contains(&self, text: &str) {
+        assert!(
+            self.contains(text),
+            "Screen should contain text: {:?}",
+            text
+        );
+    }
+
+    /// Asserts that a specific cell has the expected foreground color.
+    /// Use this for checking ANSI color codes (e.g., 31=red, 32=green, 90=bright black).
+    pub fn assert_cell_fg(&self, row: usize, col: usize, color: u8) {
+        let style = self.style_at(row, col);
+        let actual_color = style.and_then(|s| {
+            match &s.fg {
+                Some(Color::Ansi(c)) => Some(*c),
+                _ => None,
+            }
+        });
+        assert_eq!(
+            actual_color,
+            Some(color),
+            "Cell ({}, {}) foreground should be {}, got {:?}",
+            row, col, color, actual_color
+        );
+    }
+
     /// Moves the cursor to the given position (1-indexed, as per ANSI CUP).
     fn move_cursor_to(&mut self, row: usize, col: usize) {
         // ANSI CUP uses 1-based indexing
