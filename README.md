@@ -130,10 +130,6 @@ L5 Skill Memory      skill library (.viv/skills/)
 └── skills/          # project-level skills
 ```
 
-## License
-
-[Apache License 2.0](LICENSE)
-
 ## References
 
 - https://github.com/openai/codex
@@ -145,3 +141,7 @@ L5 Skill Memory      skill library (.viv/skills/)
 - https://github.com/ratatui/ratatui
 - https://github.com/rustls/rustls
 - https://github.com/rust-native-tls/rust-native-tls
+
+## License
+
+[Apache License 2.0](LICENSE)
