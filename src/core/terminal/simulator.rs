@@ -866,6 +866,8 @@ pub struct SimTerminal {
     backend: TestBackend,
     parser: AnsiParser,
     sent_events: Vec<AgentEvent>,
+    cwd: String,
+    branch: Option<String>,
 }
 
 impl SimTerminal {
@@ -874,52 +876,61 @@ impl SimTerminal {
             cols: width as u16,
             rows: height as u16,
         };
+        let cwd = "~".to_string();
+        let branch = None;
         SimTerminal {
-            session: TuiSession::new(size, "~".to_string(), None),
+            session: TuiSession::new(size, cwd.clone(), branch.clone()),
             backend: TestBackend::new(width as u16, height as u16),
             parser: AnsiParser::new(width, height),
             sent_events: Vec::new(),
+            cwd,
+            branch,
         }
     }
 
     pub fn with_cwd(mut self, cwd: &str) -> Self {
-        let size = TermSize {
-            cols: self.parser.screen.width as u16,
-            rows: self.parser.screen.height as u16,
-        };
-        self.session = TuiSession::new(size, cwd.to_string(), None);
+        self.cwd = cwd.to_string();
+        self.rebuild_session();
         self
     }
 
     pub fn with_branch(mut self, branch: Option<&str>) -> Self {
+        self.branch = branch.map(|s| s.to_string());
+        self.rebuild_session();
+        self
+    }
+
+    fn rebuild_session(&mut self) {
         let size = TermSize {
             cols: self.parser.screen.width as u16,
             rows: self.parser.screen.height as u16,
         };
-        // NOTE: calling both with_cwd and with_branch on the same instance
-        // loses the earlier cwd because we rebuild TuiSession. Callers that
-        // need both should pass them in the order they want to take effect
-        // and the earlier one will be discarded. For the current test suite
-        // only one of these is used per construction so this is acceptable.
-        self.session = TuiSession::new(size, "~".to_string(), branch.map(|s| s.to_string()));
-        self
+        self.session = TuiSession::new(size, self.cwd.clone(), self.branch.clone());
     }
 
     pub fn send_message(&mut self, msg: AgentMessage) -> &mut Self {
-        let _ = self.session.handle_message(msg, &mut self.backend);
-        let _ = self.session.render_frame(&mut self.backend);
+        self.session
+            .handle_message(msg, &mut self.backend)
+            .expect("SimTerminal: session.handle_message failed");
+        self.session
+            .render_frame(&mut self.backend)
+            .expect("SimTerminal: render_frame failed");
         self.parser.parse(&self.backend.output);
         self.backend.output.clear();
         self
     }
 
     pub fn send_key(&mut self, key: KeyEvent) -> &mut Self {
-        if let Ok(outcome) = self.session.handle_key(key, &mut self.backend) {
-            if let KeyOutcome::Event(e) = outcome {
-                self.sent_events.push(e);
-            }
+        let outcome = self
+            .session
+            .handle_key(key, &mut self.backend)
+            .expect("SimTerminal: session.handle_key failed");
+        if let KeyOutcome::Event(e) = outcome {
+            self.sent_events.push(e);
         }
-        let _ = self.session.render_frame(&mut self.backend);
+        self.session
+            .render_frame(&mut self.backend)
+            .expect("SimTerminal: render_frame failed");
         self.parser.parse(&self.backend.output);
         self.backend.output.clear();
         self
@@ -933,20 +944,16 @@ impl SimTerminal {
         self.session.resize(size);
         self.parser = AnsiParser::new(width, height);
         self.backend.size = size;
-        let _ = self.session.render_frame(&mut self.backend);
+        self.session
+            .render_frame(&mut self.backend)
+            .expect("SimTerminal: render_frame failed");
         self.parser.parse(&self.backend.output);
         self.backend.output.clear();
         self
     }
 
     pub fn screen(&self) -> Screen {
-        Screen {
-            grid: self.parser.screen.grid.clone(),
-            width: self.parser.screen.width,
-            height: self.parser.screen.height,
-            cursor: self.parser.screen.cursor,
-            pending_wrap: self.parser.screen.pending_wrap,
-        }
+        self.parser.screen.clone()
     }
 
     pub fn input_content(&self) -> String {
