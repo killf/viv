@@ -408,6 +408,13 @@ impl Screen {
     /// Clears all cells from the cursor to the end of the current line.
     fn clear_line_from_cursor(&mut self) {
         let (row, col) = self.cursor;
+        // When pending_wrap is set the cursor is "logically after" the
+        // rightmost cell (the character there was just written but the
+        // cursor hasn't advanced yet). In that case there is nothing to
+        // the right to erase, so we skip the clear entirely.
+        if self.pending_wrap {
+            return;
+        }
         if row < self.height {
             for c in col..self.width {
                 self.grid[row][c] = Cell::new(' ');
@@ -499,8 +506,14 @@ struct AnsiParser {
     current_style: CellStyle,
     /// Parser state.
     state: ParserState,
-    /// Bytes accumulated for multi-byte sequences.
+    /// Bytes accumulated for CSI parameter sequences.
     buf: Vec<u8>,
+    /// Bytes accumulated for multi-byte UTF-8 sequences.
+    utf8_buf: [u8; 4],
+    /// Number of bytes stored in utf8_buf.
+    utf8_len: usize,
+    /// Total bytes expected for the current UTF-8 sequence.
+    utf8_expected: usize,
     /// Saved cursor position for recall.
     saved_cursor: Option<(usize, usize)>,
 }
@@ -530,6 +543,9 @@ impl AnsiParser {
             current_style: CellStyle::default(),
             state: ParserState::Ground,
             buf: Vec::new(),
+            utf8_buf: [0u8; 4],
+            utf8_len: 0,
+            utf8_expected: 0,
             saved_cursor: None,
         }
     }
@@ -572,7 +588,45 @@ impl AnsiParser {
                     }
                 }
             }
+            // Multi-byte UTF-8 lead bytes: accumulate then decode.
+            0xC0..=0xDF => {
+                // 2-byte sequence
+                self.utf8_buf[0] = b;
+                self.utf8_len = 1;
+                self.utf8_expected = 2;
+            }
+            0xE0..=0xEF => {
+                // 3-byte sequence
+                self.utf8_buf[0] = b;
+                self.utf8_len = 1;
+                self.utf8_expected = 3;
+            }
+            0xF0..=0xF7 => {
+                // 4-byte sequence
+                self.utf8_buf[0] = b;
+                self.utf8_len = 1;
+                self.utf8_expected = 4;
+            }
+            0x80..=0xBF if self.utf8_expected > 0 => {
+                // UTF-8 continuation byte
+                self.utf8_buf[self.utf8_len] = b;
+                self.utf8_len += 1;
+                if self.utf8_len == self.utf8_expected {
+                    // Sequence complete: decode to char and write
+                    let slice = &self.utf8_buf[..self.utf8_len];
+                    if let Ok(s) = std::str::from_utf8(slice) {
+                        if let Some(ch) = s.chars().next() {
+                            self.screen.write_char(ch, self.current_style.clone());
+                        }
+                    }
+                    self.utf8_len = 0;
+                    self.utf8_expected = 0;
+                }
+            }
             _ => {
+                // Reset any partial UTF-8 accumulation on unexpected byte
+                self.utf8_len = 0;
+                self.utf8_expected = 0;
                 if let Some(ch) = char::from_u32(b as u32) {
                     if !ch.is_control() || ch == ' ' {
                         self.screen.write_char(ch, self.current_style.clone());
