@@ -341,6 +341,7 @@ impl Screen {
 
     /// Scrolls the screen content up by n lines, adding empty lines at the bottom.
     fn scroll(&mut self, n: usize) {
+        self.pending_wrap = false;
         for _ in 0..n {
             // Remove the top line
             self.grid.remove(0);
@@ -352,6 +353,7 @@ impl Screen {
 
     /// Clears all cells in the screen.
     fn clear_screen(&mut self) {
+        self.pending_wrap = false;
         for row in &mut self.grid {
             for cell in row {
                 *cell = Cell::new(' ');
@@ -588,12 +590,15 @@ impl AnsiParser {
             0x37 => {
                 // Save cursor (DECSC)
                 self.saved_cursor = Some(self.screen.cursor);
+                self.state = ParserState::Ground;
             }
             0x38 => {
                 // Restore cursor (DECRC)
                 if let Some(pos) = self.saved_cursor {
                     self.screen.cursor = pos;
+                    self.screen.pending_wrap = false;
                 }
+                self.state = ParserState::Ground;
             }
             _ => self.state = ParserState::Ground,
         }
@@ -1326,5 +1331,60 @@ mod tests {
         // SGR 38;2;r;g;b sets a truecolor fg.
         let screen = parse_str("\x1b[38;2;215;119;87mA", 80, 24);
         screen.assert_cell_fg_rgb(0, 0, 215, 119, 87);
+    }
+
+    #[test]
+    fn test_pending_wrap_cleared_by_scroll_up() {
+        // CUP (1,1), write 80 chars to set pending_wrap at (0, 79),
+        // then SU (scroll up 1). SU doesn't move the cursor but DOES
+        // shift the grid so the cell that triggered the wrap flag is
+        // gone. pending_wrap must be cleared so the next 'X' doesn't
+        // wrap to (1, 0).
+        let mut parser = AnsiParser::new(80, 24);
+        parser.parse(b"\x1b[1;1H");
+        parser.parse(&"a".repeat(80).into_bytes());
+        // pending_wrap is now set at (0, 79)
+        assert!(parser.screen.pending_wrap, "precondition: pending_wrap set after 80 chars");
+        parser.parse(b"\x1b[1S");
+        assert!(!parser.screen.pending_wrap, "SU must clear pending_wrap");
+        parser.parse(b"X");
+        // With cleared flag: X overwrites (0, 79) (which is now blank
+        // because the original row 0 scrolled away).
+        assert_eq!(parser.screen.char_at(0, 79), Some('X'));
+        // Row 1 col 0 must not have been written to by this X.
+        assert_ne!(parser.screen.char_at(1, 0), Some('X'));
+    }
+
+    #[test]
+    fn test_pending_wrap_cleared_by_clear_screen() {
+        // 80 chars to set pending_wrap, then ED(2) clear screen, then
+        // write 'Z' at implicit cursor (still (0, 79)). With cleared
+        // flag Z overwrites (0, 79) rather than wrapping to (1, 0).
+        let mut parser = AnsiParser::new(80, 24);
+        parser.parse(&"a".repeat(80).into_bytes());
+        assert!(parser.screen.pending_wrap, "precondition: pending_wrap set after 80 chars");
+        parser.parse(b"\x1b[2J");
+        assert!(!parser.screen.pending_wrap, "ED(2) must clear pending_wrap");
+        parser.parse(b"Z");
+        assert_eq!(parser.screen.char_at(0, 79), Some('Z'));
+        assert_ne!(parser.screen.char_at(1, 0), Some('Z'));
+    }
+
+    #[test]
+    fn test_pending_wrap_cleared_by_decrc() {
+        // DECSC (ESC 7) saves cursor at (5, 10). Then write 80 chars
+        // starting at row 10 to set pending_wrap at (10, 79). DECRC
+        // (ESC 8) restores to (5, 10); the flag must be cleared so the
+        // next 'Y' lands at (5, 10) rather than wrapping to (6, 0).
+        let mut parser = AnsiParser::new(80, 24);
+        parser.parse(b"\x1b[6;11H\x1b7"); // move to (5, 10) 0-indexed, save
+        parser.parse(b"\x1b[11;1H");      // move to (10, 0)
+        parser.parse(&"a".repeat(80).into_bytes()); // pending_wrap set at (10, 79)
+        assert!(parser.screen.pending_wrap, "precondition: pending_wrap set after 80 chars");
+        parser.parse(b"\x1b8"); // restore cursor to (5, 10)
+        assert!(!parser.screen.pending_wrap, "DECRC must clear pending_wrap");
+        parser.parse(b"Y");
+        assert_eq!(parser.screen.char_at(5, 10), Some('Y'));
+        assert_ne!(parser.screen.char_at(6, 0), Some('Y'));
     }
 }
