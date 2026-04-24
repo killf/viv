@@ -907,6 +907,7 @@ use crate::agent::protocol::{AgentEvent, AgentMessage};
 use crate::core::terminal::backend::TestBackend;
 use crate::core::terminal::input::KeyEvent;
 use crate::core::terminal::size::TermSize;
+use crate::tui::host::HostInfo;
 use crate::tui::input::InputMode;
 use crate::tui::session::{KeyOutcome, TuiSession};
 
@@ -922,6 +923,7 @@ pub struct SimTerminal {
     sent_events: Vec<AgentEvent>,
     cwd: String,
     branch: Option<String>,
+    host: HostInfo,
 }
 
 impl SimTerminal {
@@ -932,13 +934,15 @@ impl SimTerminal {
         };
         let cwd = "~".to_string();
         let branch = None;
+        let host = HostInfo::default();
         SimTerminal {
-            session: TuiSession::new(size, cwd.clone(), branch.clone()),
+            session: TuiSession::new(size, cwd.clone(), branch.clone(), host.clone()),
             backend: TestBackend::new(width as u16, height as u16),
             parser: AnsiParser::new(width, height),
             sent_events: Vec::new(),
             cwd,
             branch,
+            host,
         }
     }
 
@@ -954,12 +958,53 @@ impl SimTerminal {
         self
     }
 
+    pub fn with_shell(mut self, shell: &str) -> Self {
+        self.host.shell = shell.to_string();
+        self.rebuild_session();
+        self
+    }
+
+    pub fn with_platform(mut self, platform: &str) -> Self {
+        self.host.platform = platform.to_string();
+        self.rebuild_session();
+        self
+    }
+
+    /// Feed raw bytes through the parser as if they had been printed to the
+    /// terminal before the TUI started. The cursor advances naturally (CR/LF
+    /// respected, no absolute positioning), so the next [`send_message`]
+    /// output lands right after this content — exactly mirroring a real
+    /// terminal where the user had run commands before launching `viv`.
+    ///
+    /// [`send_message`]: Self::send_message
+    pub fn feed(&mut self, bytes: &[u8]) -> &mut Self {
+        self.parser.parse(bytes);
+        self
+    }
+
+    /// Simulate a shell command run before the TUI launched. Writes
+    /// `$ {cmd}\r\n{output}\r\n` into the parser so subsequent rendering
+    /// continues below it.
+    ///
+    /// `\r\n` is required: the parser's LF handler only advances the row
+    /// (matching raw-mode terminals with OPOST disabled), so `\n` alone
+    /// would produce a staircase.
+    pub fn simulate_command(&mut self, cmd: &str, output: &str) -> &mut Self {
+        let text = format!("$ {cmd}\r\n{output}\r\n");
+        self.feed(text.as_bytes())
+    }
+
     fn rebuild_session(&mut self) {
         let size = TermSize {
             cols: self.parser.screen.width as u16,
             rows: self.parser.screen.height as u16,
         };
-        self.session = TuiSession::new(size, self.cwd.clone(), self.branch.clone());
+        self.session = TuiSession::new(
+            size,
+            self.cwd.clone(),
+            self.branch.clone(),
+            self.host.clone(),
+        );
     }
 
     pub fn send_message(&mut self, msg: AgentMessage) -> &mut Self {

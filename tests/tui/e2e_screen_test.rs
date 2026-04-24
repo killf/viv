@@ -10,11 +10,10 @@ use viv::core::terminal::simulator::SimTerminal;
 /// Complete 80x24 Welcome screen: logo, info rows, input frame, status bar.
 #[test]
 fn e2e_welcome_screen_layout() {
-    // Shell appears in the welcome header; pin it so the test is reproducible.
-    // Safety: single-threaded test; no other threads read SHELL here.
-    unsafe { std::env::set_var("SHELL", "/bin/zsh"); }
-
-    let mut sim = SimTerminal::new(80, 24).with_cwd("/data/project");
+    let mut sim = SimTerminal::new(80, 24)
+        .with_cwd("/data/project")
+        .with_shell("zsh")
+        .with_platform("linux x86_64");
     sim.send_message(AgentMessage::Ready {
         model: "claude-3-5-sonnet-20241022".into(),
     });
@@ -70,3 +69,53 @@ fn e2e_welcome_screen_layout() {
     screen.assert_cell_fg_rgb(23, 2, 136, 136, 136);
     screen.assert_cell_fg_rgb(23, 35, 136, 136, 136);
 }
+
+/// Simulate pre-existing shell output (e.g. an `ls` before viv launched):
+/// welcome should land below that content and the status bar still pins
+/// to the bottom row.
+#[test]
+fn e2e_welcome_after_simulated_command() {
+    let mut sim = SimTerminal::new(80, 24)
+        .with_cwd("/data/project")
+        .with_shell("zsh")
+        .with_platform("linux x86_64");
+
+    sim.simulate_command("ls", "Cargo.toml  src  tests");
+    sim.send_message(AgentMessage::Ready {
+        model: "claude-3-5-sonnet-20241022".into(),
+    });
+
+    let screen = sim.screen();
+
+    screen.assert_screen(&[
+        // Rows 0-1: simulated `ls` output (prompt + files).
+        "$ ls",
+        "Cargo.toml  src  tests",
+        // Rows 2-6: welcome, starting right below the ls output.
+        r"       _           Model:    claude-3-5-sonnet-20241022",
+        r"__   _(_)_   __    CWD:      /data/project",
+        r"\ \ / / \ \ / /    Branch:   -",
+        r" \ V /| |\ V /     Platform: linux x86_64",
+        r"  \_/ |_| \_/      Shell:    zsh",
+        // Rows 7-19: blank (welcome trailing blanks + gap before live region).
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        // Rows 20-23: live region (bottom-pinned, unchanged by scrollback above).
+        "────────────────────────────────────────────────────────────────────────────────",
+        "\u{276F}",
+        "────────────────────────────────────────────────────────────────────────────────",
+        "  /data/project                    claude-3-5-sonnet-20241022  \u{2191} 0  \u{2193} 0  ~$0.000",
+    ]);
+}
+

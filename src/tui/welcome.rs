@@ -17,6 +17,8 @@ pub struct WelcomeWidget<'a> {
     model: Option<&'a str>,
     cwd: &'a str,
     branch: Option<&'a str>,
+    shell: &'a str,
+    platform: &'a str,
 }
 
 impl<'a> WelcomeWidget<'a> {
@@ -31,8 +33,20 @@ impl<'a> WelcomeWidget<'a> {
     /// Total number of rows (logo + info).
     pub const TOTAL_ROWS: u16 = 10;
 
-    pub fn new(model: Option<&'a str>, cwd: &'a str, branch: Option<&'a str>) -> Self {
-        WelcomeWidget { model, cwd, branch }
+    pub fn new(
+        model: Option<&'a str>,
+        cwd: &'a str,
+        branch: Option<&'a str>,
+        shell: &'a str,
+        platform: &'a str,
+    ) -> Self {
+        WelcomeWidget {
+            model,
+            cwd,
+            branch,
+            shell,
+            platform,
+        }
     }
 
     /// Render the welcome widget with per-row alpha values for the 5 info rows.
@@ -89,20 +103,15 @@ impl<'a> WelcomeWidget<'a> {
         let model_val = self.model.unwrap_or("...").to_string();
         let cwd_val = self.cwd.to_string();
         let branch_val = self.branch.unwrap_or("-").to_string();
-
-        let platform = format!("{} {}", std::env::consts::OS, std::env::consts::ARCH,);
-
-        let shell = std::env::var("SHELL")
-            .ok()
-            .and_then(|s| s.rsplit('/').next().map(|n| n.to_string()))
-            .unwrap_or_else(|| "-".to_string());
+        let platform_val = self.platform.to_string();
+        let shell_val = self.shell.to_string();
 
         [
             ("Model:", model_val),
             ("CWD:", cwd_val),
             ("Branch:", branch_val),
-            ("Platform:", platform),
-            ("Shell:", shell),
+            ("Platform:", platform_val),
+            ("Shell:", shell_val),
         ]
     }
 

@@ -10,7 +10,7 @@ fn welcome_height_is_five() {
 
 #[test]
 fn welcome_renders_logo() {
-    let widget = WelcomeWidget::new(Some("claude-sonnet-4-6"), "~/projects/viv", Some("main"));
+    let widget = WelcomeWidget::new(Some("claude-sonnet-4-6"), "~/projects/viv", Some("main"), "zsh", "linux x86_64");
     let area = Rect::new(0, 0, 60, 5);
     let mut buf = Buffer::empty(area);
     widget.render(area, &mut buf);
@@ -23,7 +23,7 @@ fn welcome_renders_logo() {
 
 #[test]
 fn welcome_renders_model_info() {
-    let widget = WelcomeWidget::new(Some("claude-sonnet-4-6"), "~/projects/viv", Some("main"));
+    let widget = WelcomeWidget::new(Some("claude-sonnet-4-6"), "~/projects/viv", Some("main"), "zsh", "linux x86_64");
     let area = Rect::new(0, 0, 60, 5);
     let mut buf = Buffer::empty(area);
     widget.render(area, &mut buf);
@@ -36,7 +36,7 @@ fn welcome_renders_model_info() {
 
 #[test]
 fn welcome_renders_placeholder_when_no_model() {
-    let widget = WelcomeWidget::new(None, "~/projects/viv", Some("main"));
+    let widget = WelcomeWidget::new(None, "~/projects/viv", Some("main"), "zsh", "linux x86_64");
     let area = Rect::new(0, 0, 60, 5);
     let mut buf = Buffer::empty(area);
     widget.render(area, &mut buf);
@@ -49,7 +49,7 @@ fn welcome_renders_placeholder_when_no_model() {
 
 #[test]
 fn welcome_renders_cwd_info() {
-    let widget = WelcomeWidget::new(Some("test-model"), "~/my/path", None);
+    let widget = WelcomeWidget::new(Some("test-model"), "~/my/path", None, "zsh", "linux x86_64");
     let area = Rect::new(0, 0, 60, 5);
     let mut buf = Buffer::empty(area);
     widget.render(area, &mut buf);
@@ -59,7 +59,7 @@ fn welcome_renders_cwd_info() {
 
 #[test]
 fn welcome_logo_uses_claude_color() {
-    let widget = WelcomeWidget::new(Some("m"), "~", None);
+    let widget = WelcomeWidget::new(Some("m"), "~", None, "zsh", "linux x86_64");
     let area = Rect::new(0, 0, 60, 5);
     let mut buf = Buffer::empty(area);
     widget.render(area, &mut buf);
