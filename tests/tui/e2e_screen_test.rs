@@ -119,3 +119,52 @@ fn e2e_welcome_after_simulated_command() {
     ]);
 }
 
+/// Growing the terminal from 24 to 30 rows must move the live region
+/// down so it stays pinned to the new bottom. SimTerminal::resize
+/// rebuilds the parser, then the session redraws the live region via
+/// absolute positioning; upper rows are left blank in the fresh screen.
+#[test]
+fn e2e_resize_repins_live_region_to_bottom() {
+    let mut sim = SimTerminal::new(80, 24)
+        .with_cwd("/data/project")
+        .with_shell("zsh")
+        .with_platform("linux x86_64");
+    sim.send_message(AgentMessage::Ready {
+        model: "claude-3-5-sonnet-20241022".into(),
+    });
+
+    // Pre-condition: welcome at the top, live region pinned to the bottom
+    // of a 24-row screen (rows 20-23).
+    let before = sim.screen();
+    assert_eq!(before.size(), (80, 24));
+    before.assert_screen(&[
+        r"       _           Model:    claude-3-5-sonnet-20241022",
+        r"__   _(_)_   __    CWD:      /data/project",
+        r"\ \ / / \ \ / /    Branch:   -",
+        r" \ V /| |\ V /     Platform: linux x86_64",
+        r"  \_/ |_| \_/      Shell:    zsh",
+        "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+        "────────────────────────────────────────────────────────────────────────────────",
+        "\u{276F}",
+        "────────────────────────────────────────────────────────────────────────────────",
+        "  /data/project                    claude-3-5-sonnet-20241022  \u{2191} 0  \u{2193} 0  ~$0.000",
+    ]);
+
+    // Grow the terminal height from 24 to 30 rows.
+    sim.resize(80, 30);
+
+    // Post-condition: live region moves to the new bottom (rows 26-29).
+    // Welcome is not re-emitted, so the upper rows are blank.
+    let after = sim.screen();
+    assert_eq!(after.size(), (80, 30));
+    after.assert_screen(&[
+        "", "", "", "", "", "", "", "", "", "",
+        "", "", "", "", "", "", "", "", "", "",
+        "", "", "", "", "", "",
+        "────────────────────────────────────────────────────────────────────────────────",
+        "\u{276F}",
+        "────────────────────────────────────────────────────────────────────────────────",
+        "  /data/project                    claude-3-5-sonnet-20241022  \u{2191} 0  \u{2193} 0  ~$0.000",
+    ]);
+}
+
