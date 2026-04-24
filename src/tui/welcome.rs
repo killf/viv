@@ -2,121 +2,99 @@ use crate::core::terminal::buffer::{Buffer, Rect};
 use crate::core::terminal::style::theme;
 use crate::tui::widget::Widget;
 
-const LOGO: [&str; 5] = [
-    "       _       ",
-    "__   _(_)_   __",
-    "\\ \\ / / \\ \\ / /",
-    " \\ V /| |\\ V / ",
-    "  \\_/ |_| \\_/  ",
+const LOGO: [&str; 3] = [
+    "▐▛███▜▌",
+    "▝▜█████▛▘",
+    "▘▘ ▝▝",
 ];
 
-const LOGO_WIDTH: u16 = 15;
-const GAP: u16 = 4;
+const LEFT_WIDTH: u16 = 36;
+const RIGHT_WIDTH: u16 = 41;
+const CONTENT_ROWS: u16 = 9;
+// Minimum terminal width: │ + left + │ + right + │ = 80
+const MIN_WIDTH: u16 = LEFT_WIDTH + RIGHT_WIDTH + 3;
 
 pub struct WelcomeWidget<'a> {
     model: Option<&'a str>,
     cwd: &'a str,
-    branch: Option<&'a str>,
-    shell: &'a str,
-    platform: &'a str,
 }
 
 impl<'a> WelcomeWidget<'a> {
-    pub const HEIGHT: u16 = 5;
+    /// Total rendered height: 2 border rows + 9 content rows.
+    pub const HEIGHT: u16 = CONTENT_ROWS + 2;
 
-    /// Row delay in milliseconds between each info row starting.
     pub const ROW_DELAY_MS: u64 = 80;
-    /// Fade-in duration in milliseconds per row.
     pub const FADE_DURATION_MS: u64 = 200;
-    /// Number of info rows (the logo is rows 0-4, info rows are 5-9).
-    pub const INFO_ROWS: usize = 5;
-    /// Total number of rows (logo + info).
-    pub const TOTAL_ROWS: u16 = 10;
+    pub const INFO_ROWS: usize = 0;
+    pub const TOTAL_ROWS: u16 = Self::HEIGHT;
 
-    pub fn new(
-        model: Option<&'a str>,
-        cwd: &'a str,
-        branch: Option<&'a str>,
-        shell: &'a str,
-        platform: &'a str,
-    ) -> Self {
-        WelcomeWidget {
-            model,
-            cwd,
-            branch,
-            shell,
-            platform,
-        }
+    pub fn new(model: Option<&'a str>, cwd: &'a str) -> Self {
+        WelcomeWidget { model, cwd }
     }
 
-    /// Render the welcome widget with per-row alpha values for the 5 info rows.
-    /// `info_alphas` must have exactly `INFO_ROWS` entries.
-    /// Each entry is in [0.0, 1.0]: alpha < 0.5 → DIM, alpha >= 0.5 → TEXT.
-    pub fn render_with_alpha(&self, area: Rect, buf: &mut Buffer, info_alphas: &[f64]) {
-        if area.is_empty() || area.height < Self::HEIGHT {
+    pub fn render_with_alpha(&self, area: Rect, buf: &mut Buffer, _info_alphas: &[f64]) {
+        if area.is_empty() || area.height < Self::HEIGHT || area.width < MIN_WIDTH {
             return;
         }
 
-        // Render logo (rows 0-4): always CLAUDE
-        for (row, line) in LOGO.iter().enumerate() {
-            let y = area.y + row as u16;
-            if y >= area.y + area.height {
-                break;
+        let x = area.x;
+        let y = area.y;
+
+        // Top border: ╭─── viv ──...──╮
+        let dashes = (area.width as usize).saturating_sub(10);
+        let top = format!("╭─── viv {}╮", "─".repeat(dashes));
+        buf.set_str(x, y, &top, Some(theme::DIM), false);
+
+        for cr in 0..CONTENT_ROWS {
+            let ry = y + 1 + cr;
+
+            buf.set_str(x, ry, "│", Some(theme::DIM), false);
+
+            let left = self.left_content(cr);
+            let left_fg = if (3..=5).contains(&cr) { theme::CLAUDE } else { theme::TEXT };
+            buf.set_str(x + 1, ry, &left, Some(left_fg), false);
+
+            buf.set_str(x + 1 + LEFT_WIDTH, ry, "│", Some(theme::DIM), false);
+
+            if let Some(right) = self.right_content(cr) {
+                buf.set_str(x + 1 + LEFT_WIDTH + 1, ry, &right, Some(theme::TEXT), false);
             }
-            buf.set_str(area.x, y, line, Some(theme::CLAUDE), false);
+
+            buf.set_str(x + 1 + LEFT_WIDTH + 1 + RIGHT_WIDTH, ry, "│", Some(theme::DIM), false);
         }
 
-        // Render info to the right of logo
-        let info_x = area.x + LOGO_WIDTH + GAP;
-        if info_x >= area.x + area.width {
-            return;
-        }
+        // Bottom border: ╰──...──╯
+        let bottom = format!("╰{}╯", "─".repeat(area.width as usize - 2));
+        buf.set_str(x, y + 1 + CONTENT_ROWS, &bottom, Some(theme::DIM), false);
+    }
 
-        let label_width: u16 = 10;
-        let info_lines = self.info_lines();
-
-        for (row, (label, value)) in info_lines.iter().enumerate() {
-            let y = area.y + row as u16;
-            if y >= area.y + area.height {
-                break;
-            }
-
-            // Label in CLAUDE orange, bold
-            buf.set_str(info_x, y, label, Some(theme::CLAUDE), true);
-
-            // Value color based on alpha
-            let alpha = info_alphas
-                .get(row)
-                .copied()
-                .unwrap_or(1.0);
-            let val_fg = if alpha < 0.5 { theme::DIM } else { theme::TEXT };
-
-            // Value in white
-            let val_x = info_x + label_width;
-            if val_x < area.x + area.width {
-                buf.set_str(val_x, y, value, Some(val_fg), false);
-            }
+    fn left_content(&self, cr: u16) -> String {
+        let w = LEFT_WIDTH as usize;
+        match cr {
+            1 => center_pad("Welcome to viv!", w),
+            3 => center_pad(LOGO[0], w),
+            4 => center_pad(LOGO[1], w),
+            5 => center_pad(LOGO[2], w),
+            7 => center_pad(self.model.unwrap_or("..."), w),
+            8 => center_pad(self.cwd, w),
+            _ => " ".repeat(w),
         }
     }
 
-    fn info_lines(&self) -> [(&str, String); 5] {
-        let model_val = self.model.unwrap_or("...").to_string();
-        let cwd_val = self.cwd.to_string();
-        let branch_val = self.branch.unwrap_or("-").to_string();
-        let platform_val = self.platform.to_string();
-        let shell_val = self.shell.to_string();
-
-        [
-            ("Model:", model_val),
-            ("CWD:", cwd_val),
-            ("Branch:", branch_val),
-            ("Platform:", platform_val),
-            ("Shell:", shell_val),
-        ]
+    fn right_content(&self, cr: u16) -> Option<String> {
+        let rw = RIGHT_WIDTH as usize;
+        let lpad = |s: &str| format!("{:<rw$}", s, rw = rw);
+        match cr {
+            0 => Some(lpad(" Tips for getting started")),
+            1 => Some(lpad(" Run /help to see available commands")),
+            2 => Some(lpad(&format!(" {}", "─".repeat(rw - 2)))),
+            3 => Some(lpad(" Recent activity")),
+            4 => Some(lpad(" No recent activity")),
+            _ => None,
+        }
     }
 
-    /// Render the welcome widget into an ANSI-encoded string suitable for
-    /// writing directly to scrollback. All info rows are fully visible.
+    /// Serialize into ANSI escape sequences for writing directly to scrollback.
     pub fn as_scrollback_string(&self, width: u16) -> String {
         let height = Self::TOTAL_ROWS;
         let area = Rect::new(0, 0, width, height);
@@ -127,10 +105,22 @@ impl<'a> WelcomeWidget<'a> {
     }
 }
 
+/// Center `s` in `width` columns, using char count for multibyte safety.
+/// Odd padding: left gets the extra space (matches Claude Code reference layout).
+fn center_pad(s: &str, width: usize) -> String {
+    let len = s.chars().count();
+    if len >= width {
+        return s.to_string();
+    }
+    let pad = width - len;
+    let right_pad = pad / 2;
+    let left_pad = pad - right_pad;
+    format!("{}{}{}", " ".repeat(left_pad), s, " ".repeat(right_pad))
+}
+
 impl<'a> Widget for WelcomeWidget<'a> {
     fn render(&self, area: Rect, buf: &mut Buffer) {
-        // Default: all info rows fully visible (alpha = 1.0)
-        let info_alphas = [1.0; Self::INFO_ROWS];
+        let info_alphas = [1.0f64; Self::INFO_ROWS];
         self.render_with_alpha(area, buf, &info_alphas);
     }
 }

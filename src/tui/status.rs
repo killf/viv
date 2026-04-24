@@ -50,18 +50,14 @@ impl StatusWidget {
 
 impl StatusWidget {
     fn right_text(&self) -> String {
-        let cost = self.estimate_cost();
-        format!(
-            "  {}  ↑ {}  ↓ {}  ~${:.3}",
-            self.model, self.input_tokens, self.output_tokens, cost
-        )
+        if self.model.is_empty() {
+            return String::new();
+        }
+        format!("● {}", self.model)
     }
 
     fn left_text(&self) -> String {
-        match &self.branch {
-            Some(b) => format!("  {}  ⎇ {}", self.cwd, b),
-            None => format!("  {}", self.cwd),
-        }
+        "  ? for shortcuts".to_string()
     }
 }
 

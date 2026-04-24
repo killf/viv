@@ -132,9 +132,6 @@ impl TuiSession {
                 let welcome_widget = crate::tui::welcome::WelcomeWidget::new(
                     Some(&model),
                     &self.cwd,
-                    self.branch.as_deref(),
-                    &self.host.shell,
-                    &self.host.platform,
                 );
                 let width = self.live_region.width();
                 let welcome_text = welcome_widget.as_scrollback_string(width);

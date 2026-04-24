@@ -32,10 +32,10 @@ fn send_ready_message_shows_welcome() {
         screen.contains("claude-3-5-sonnet"),
         "welcome should show model name"
     );
-    // WelcomeWidget shows ASCII art logo (viv letters visible)
+    // WelcomeWidget shows block-character logo
     assert!(
-        screen.contains("_") && screen.contains("/"),
-        "welcome should show ASCII art logo"
+        screen.contains("▐") || screen.contains("█"),
+        "welcome should show block-character logo"
     );
 }
 

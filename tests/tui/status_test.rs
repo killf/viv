@@ -24,21 +24,23 @@ fn renders_model_name() {
 }
 
 #[test]
-fn renders_token_counts() {
+fn renders_shortcuts_hint() {
     let w = StatusWidget {
         cwd: "/home/user".to_string(),
-        branch: None,
-        model: "m".to_string(),
-        input_tokens: 1000,
-        output_tokens: 250,
+        branch: Some("main".to_string()),
+        model: "claude-sonnet-4-6".to_string(),
+        input_tokens: 0,
+        output_tokens: 0,
         spinner_frame: None,
         spinner_verb: String::new(),
     };
     let mut buf = Buffer::empty(Rect::new(0, 0, 60, 1));
     w.render(Rect::new(0, 0, 60, 1), &mut buf);
     let rendered: String = (0..60).map(|x| buf.get(x, 0).ch).collect();
-    assert!(rendered.contains("1000"), "input tokens");
-    assert!(rendered.contains("250"), "output tokens");
+    assert!(
+        rendered.contains("? for shortcuts"),
+        "shortcuts hint should appear"
+    );
 }
 
 #[test]
