@@ -936,7 +936,7 @@ impl SimTerminal {
         let branch = None;
         let host = HostInfo::default();
         SimTerminal {
-            session: TuiSession::new(size, cwd.clone(), branch.clone(), host.clone()),
+            session: TuiSession::new(size, cwd.clone(), branch.clone()),
             backend: TestBackend::new(width as u16, height as u16),
             parser: AnsiParser::new(width, height),
             sent_events: Vec::new(),
@@ -999,12 +999,7 @@ impl SimTerminal {
             cols: self.parser.screen.width as u16,
             rows: self.parser.screen.height as u16,
         };
-        self.session = TuiSession::new(
-            size,
-            self.cwd.clone(),
-            self.branch.clone(),
-            self.host.clone(),
-        );
+        self.session = TuiSession::new(size, self.cwd.clone(), self.branch.clone());
     }
 
     pub fn send_message(&mut self, msg: AgentMessage) -> &mut Self {

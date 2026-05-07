@@ -72,8 +72,7 @@ impl TerminalUI {
 
         let size = backend.size()?;
         let (cwd, branch) = Self::read_cwd_branch();
-        let host = crate::tui::host::HostInfo::from_env();
-        let session = TuiSession::new(size, cwd, branch, host);
+        let session = TuiSession::new(size, cwd, branch);
 
         Ok(TerminalUI {
             event_tx,

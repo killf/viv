@@ -12,7 +12,6 @@ use crate::core::terminal::backend::Backend;
 use crate::core::terminal::input::KeyEvent;
 use crate::core::terminal::size::TermSize;
 use crate::tui::content::MarkdownParseBuffer;
-use crate::tui::host::HostInfo;
 use crate::tui::input::InputMode;
 use crate::tui::live_region::{BlockState, CursorPos, LiveBlock, LiveRegion};
 use crate::tui::spinner::{Spinner, random_verb};
@@ -36,7 +35,6 @@ pub struct TuiSession {
     cwd: String,
     branch: Option<String>,
     model_name: String,
-    host: HostInfo,
 
     // Stats.
     input_tokens: u64,
@@ -61,7 +59,7 @@ pub struct TuiSession {
 }
 
 impl TuiSession {
-    pub fn new(size: TermSize, cwd: String, branch: Option<String>, host: HostInfo) -> Self {
+    pub fn new(size: TermSize, cwd: String, branch: Option<String>) -> Self {
         let seed = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_millis() as u64)
@@ -73,7 +71,6 @@ impl TuiSession {
             cwd,
             branch,
             model_name: String::new(),
-            host,
             input_tokens: 0,
             output_tokens: 0,
             busy: false,
