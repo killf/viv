@@ -27,7 +27,7 @@ VIV_BASE_URL=xxx         # Optional: API base URL (default: api.anthropic.com)
 VIV_MODEL=xxx            # Optional: fallback model for all tiers
 VIV_MODEL_FAST=xxx       # Optional: fast tier model (default: claude-haiku-4-5)
 VIV_MODEL_MEDIUM=xxx     # Optional: medium tier model (default: claude-sonnet-4-6)
-VIV_MODEL_SLOW=xxx       # Optional: slow tier model (default: claude-opus-4-6)
+VIV_MODEL_HARD=xxx       # Optional: slow tier model (default: claude-opus-4-6)
 ```
 
 Model resolution: `VIV_MODEL_FAST` > `VIV_MODEL` > default value（其他两档同理）

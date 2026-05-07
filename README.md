@@ -37,7 +37,7 @@ VIV_API_KEY=your_key cargo run
 | `VIV_MODEL` | No | Fallback model for all tiers |
 | `VIV_MODEL_FAST` | No | Fast model (default: claude-haiku-4-5) |
 | `VIV_MODEL_MEDIUM` | No | Medium model (default: claude-sonnet-4-6) |
-| `VIV_MODEL_SLOW` | No | Slow model (default: claude-opus-4-6) |
+| `VIV_MODEL_HARD` | No | Slow model (default: claude-opus-4-6) |
 
 ## Testing
 

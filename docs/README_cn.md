@@ -37,7 +37,7 @@ VIV_API_KEY=你的密钥 cargo run
 | `VIV_MODEL` | 否 | 所有模型档位的回退值 |
 | `VIV_MODEL_FAST` | 否 | 快速模型（默认 claude-haiku-4-5） |
 | `VIV_MODEL_MEDIUM` | 否 | 中等模型（默认 claude-sonnet-4-6） |
-| `VIV_MODEL_SLOW` | 否 | 慢速模型（默认 claude-opus-4-6） |
+| `VIV_MODEL_HARD` | 否 | 慢速模型（默认 claude-opus-4-6） |
 
 ## 测试
 

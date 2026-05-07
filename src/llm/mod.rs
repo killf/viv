@@ -126,7 +126,7 @@ impl LLMConfig {
         let model_slow = model_config
             .model_slow
             .clone()
-            .or_else(|| std::env::var("VIV_MODEL_SLOW").ok())
+            .or_else(|| std::env::var("VIV_MODEL_HARD").ok())
             .or_else(|| env_fallback)
             .unwrap_or_else(|| "claude-opus-4-6".into());
 

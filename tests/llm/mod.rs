@@ -120,7 +120,7 @@ fn config_env_vars() {
     let prev_model = std::env::var("VIV_MODEL").ok();
     let prev_fast = std::env::var("VIV_MODEL_FAST").ok();
     let prev_medium = std::env::var("VIV_MODEL_MEDIUM").ok();
-    let prev_slow = std::env::var("VIV_MODEL_SLOW").ok();
+    let prev_slow = std::env::var("VIV_MODEL_HARD").ok();
 
     unsafe {
         std::env::set_var("VIV_API_KEY", "test-viv-key");
@@ -128,7 +128,7 @@ fn config_env_vars() {
         std::env::remove_var("VIV_MODEL");
         std::env::remove_var("VIV_MODEL_FAST");
         std::env::remove_var("VIV_MODEL_MEDIUM");
-        std::env::remove_var("VIV_MODEL_SLOW");
+        std::env::remove_var("VIV_MODEL_HARD");
     }
     let config = LLMConfig::from_env(&ModelConfig::default()).unwrap();
     assert_eq!(config.api_key, "test-viv-key");
@@ -147,7 +147,7 @@ fn config_env_vars() {
         std::env::set_var("VIV_MODEL", "my-custom-model");
         std::env::remove_var("VIV_MODEL_FAST");
         std::env::remove_var("VIV_MODEL_MEDIUM");
-        std::env::remove_var("VIV_MODEL_SLOW");
+        std::env::remove_var("VIV_MODEL_HARD");
     }
     let config = LLMConfig::from_env(&ModelConfig::default()).unwrap();
     assert_eq!(config.model_fast, "my-custom-model");
@@ -184,8 +184,8 @@ fn config_env_vars() {
             None => std::env::remove_var("VIV_MODEL_MEDIUM"),
         }
         match prev_slow {
-            Some(v) => std::env::set_var("VIV_MODEL_SLOW", v),
-            None => std::env::remove_var("VIV_MODEL_SLOW"),
+            Some(v) => std::env::set_var("VIV_MODEL_HARD", v),
+            None => std::env::remove_var("VIV_MODEL_HARD"),
         }
     }
 }
